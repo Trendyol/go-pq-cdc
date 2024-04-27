@@ -1,0 +1,12 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:16.2
+    restart: always
+    command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
+    environment:
+      POSTGRES_USER: "dcp_user"
+      POSTGRES_PASSWORD: "dcp_pass"
+      POSTGRES_DB: "dcp_db"
+      POSTGRES_HOST_AUTH_METHOD: trust
+    network_mode: "host"

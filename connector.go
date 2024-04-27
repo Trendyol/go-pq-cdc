@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/go-playground/errors"
-	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"gitlab.trendyol.com/pq-dcp/message"
@@ -13,6 +12,11 @@ import (
 	"log/slog"
 	"os"
 	"time"
+)
+
+const (
+	XLogDataByteID                = 'w'
+	PrimaryKeepaliveMessageByteID = 'k'
 )
 
 var pluginArguments = []string{
@@ -117,9 +121,9 @@ func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
 			}
 
 			switch msg.Data[0] {
-			case pglogrepl.PrimaryKeepaliveMessageByteID:
+			case PrimaryKeepaliveMessageByteID:
 				continue
-			case pglogrepl.XLogDataByteID:
+			case XLogDataByteID:
 				var xld XLogData
 				xld, err = ParseXLogData(msg.Data[1:])
 				if err != nil {

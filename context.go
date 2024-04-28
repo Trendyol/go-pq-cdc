@@ -1,4 +1,4 @@
-package dcp
+package dcpg
 
 type Context struct {
 	Message any

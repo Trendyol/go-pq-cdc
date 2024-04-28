@@ -2,9 +2,9 @@ package format
 
 import (
 	"encoding/binary"
+	"github.com/3n0ugh/dcpg/message/tuple"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgtype"
-	"gitlab.trendyol.com/pq-dcp/message/tuple"
 )
 
 const (

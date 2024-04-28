@@ -3,8 +3,8 @@ package format
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/3n0ugh/dcpg/message/tuple"
 	"github.com/go-playground/errors"
-	"gitlab.trendyol.com/pq-dcp/message/tuple"
 )
 
 type Relation struct {

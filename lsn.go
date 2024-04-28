@@ -1,4 +1,4 @@
-package dcp
+package dcpg
 
 import (
 	"fmt"

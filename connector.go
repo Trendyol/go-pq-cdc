@@ -1,14 +1,14 @@
-package dcp
+package dcpg
 
 import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/3n0ugh/dcpg/message"
+	"github.com/3n0ugh/dcpg/message/format"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
-	"gitlab.trendyol.com/pq-dcp/message"
-	"gitlab.trendyol.com/pq-dcp/message/format"
 	"log/slog"
 	"os"
 	"time"
@@ -24,9 +24,6 @@ var pluginArguments = []string{
 	"messages 'true'",
 	"streaming 'true'",
 }
-
-// OUTPUT AS CHANNEL !!!!!, MAPPER IS SHIT
-// ACK return and give the option for them -- do not manage it ...
 
 type Connector struct {
 	conn *pgconn.PgConn

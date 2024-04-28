@@ -1,8 +1,8 @@
 package format
 
 import (
+	"github.com/3n0ugh/dcpg/message/tuple"
 	"github.com/stretchr/testify/assert"
-	"gitlab.trendyol.com/pq-dcp/message/tuple"
 	"testing"
 )
 

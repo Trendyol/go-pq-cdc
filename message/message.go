@@ -2,7 +2,6 @@ package message
 
 import (
 	"github.com/go-playground/errors"
-	. "gitlab.trendyol.com/pq-dcp/message/format"
 )
 
 const (

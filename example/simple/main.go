@@ -2,11 +2,26 @@ package main
 
 import (
 	"context"
-	dcp "gitlab.trendyol.com/pq-dcp"
-	"gitlab.trendyol.com/pq-dcp/message/format"
+	dcp "github.com/3n0ugh/dcpg"
+	"github.com/3n0ugh/dcpg/message/format"
 	"log/slog"
 	"os"
 )
+
+/*
+	psql "postgres://dcp_user:dcp_pass@127.0.0.1/dcp_db?replication=database"
+
+	CREATE TABLE users (
+	 id serial PRIMARY KEY,
+	 name text NOT NULL,
+	 created_on timestamptz
+	);
+
+	INSERT INTO users (name)
+	SELECT
+		'Oyleli' || i
+	FROM generate_series(1, 1000000) AS i;
+*/
 
 func main() {
 	ctx := context.Background()
@@ -16,15 +31,15 @@ func main() {
 		Password: "dcp_pass",
 		Database: "dcp_db",
 		Publication: dcp.PublicationConfig{
-			Name: "dcp_publication",
-			// Create:       true,
-			// DropIfExists: true,
-			ScopeTables: nil,
-			All:         true,
+			Name:         "dcp_publication",
+			Create:       true,
+			DropIfExists: true,
+			ScopeTables:  nil,
+			All:          true,
 		},
 		Slot: dcp.SlotConfig{
-			Name: "dcp_slot_5",
-			// Create: true,
+			Name:   "dcp_slot_5",
+			Create: true,
 		},
 	}
 
@@ -61,18 +76,3 @@ func main() {
 		}
 	}
 }
-
-/*
-	psql "postgres://dcp_user:dcp_pass@127.0.0.1/dcp_db?replication=database"
-
-	CREATE TABLE users (
-	 id serial PRIMARY KEY,
-	 name text NOT NULL,
-	 created_on timestamptz
-	);
-
-	INSERT INTO users (name)
-	SELECT
-		'Oyleli' || i
-	FROM generate_series(1, 1000000) AS i;
-*/

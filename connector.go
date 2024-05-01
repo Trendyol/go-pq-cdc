@@ -85,6 +85,7 @@ func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
 	relation := map[uint32]*format.Relation{}
 
 	ch := make(chan Context, 128)
+	lastXLogPos := LSN(10)
 
 	go func() {
 		defer func() {
@@ -95,10 +96,17 @@ func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
 		}()
 
 		for {
-			rawMsg, err := c.conn.ReceiveMessage(ctx)
+			msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*10))
+			rawMsg, err := c.conn.ReceiveMessage(msgCtx)
+			cancel()
 			if err != nil {
 				if pgconn.Timeout(err) {
-					slog.Warn("receive message got timeout but continue")
+					err = SendStandbyStatusUpdate(ctx, c.conn, uint64(lastXLogPos))
+					if err != nil {
+						slog.Error("send stand by status update", "error", err)
+						break
+					}
+					slog.Info("send stand by status update")
 					continue
 				}
 				slog.Error("receive message error", "error", err)
@@ -132,6 +140,7 @@ func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
 
 				connectorCtx := Context{
 					Ack: func() error {
+						lastXLogPos = xld.ServerWALEnd
 						return SendStandbyStatusUpdate(ctx, c.conn, uint64(c.systemID.XLogPos))
 					},
 				}

@@ -58,8 +58,7 @@ func main() {
 	for {
 		event, ok := <-ch
 		if !ok {
-			slog.Info("DONE !")
-			break
+			os.Exit(1)
 		}
 
 		switch msg := event.Message.(type) {

@@ -89,13 +89,11 @@ func Filter(ch <-chan dcpg.Context) <-chan Message {
 		for {
 			event, ok := <-ch
 			if !ok {
-				slog.Info("DONE !")
-				break
+				os.Exit(1)
 			}
 
 			switch msg := event.Message.(type) {
 			case *format.Insert:
-				// slog.Info("insert message received", "new", msg.Decoded)
 				encoded, _ := json.Marshal(msg.Decoded)
 				messages <- Message{
 					Message: kafka.Message{

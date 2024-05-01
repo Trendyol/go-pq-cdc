@@ -72,8 +72,8 @@ func main() {
 			All:          true,
 		},
 		Slot: dcpg.SlotConfig{
-			Name: "dcp_slot",
-			// Create: true,
+			Name:   "dcp_slot",
+			Create: true,
 		},
 	}
 
@@ -125,8 +125,7 @@ func Filter(ch <-chan dcpg.Context) <-chan Message {
 		for {
 			event, ok := <-ch
 			if !ok {
-				slog.Info("DONE !")
-				break
+				os.Exit(1)
 			}
 
 			switch msg := event.Message.(type) {
@@ -134,7 +133,7 @@ func Filter(ch <-chan dcpg.Context) <-chan Message {
 				encoded, _ := json.Marshal(msg.Decoded)
 				messages <- Message{
 					Message: esutil.BulkIndexerItem{
-						Action:     "create",
+						Action:     "index",
 						DocumentID: strconv.Itoa(int(msg.Decoded["id"].(int32))),
 						Body:       bytes.NewReader(encoded),
 						OnSuccess: func(ctx context.Context, item esutil.BulkIndexerItem, res esutil.BulkIndexerResponseItem) {

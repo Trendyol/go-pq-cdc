@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	dcp "github.com/3n0ugh/dcpg"
+	"github.com/3n0ugh/dcpg"
 	"github.com/3n0ugh/dcpg/message/format"
 	"log/slog"
 	"os"
@@ -25,25 +25,25 @@ import (
 
 func main() {
 	ctx := context.Background()
-	cfg := dcp.Config{
+	cfg := dcpg.Config{
 		Host:     "127.0.0.1",
 		Username: "dcp_user",
 		Password: "dcp_pass",
 		Database: "dcp_db",
-		Publication: dcp.PublicationConfig{
+		Publication: dcpg.PublicationConfig{
 			Name:         "dcp_publication",
 			Create:       true,
 			DropIfExists: true,
 			ScopeTables:  nil,
 			All:          true,
 		},
-		Slot: dcp.SlotConfig{
-			Name:   "dcp_slot_5",
+		Slot: dcpg.SlotConfig{
+			Name:   "dcp_slot",
 			Create: true,
 		},
 	}
 
-	connector, err := dcp.NewConnector(ctx, cfg)
+	connector, err := dcpg.NewConnector(ctx, cfg)
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)

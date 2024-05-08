@@ -17,11 +17,9 @@ type Config struct {
 }
 
 type PublicationConfig struct {
-	Name         string   `json:"name" yaml:"name"`
-	Create       bool     `json:"create" yaml:"create"`
-	DropIfExists bool     `json:"dropIfExists" yaml:"dropIfExists"`
-	ScopeTables  []string `json:"scopeTables" yaml:"scopeTables"`
-	All          bool     `json:"all" yaml:"all"`
+	Name         string `json:"name" yaml:"name"`
+	Create       bool   `json:"create" yaml:"create"`
+	DropIfExists bool   `json:"dropIfExists" yaml:"dropIfExists"`
 }
 
 type SlotConfig struct {

@@ -58,8 +58,6 @@ func main() {
 			Name:         "dcp_publication",
 			Create:       true,
 			DropIfExists: true,
-			ScopeTables:  nil,
-			All:          true,
 		},
 		Slot: dcpg.SlotConfig{
 			Name:   "dcp_slot",

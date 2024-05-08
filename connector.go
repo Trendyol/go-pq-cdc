@@ -33,6 +33,10 @@ type Connector struct {
 }
 
 func NewConnector(ctx context.Context, cfg Config) (*Connector, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, errors.Wrap(err, "config validation")
+	}
+
 	conn, err := pgconn.Connect(ctx, cfg.DSN())
 	if err != nil {
 		return nil, errors.Wrap(err, "postgres connection")
@@ -84,7 +88,7 @@ func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
 
 	relation := map[uint32]*format.Relation{}
 
-	ch := make(chan Context, 128)
+	ch := make(chan Context, c.cfg.ChannelBuffer)
 	lastXLogPos := LSN(10)
 
 	go func() {

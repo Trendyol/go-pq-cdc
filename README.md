@@ -8,3 +8,5 @@ DCPG is a custom-built Change Data Capture (CDC) system for PostgreSQL, designed
 - **High Performance**: Fast data processing with low latency.
 - **Golang-Based**: Aligns with teams that prefer non-Java solutions.
 - **Easy Integration**: Seamlessly integrates with existing infrastructure and tools, leveraging PostgreSQL’s capabilities.
+
+![architecture](./doc/arch.png)

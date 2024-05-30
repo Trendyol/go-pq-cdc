@@ -15,7 +15,7 @@ type IdentifySystemResult struct {
 	Database string
 }
 
-func IdentifySystem(ctx context.Context, conn *pgconn.PgConn) (IdentifySystemResult, error) {
+func IdentifySystem(ctx context.Context, conn Connection) (IdentifySystemResult, error) {
 	res, err := ParseIdentifySystem(conn.Exec(ctx, "IDENTIFY_SYSTEM"))
 	if err != nil {
 		return IdentifySystemResult{}, errors.Wrap(err, "identify system command execute")

@@ -8,6 +8,7 @@ import (
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/prometheus/client_golang/prometheus"
 	"log/slog"
 	"os"
 	"time"
@@ -26,11 +27,14 @@ var pluginArguments = []string{
 
 type Connector interface {
 	Start(ctx context.Context) (<-chan Context, error)
+	GetConfig() *Config
+	SetMetricCollectors(collectors ...prometheus.Collector)
 }
 
 type connector struct {
-	conn *pgconn.PgConn
-	cfg  Config
+	conn             Connection
+	cfg              *Config
+	metricCollectors []prometheus.Collector
 
 	systemID IdentifySystemResult
 }
@@ -40,9 +44,9 @@ func NewConnector(ctx context.Context, cfg Config) (Connector, error) {
 		return nil, errors.Wrap(err, "config validation")
 	}
 
-	conn, err := pgconn.Connect(ctx, cfg.DSN())
+	conn, err := NewConnection(ctx, cfg)
 	if err != nil {
-		return nil, errors.Wrap(err, "postgres connection")
+		return nil, err
 	}
 
 	if cfg.Publication.DropIfExists {
@@ -74,7 +78,7 @@ func NewConnector(ctx context.Context, cfg Config) (Connector, error) {
 
 	return &connector{
 		conn:     conn,
-		cfg:      cfg,
+		cfg:      &cfg,
 		systemID: system,
 	}, nil
 }
@@ -165,4 +169,12 @@ func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 	}()
 
 	return ch, nil
+}
+
+func (c *connector) GetConfig() *Config {
+	return c.cfg
+}
+
+func (c *connector) SetMetricCollectors(metricCollectors ...prometheus.Collector) {
+	c.metricCollectors = append(c.metricCollectors, metricCollectors...)
 }

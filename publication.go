@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/go-playground/errors"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"time"
 )
@@ -14,7 +13,7 @@ const (
 	StandbyStatusUpdateByteID = 'r'
 )
 
-func DropPublication(ctx context.Context, conn *pgconn.PgConn, publicationName string) error {
+func DropPublication(ctx context.Context, conn Connection, publicationName string) error {
 	resultReader := conn.Exec(ctx, "DROP PUBLICATION IF EXISTS "+publicationName)
 	_, err := resultReader.ReadAll()
 	if err != nil {
@@ -30,7 +29,7 @@ func DropPublication(ctx context.Context, conn *pgconn.PgConn, publicationName s
 
 // TODO: Support all publication types [filtered, publish based, extract field, query based]
 
-func CreatePublication(ctx context.Context, conn *pgconn.PgConn, publicationName string) error {
+func CreatePublication(ctx context.Context, conn Connection, publicationName string) error {
 	resultReader := conn.Exec(ctx, "CREATE PUBLICATION "+publicationName+" FOR ALL TABLES;")
 	_, err := resultReader.ReadAll()
 	if err != nil {
@@ -44,7 +43,7 @@ func CreatePublication(ctx context.Context, conn *pgconn.PgConn, publicationName
 	return nil
 }
 
-func CreateReplicationSlot(ctx context.Context, conn *pgconn.PgConn, slotName string) error {
+func CreateReplicationSlot(ctx context.Context, conn Connection, slotName string) error {
 	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s LOGICAL pgoutput", slotName)
 	resultReader := conn.Exec(ctx, sql)
 	_, err := resultReader.ReadAll()
@@ -59,7 +58,7 @@ func CreateReplicationSlot(ctx context.Context, conn *pgconn.PgConn, slotName st
 	return nil
 }
 
-func SendStandbyStatusUpdate(_ context.Context, conn *pgconn.PgConn, WALWritePosition uint64) error {
+func SendStandbyStatusUpdate(_ context.Context, conn Connection, WALWritePosition uint64) error {
 	data := make([]byte, 0, 34)
 	data = append(data, StandbyStatusUpdateByteID)
 	data = AppendUint64(data, WALWritePosition)

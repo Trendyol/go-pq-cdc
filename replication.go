@@ -11,10 +11,10 @@ import (
 )
 
 type Replication struct {
-	conn *pgconn.PgConn
+	conn Connection
 }
 
-func NewReplication(conn *pgconn.PgConn) *Replication {
+func NewReplication(conn Connection) *Replication {
 	return &Replication{conn: conn}
 }
 

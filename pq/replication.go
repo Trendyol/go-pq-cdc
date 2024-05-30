@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+var pluginArguments = []string{
+	"proto_version '3'",
+	"messages 'true'",
+	"streaming 'true'",
+}
+
 type Replication struct {
 	conn Connection
 }

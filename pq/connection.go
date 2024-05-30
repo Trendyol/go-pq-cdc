@@ -2,6 +2,7 @@ package pq
 
 import (
 	"context"
+	"github.com/3n0ugh/dcpg/config"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -14,7 +15,7 @@ type Connection interface {
 	Exec(ctx context.Context, sql string) *pgconn.MultiResultReader
 }
 
-func NewConnection(ctx context.Context, cfg Config) (Connection, error) {
+func NewConnection(ctx context.Context, cfg config.Config) (Connection, error) {
 	conn, err := pgconn.Connect(ctx, cfg.DSN())
 	if err != nil {
 		return nil, errors.Wrap(err, "postgres connection")

@@ -21,12 +21,6 @@ const (
 	PrimaryKeepaliveMessageByteID = 'k'
 )
 
-var pluginArguments = []string{
-	"proto_version '3'",
-	"messages 'true'",
-	"streaming 'true'",
-}
-
 type Connector interface {
 	Start(ctx context.Context) (<-chan Context, error)
 	GetConfig() *config.Config

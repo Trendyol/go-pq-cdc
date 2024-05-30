@@ -1,7 +1,7 @@
 package message
 
 import (
-	. "github.com/3n0ugh/dcpg/message/format"
+	. "github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/go-playground/errors"
 )
 

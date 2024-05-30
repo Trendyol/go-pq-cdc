@@ -2,7 +2,7 @@ package format
 
 import (
 	"encoding/binary"
-	"github.com/3n0ugh/dcpg/message/tuple"
+	"github.com/3n0ugh/dcpg/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
 

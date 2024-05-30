@@ -1,13 +1,13 @@
 package format
 
 import (
-	"github.com/3n0ugh/dcpg/message/tuple"
+	"github.com/3n0ugh/dcpg/pq/message/tuple"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-func TestUpdate_New(t *testing.T) {
-	data := []byte{85, 0, 0, 64, 6, 79, 0, 2, 116, 0, 0, 0, 2, 53, 51, 116, 0, 0, 0, 4, 98, 97, 114, 50, 78, 0, 2, 116, 0, 0, 0, 2, 53, 51, 116, 0, 0, 0, 4, 98, 97, 114, 53}
+func TestDelete_New(t *testing.T) {
+	data := []byte{68, 0, 0, 64, 6, 79, 0, 2, 116, 0, 0, 0, 3, 54, 52, 53, 116, 0, 0, 0, 3, 102, 111, 111}
 
 	rel := map[uint32]*Relation{
 		16390: {
@@ -34,54 +34,34 @@ func TestUpdate_New(t *testing.T) {
 		},
 	}
 
-	msg, err := NewUpdate(data, false, rel)
+	msg, err := NewDelete(data, false, rel)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected := &Update{
-		OID: 16390,
-		XID: 0,
-		NewTupleData: &tuple.Data{
-			ColumnNumber: 2,
-			Columns: tuple.DataColumns{
-				{
-					DataType: 116,
-					Length:   2,
-					Data:     []byte("53"),
-				},
-				{
-					DataType: 116,
-					Length:   4,
-					Data:     []byte("bar5"),
-				},
-			},
-			SkipByte: 43,
-		},
-		NewDecoded: map[string]any{
-			"id":   int32(53),
-			"name": "bar5",
-		},
+	expected := &Delete{
+		OID:          16390,
+		XID:          0,
 		OldTupleType: 79,
 		OldTupleData: &tuple.Data{
 			ColumnNumber: 2,
 			Columns: tuple.DataColumns{
 				{
 					DataType: 116,
-					Length:   2,
-					Data:     []byte("53"),
+					Length:   3,
+					Data:     []byte("645"),
 				},
 				{
 					DataType: 116,
-					Length:   4,
-					Data:     []byte("bar2"),
+					Length:   3,
+					Data:     []byte("foo"),
 				},
 			},
 			SkipByte: 24,
 		},
 		OldDecoded: map[string]any{
-			"id":   int32(53),
-			"name": "bar2",
+			"id":   int32(645),
+			"name": "foo",
 		},
 	}
 

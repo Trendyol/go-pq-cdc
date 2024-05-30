@@ -3,8 +3,10 @@ package dcpg
 import (
 	"context"
 	"fmt"
+	"github.com/3n0ugh/dcpg/config"
 	"github.com/3n0ugh/dcpg/message"
 	"github.com/3n0ugh/dcpg/message/format"
+	"github.com/3n0ugh/dcpg/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -27,49 +29,49 @@ var pluginArguments = []string{
 
 type Connector interface {
 	Start(ctx context.Context) (<-chan Context, error)
-	GetConfig() *Config
+	GetConfig() *config.Config
 	SetMetricCollectors(collectors ...prometheus.Collector)
 }
 
 type connector struct {
-	conn             Connection
-	cfg              *Config
+	conn             pq.Connection
+	cfg              *config.Config
 	metricCollectors []prometheus.Collector
 
-	systemID IdentifySystemResult
+	systemID pq.IdentifySystemResult
 }
 
-func NewConnector(ctx context.Context, cfg Config) (Connector, error) {
+func NewConnector(ctx context.Context, cfg config.Config) (Connector, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
 	}
 
-	conn, err := NewConnection(ctx, cfg)
+	conn, err := pq.NewConnection(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.Publication.DropIfExists {
-		if err = DropPublication(ctx, conn, cfg.Publication.Name); err != nil {
+		if err = pq.DropPublication(ctx, conn, cfg.Publication.Name); err != nil {
 			return nil, err
 		}
 	}
 
 	if cfg.Publication.Create {
-		if err = CreatePublication(ctx, conn, cfg.Publication.Name); err != nil {
+		if err = pq.CreatePublication(ctx, conn, cfg.Publication.Name); err != nil {
 			return nil, err
 		}
 		slog.Info("publication created", "name", cfg.Publication.Name)
 	}
 
-	system, err := IdentifySystem(ctx, conn)
+	system, err := pq.IdentifySystem(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.XLogPos, "database:", system.Database)
 
 	if cfg.Slot.Create {
-		err = CreateReplicationSlot(context.Background(), conn, cfg.Slot.Name)
+		err = pq.CreateReplicationSlot(context.Background(), conn, cfg.Slot.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +86,7 @@ func NewConnector(ctx context.Context, cfg Config) (Connector, error) {
 }
 
 func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
-	replication := NewReplication(c.conn)
+	replication := pq.NewReplication(c.conn)
 	if err := replication.Start(c.cfg.Publication.Name, c.cfg.Slot.Name); err != nil {
 		return nil, err
 	}
@@ -96,7 +98,7 @@ func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 	relation := map[uint32]*format.Relation{}
 
 	ch := make(chan Context, c.cfg.ChannelBuffer)
-	lastXLogPos := LSN(10)
+	lastXLogPos := pq.LSN(10)
 
 	go func() {
 		defer func() {
@@ -112,7 +114,7 @@ func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 			cancel()
 			if err != nil {
 				if pgconn.Timeout(err) {
-					err = SendStandbyStatusUpdate(ctx, c.conn, uint64(lastXLogPos))
+					err = pq.SendStandbyStatusUpdate(ctx, c.conn, uint64(lastXLogPos))
 					if err != nil {
 						slog.Error("send stand by status update", "error", err)
 						break
@@ -140,8 +142,8 @@ func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 			case PrimaryKeepaliveMessageByteID:
 				continue
 			case XLogDataByteID:
-				var xld XLogData
-				xld, err = ParseXLogData(msg.Data[1:])
+				var xld pq.XLogData
+				xld, err = pq.ParseXLogData(msg.Data[1:])
 				if err != nil {
 					slog.Error("parse xLog data", "error", err)
 					continue
@@ -152,7 +154,7 @@ func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 				connectorCtx := Context{
 					Ack: func() error {
 						lastXLogPos = xld.ServerWALEnd
-						return SendStandbyStatusUpdate(ctx, c.conn, uint64(c.systemID.XLogPos))
+						return pq.SendStandbyStatusUpdate(ctx, c.conn, uint64(c.systemID.XLogPos))
 					},
 				}
 
@@ -171,7 +173,7 @@ func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 	return ch, nil
 }
 
-func (c *connector) GetConfig() *Config {
+func (c *connector) GetConfig() *config.Config {
 	return c.cfg
 }
 

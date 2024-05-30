@@ -1,4 +1,4 @@
-package dcpg
+package config
 
 import (
 	"errors"

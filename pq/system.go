@@ -1,4 +1,4 @@
-package dcpg
+package pq
 
 import (
 	"context"

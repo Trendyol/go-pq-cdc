@@ -2,7 +2,6 @@ package dcpg
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"github.com/3n0ugh/dcpg/message"
 	"github.com/3n0ugh/dcpg/message/format"
@@ -25,14 +24,18 @@ var pluginArguments = []string{
 	"streaming 'true'",
 }
 
-type Connector struct {
+type Connector interface {
+	Start(ctx context.Context) (<-chan Context, error)
+}
+
+type connector struct {
 	conn *pgconn.PgConn
 	cfg  Config
 
 	systemID IdentifySystemResult
 }
 
-func NewConnector(ctx context.Context, cfg Config) (*Connector, error) {
+func NewConnector(ctx context.Context, cfg Config) (Connector, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
 	}
@@ -69,14 +72,14 @@ func NewConnector(ctx context.Context, cfg Config) (*Connector, error) {
 		slog.Info("slot created", "name", cfg.Slot.Name)
 	}
 
-	return &Connector{
+	return &connector{
 		conn:     conn,
 		cfg:      cfg,
 		systemID: system,
 	}, nil
 }
 
-func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
+func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
 	replication := NewReplication(c.conn)
 	if err := replication.Start(c.cfg.Publication.Name, c.cfg.Slot.Name); err != nil {
 		return nil, err
@@ -162,31 +165,4 @@ func (c *Connector) Start(ctx context.Context) (<-chan Context, error) {
 	}()
 
 	return ch, nil
-}
-
-type XLogData struct {
-	WALStart     LSN
-	ServerWALEnd LSN
-	ServerTime   time.Time
-	WALData      []byte
-}
-
-func ParseXLogData(buf []byte) (XLogData, error) {
-	var xld XLogData
-	if len(buf) < 24 {
-		return xld, fmt.Errorf("XLogData must be at least 24 bytes, got %d", len(buf))
-	}
-
-	xld.WALStart = LSN(binary.BigEndian.Uint64(buf))
-	xld.ServerWALEnd = LSN(binary.BigEndian.Uint64(buf[8:]))
-	xld.ServerTime = pgTimeToTime(int64(binary.BigEndian.Uint64(buf[16:])))
-	xld.WALData = buf[24:]
-
-	return xld, nil
-}
-
-const microSecFromUnixEpochToY2K = 946684800 * 1000000
-
-func pgTimeToTime(microSecSinceY2K int64) time.Time {
-	return time.Unix(0, microSecFromUnixEpochToY2K+microSecSinceY2K*1000)
 }

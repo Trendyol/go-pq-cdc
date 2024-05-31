@@ -22,13 +22,16 @@ const (
 	StreamCommitByte Type = 'c'
 )
 
+const (
+	XLogDataByteID                = 'w'
+	PrimaryKeepaliveMessageByteID = 'k'
+)
+
 var ByteNotSupported = errors.New("message byte not supported")
 
 type Type uint8
 
 var streamedTransaction bool
-
-// TODO: supports other message types too
 
 func New(data []byte, relation map[uint32]*Relation) (any, error) {
 	switch Type(data[0]) {

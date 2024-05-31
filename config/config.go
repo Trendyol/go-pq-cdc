@@ -14,6 +14,7 @@ type Config struct {
 	ChannelBuffer uint              `json:"channelBuffer" yaml:"channelBuffer"`
 	Publication   PublicationConfig `json:"publication" yaml:"publication"`
 	Slot          SlotConfig        `json:"slot" yaml:"slot"`
+	Metric        MetricConfig      `json:"metric" yaml:"metric"`
 }
 
 type PublicationConfig struct {
@@ -27,6 +28,10 @@ type SlotConfig struct {
 	Create bool   `json:"create" yaml:"create"`
 }
 
+type MetricConfig struct {
+	Port int `json:"port" yaml:"port"`
+}
+
 func (c *Config) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s/%s?replication=database", c.Username, c.Password, c.Host, c.Database)
 }
@@ -34,6 +39,10 @@ func (c *Config) DSN() string {
 func (c *Config) SetDefault() {
 	if c.ChannelBuffer == 0 {
 		c.ChannelBuffer = 1000
+	}
+
+	if c.Metric.Port == 0 {
+		c.Metric.Port = 8080
 	}
 }
 

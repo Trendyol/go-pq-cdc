@@ -23,6 +23,7 @@ type connector struct {
 	system           pq.IdentifySystemResult
 	stream           pq.Streamer
 	metricCollectors []prometheus.Collector
+	server           http.Server
 
 	cancelCh chan os.Signal
 }
@@ -71,6 +72,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		system:           system,
 		stream:           stream,
 		metricCollectors: []prometheus.Collector{},
+		server:           http.NewServer(cfg),
 
 		cancelCh: make(chan os.Signal, 1),
 	}, nil
@@ -84,7 +86,7 @@ func (c *connector) Start(ctx context.Context) {
 	}
 
 	// api
-	// metric collector
+	go c.server.Listen()
 
 	// signal notify
 	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
@@ -102,6 +104,7 @@ func (c *connector) Start(ctx context.Context) {
 func (c *connector) Close() {
 	close(c.cancelCh)
 	c.stream.Close(context.TODO())
+	c.server.Shutdown()
 }
 
 func (c *connector) GetConfig() *config.Config {

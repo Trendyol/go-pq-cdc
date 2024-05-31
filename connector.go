@@ -2,40 +2,32 @@ package dcpg
 
 import (
 	"context"
-	"fmt"
 	"github.com/3n0ugh/dcpg/config"
 	"github.com/3n0ugh/dcpg/pq"
-	"github.com/3n0ugh/dcpg/pq/message"
-	"github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/go-playground/errors"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/prometheus/client_golang/prometheus"
 	"log/slog"
 	"os"
-	"time"
-)
-
-const (
-	XLogDataByteID                = 'w'
-	PrimaryKeepaliveMessageByteID = 'k'
+	"os/signal"
+	"syscall"
 )
 
 type Connector interface {
-	Start(ctx context.Context) (<-chan Context, error)
+	Start(ctx context.Context)
 	GetConfig() *config.Config
 	SetMetricCollectors(collectors ...prometheus.Collector)
 }
 
 type connector struct {
-	conn             pq.Connection
 	cfg              *config.Config
+	system           pq.IdentifySystemResult
+	stream           pq.Streamer
 	metricCollectors []prometheus.Collector
 
-	systemID pq.IdentifySystemResult
+	cancelCh chan os.Signal
 }
 
-func NewConnector(ctx context.Context, cfg config.Config) (Connector, error) {
+func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.ListenerFunc) (Connector, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
 	}
@@ -72,99 +64,44 @@ func NewConnector(ctx context.Context, cfg config.Config) (Connector, error) {
 		slog.Info("slot created", "name", cfg.Slot.Name)
 	}
 
+	stream := pq.NewStream(conn, cfg, system, listenerFunc)
+
 	return &connector{
-		conn:     conn,
-		cfg:      &cfg,
-		systemID: system,
+		cfg:              &cfg,
+		system:           system,
+		stream:           stream,
+		metricCollectors: []prometheus.Collector{},
+
+		cancelCh: make(chan os.Signal, 1),
 	}, nil
 }
 
-func (c *connector) Start(ctx context.Context) (<-chan Context, error) {
-	replication := pq.NewReplication(c.conn)
-	if err := replication.Start(c.cfg.Publication.Name, c.cfg.Slot.Name); err != nil {
-		return nil, err
+func (c *connector) Start(ctx context.Context) {
+	err := c.stream.Open(ctx)
+	if err != nil {
+		slog.Error("postgres stream open", "error", err)
+		return
 	}
-	if err := replication.Test(ctx); err != nil {
-		return nil, err
+
+	// api
+	// metric collector
+
+	// signal notify
+	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
+
+	// healthcheck
+
+	select {
+	case <-c.cancelCh:
+		slog.Debug("cancel channel triggered")
 	}
-	slog.Info("replication started", "slot", c.cfg.Slot.Name)
 
-	relation := map[uint32]*format.Relation{}
+	c.Close()
+}
 
-	ch := make(chan Context, c.cfg.ChannelBuffer)
-	lastXLogPos := pq.LSN(10)
-
-	go func() {
-		defer func() {
-			if err := c.conn.Close(ctx); err != nil {
-				slog.Error("postgres connection close", "error", err.Error())
-				os.Exit(1)
-			}
-		}()
-
-		for {
-			msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*10))
-			rawMsg, err := c.conn.ReceiveMessage(msgCtx)
-			cancel()
-			if err != nil {
-				if pgconn.Timeout(err) {
-					err = pq.SendStandbyStatusUpdate(ctx, c.conn, uint64(lastXLogPos))
-					if err != nil {
-						slog.Error("send stand by status update", "error", err)
-						break
-					}
-					slog.Info("send stand by status update")
-					continue
-				}
-				slog.Error("receive message error", "error", err)
-				break
-			}
-
-			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-				res, _ := errMsg.MarshalJSON()
-				slog.Error("receive postgres wal error: " + string(res))
-				continue
-			}
-
-			msg, ok := rawMsg.(*pgproto3.CopyData)
-			if !ok {
-				slog.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
-				continue
-			}
-
-			switch msg.Data[0] {
-			case PrimaryKeepaliveMessageByteID:
-				continue
-			case XLogDataByteID:
-				var xld pq.XLogData
-				xld, err = pq.ParseXLogData(msg.Data[1:])
-				if err != nil {
-					slog.Error("parse xLog data", "error", err)
-					continue
-				}
-
-				c.systemID.XLogPos = max(xld.WALStart, c.systemID.XLogPos)
-
-				connectorCtx := Context{
-					Ack: func() error {
-						lastXLogPos = xld.ServerWALEnd
-						return pq.SendStandbyStatusUpdate(ctx, c.conn, uint64(c.systemID.XLogPos))
-					},
-				}
-
-				connectorCtx.Message, err = message.New(xld.WALData, relation)
-				if err != nil || connectorCtx.Message == nil {
-					// slog.Error("wal data message parsing", "error", err) // TODO: comment out after implementations
-					continue
-				}
-
-				ch <- connectorCtx
-			}
-		}
-		close(ch)
-	}()
-
-	return ch, nil
+func (c *connector) Close() {
+	close(c.cancelCh)
+	c.stream.Close(context.TODO())
 }
 
 func (c *connector) GetConfig() *config.Config {

@@ -25,10 +25,13 @@ type server struct {
 func NewServer(cfg config.Config, registry *prometheus.Registry) Server {
 	mux := http.NewServeMux()
 
-	mux.Handle("/metrics", promhttp.InstrumentMetricHandler(registry, mux))
+	mux.Handle("GET /metrics", promhttp.InstrumentMetricHandler(registry, mux))
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("OK"))
+	})
 
 	if cfg.DebugMode {
-		mux.Handle("/pprof", pprof.Handler("go-pq-cdc"))
+		mux.Handle("GET /pprof", pprof.Handler("go-pq-cdc"))
 	}
 
 	return &server{

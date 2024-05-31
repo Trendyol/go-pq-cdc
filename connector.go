@@ -34,6 +34,15 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		return nil, errors.Wrap(err, "config validation")
 	}
 
+	logLevel := slog.LevelInfo
+	if cfg.DebugMode {
+		logLevel = slog.LevelDebug
+	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})))
+
 	conn, err := pq.NewConnection(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -89,13 +98,9 @@ func (c *connector) Start(ctx context.Context) {
 		return
 	}
 
-	// api
 	go c.server.Listen()
 
-	// signal notify
 	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
-
-	// healthcheck
 
 	select {
 	case <-c.cancelCh:

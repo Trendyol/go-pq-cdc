@@ -12,6 +12,7 @@ type Config struct {
 	Password      string            `json:"password" yaml:"password"`
 	Database      string            `json:"database" yaml:"database"`
 	ChannelBuffer uint              `json:"channelBuffer" yaml:"channelBuffer"`
+	DebugMode     bool              `json:"debugMode" yaml:"debugMode"`
 	Publication   PublicationConfig `json:"publication" yaml:"publication"`
 	Slot          SlotConfig        `json:"slot" yaml:"slot"`
 	Metric        MetricConfig      `json:"metric" yaml:"metric"`

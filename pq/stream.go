@@ -134,6 +134,8 @@ func (s *stream) listen(ctx context.Context) {
 			continue
 		}
 
+		slog.Debug("wal received", "walData", xld.WALData, "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
+
 		s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
 
 		s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
@@ -151,6 +153,8 @@ func (s *stream) listen(ctx context.Context) {
 			slog.Error("wal data message parsing", "error", err)
 			continue
 		}
+
+		slog.Debug("wal converted to message", "message", lCtx.Message)
 
 		switch lCtx.Message.(type) {
 		case *format.Insert:

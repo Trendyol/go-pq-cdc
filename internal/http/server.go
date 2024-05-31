@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"time"
 )
 
@@ -26,7 +27,9 @@ func NewServer(cfg config.Config, registry *prometheus.Registry) Server {
 
 	mux.Handle("/metrics", promhttp.InstrumentMetricHandler(registry, mux))
 
-	// TODO: debug mode pprof handler
+	if cfg.DebugMode {
+		mux.Handle("/pprof", pprof.Handler("go-pq-cdc"))
+	}
 
 	return &server{
 		server: http.Server{

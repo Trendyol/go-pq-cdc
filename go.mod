@@ -3,10 +3,11 @@ module github.com/3n0ugh/dcpg
 go 1.22
 
 require (
+	github.com/avast/retry-go/v4 v4.6.0
 	github.com/go-playground/errors v3.3.0+incompatible
 	github.com/jackc/pgx/v5 v5.5.5
 	github.com/prometheus/client_golang v1.19.1
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 )
 
 require (

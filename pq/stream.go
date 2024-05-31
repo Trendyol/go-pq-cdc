@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/3n0ugh/dcpg/config"
+	"github.com/3n0ugh/dcpg/internal/metric"
 	"github.com/3n0ugh/dcpg/pq/message"
 	"github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/go-playground/errors"
@@ -24,12 +25,12 @@ type Streamer interface {
 	Open(ctx context.Context) error
 	Close(ctx context.Context)
 	GetSystemInfo() IdentifySystemResult
-	GetMetric() *Metric
+	GetMetric() metric.Metric
 }
 
 type stream struct {
 	conn   Connection
-	metric *Metric
+	metric metric.Metric
 	system IdentifySystemResult
 	config config.Config
 
@@ -41,7 +42,7 @@ type stream struct {
 func NewStream(conn Connection, cfg config.Config, system IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
 	return &stream{
 		conn:         conn,
-		metric:       &Metric{},
+		metric:       metric.NewMetric(),
 		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
@@ -133,7 +134,7 @@ func (s *stream) listen(ctx context.Context) {
 			continue
 		}
 
-		s.metric.DcpLatency = time.Since(xld.ServerTime).Milliseconds()
+		s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
 
 		s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
 
@@ -153,16 +154,16 @@ func (s *stream) listen(ctx context.Context) {
 
 		switch lCtx.Message.(type) {
 		case *format.Insert:
-			s.metric.TotalInsert.Add(1)
+			s.metric.InsertOpIncrement(1)
 		case *format.Delete:
-			s.metric.TotalDelete.Add(1)
+			s.metric.DeleteOpIncrement(1)
 		case *format.Update:
-			s.metric.TotalUpdate.Add(1)
+			s.metric.UpdateOpIncrement(1)
 		}
 
 		start := time.Now()
 		s.listenerFunc(lCtx)
-		s.metric.ProcessLatency = time.Since(start).Milliseconds()
+		s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 	}
 }
 
@@ -175,6 +176,6 @@ func (s *stream) GetSystemInfo() IdentifySystemResult {
 	return s.system
 }
 
-func (s *stream) GetMetric() *Metric {
+func (s *stream) GetMetric() metric.Metric {
 	return s.metric
 }

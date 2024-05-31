@@ -3,6 +3,7 @@ package dcpg
 import (
 	"context"
 	"github.com/3n0ugh/dcpg/config"
+	"github.com/3n0ugh/dcpg/internal/http"
 	"github.com/3n0ugh/dcpg/pq"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -67,12 +68,15 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 
 	stream := pq.NewStream(conn, cfg, system, listenerFunc)
 
+	prometheusRegistry := prometheus.NewRegistry()
+	stream.GetMetric().Register(prometheusRegistry)
+
 	return &connector{
 		cfg:              &cfg,
 		system:           system,
 		stream:           stream,
 		metricCollectors: []prometheus.Collector{},
-		server:           http.NewServer(cfg),
+		server:           http.NewServer(cfg, prometheusRegistry),
 
 		cancelCh: make(chan os.Signal, 1),
 	}, nil

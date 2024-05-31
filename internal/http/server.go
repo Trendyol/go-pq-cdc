@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/3n0ugh/dcpg/config"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log/slog"
 	"net/http"
 	"time"
@@ -19,10 +21,10 @@ type server struct {
 	cdcConfig config.Config
 }
 
-func NewServer(cfg config.Config) Server {
+func NewServer(cfg config.Config, registry *prometheus.Registry) Server {
 	mux := http.NewServeMux()
 
-	// TODO: add metrics
+	mux.Handle("/metrics", promhttp.InstrumentMetricHandler(registry, mux))
 
 	// TODO: debug mode pprof handler
 

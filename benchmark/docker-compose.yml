@@ -252,7 +252,7 @@ services:
     container_name: dcpg
     build:
       context: .
-      dockerfile: ./Dockerfile
+      dockerfile: ./dcpg-kafka/Dockerfile
     restart: on-failure
     ports:
       - '2112:2112'

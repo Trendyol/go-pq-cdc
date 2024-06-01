@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/3n0ugh/dcpg"
-	"github.com/3n0ugh/dcpg/message/format"
+	"github.com/3n0ugh/dcpg/config"
+	"github.com/3n0ugh/dcpg/pq"
+	"github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/segmentio/kafka-go"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 )
@@ -36,28 +34,7 @@ type Message struct {
 	Ack     func() error
 }
 
-var (
-	messageSuccessProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "dcpg_processed_success_ops_total",
-		Help: "The total number of successfully processed messages",
-	})
-
-	messageFailProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "dcpg_processed_fail_ops_total",
-		Help: "The total number of not successfully processed messages",
-	})
-)
-
 func main() {
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		err := http.ListenAndServe(":2112", nil)
-		if err != nil {
-			slog.Error("prometheus metrics handler", "error", err)
-			os.Exit(1)
-		}
-	}()
-
 	ctx := context.Background()
 
 	w := &kafka.Writer{
@@ -75,67 +52,57 @@ func main() {
 		}
 	}()
 
-	cfg := dcpg.Config{
-		Host:     "postgres:5432",
-		Username: "dcp_user",
-		Password: "dcp_pass",
-		Database: "dcp_db",
-		Publication: dcpg.PublicationConfig{
+	messages := make(chan Message, 10000)
+	go Produce(ctx, w, messages)
+
+	cfg := config.Config{
+		Host:      "postgres:5432",
+		Username:  "dcp_user",
+		Password:  "dcp_pass",
+		Database:  "dcp_db",
+		DebugMode: false,
+		Publication: config.PublicationConfig{
 			Name:         "dcp_publication",
 			Create:       true,
 			DropIfExists: true,
 		},
-		Slot: dcpg.SlotConfig{
+		Slot: config.SlotConfig{
 			Name:   "dcp_slot",
 			Create: true,
 		},
+		Metric: config.MetricConfig{
+			Port: 2112,
+		},
 	}
 
-	connector, err := dcpg.NewConnector(ctx, cfg)
+	connector, err := dcpg.NewConnector(ctx, cfg, FilteredMapper(messages))
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)
 	}
 
-	ch, err := connector.Start(ctx)
-	if err != nil {
-		slog.Error("connector start", "error", err)
-		os.Exit(1)
-	}
-
-	Produce(ctx, w, Filter(ch))
+	connector.Start(ctx)
 }
 
-func Filter(ch <-chan dcpg.Context) <-chan Message {
-	messages := make(chan Message, 10000)
-
-	go func() {
-		for {
-			event, ok := <-ch
-			if !ok {
-				os.Exit(1)
+func FilteredMapper(messages chan Message) pq.ListenerFunc {
+	return func(ctx pq.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Insert:
+			encoded, _ := json.Marshal(msg.Decoded)
+			messages <- Message{
+				Message: kafka.Message{
+					Key:   []byte(uuid.NewString()),
+					Value: encoded,
+					Time:  time.Now(),
+				},
+				Ack: ctx.Ack,
 			}
-
-			switch msg := event.Message.(type) {
-			case *format.Insert:
-				encoded, _ := json.Marshal(msg.Decoded)
-				messages <- Message{
-					Message: kafka.Message{
-						Key:   []byte(uuid.NewString()),
-						Value: encoded,
-						Time:  time.Now(),
-					},
-					Ack: event.Ack,
-				}
-			case *format.Delete:
-				slog.Info("delete message received", "old", msg.OldDecoded)
-			case *format.Update:
-				slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
-			}
+		case *format.Delete:
+			slog.Info("delete message received", "old", msg.OldDecoded)
+		case *format.Update:
+			slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
 		}
-	}()
-
-	return messages
+	}
 }
 
 func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
@@ -154,11 +121,9 @@ func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
 			if counter == 100000 {
 				err = w.WriteMessages(ctx, message...)
 				if err != nil {
-					messageFailProcessed.Add(float64(counter))
 					slog.Error("kafka produce", "error", err)
 					continue
 				}
-				messageSuccessProcessed.Add(float64(counter))
 				slog.Info("kafka produce", "count", counter)
 				counter = 0
 				if err = event.Ack(); err != nil {
@@ -169,11 +134,9 @@ func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
 			if counter > 0 {
 				err = w.WriteMessages(ctx, message[:counter]...)
 				if err != nil {
-					messageFailProcessed.Add(float64(counter))
 					slog.Error("kafka produce", "error", err)
 					continue
 				}
-				messageSuccessProcessed.Add(float64(counter))
 				slog.Info("kafka produce time", "count", counter)
 				counter = 0
 				if err = lastAck(); err != nil {

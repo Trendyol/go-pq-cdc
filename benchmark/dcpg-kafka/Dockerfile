@@ -24,7 +24,7 @@ FROM gcr.io/distroless/static-debian11
 
 WORKDIR /app
 
-COPY dcpg dcpg
+COPY ../dcpg dcpg
 
 EXPOSE 2112
 

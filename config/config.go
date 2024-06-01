@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -69,6 +71,13 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *Config) Print() {
+	cfg := *c
+	cfg.Password = "*******"
+	b, _ := json.Marshal(cfg)
+	slog.Info("used config: " + string(b))
 }
 
 func (pc *PublicationConfig) Validate() error {

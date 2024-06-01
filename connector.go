@@ -37,6 +37,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 	}
 
 	cfg.SetDefault()
+	cfg.Print()
 
 	logLevel := slog.LevelInfo
 	if cfg.DebugMode {

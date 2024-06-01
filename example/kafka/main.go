@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/3n0ugh/dcpg"
-	"github.com/3n0ugh/dcpg/message/format"
+	"github.com/3n0ugh/dcpg/config"
+	"github.com/3n0ugh/dcpg/pq"
+	"github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	"log/slog"
@@ -36,10 +38,11 @@ func main() {
 	ctx := context.Background()
 
 	w := &kafka.Writer{
-		Addr:      kafka.TCP("localhost:19092"),
-		Topic:     "dcpg.test.produce",
-		Balancer:  &kafka.LeastBytes{},
-		BatchSize: 10000,
+		Addr:                   kafka.TCP("redpanda:9092"),
+		Topic:                  "dcpg.test.produce",
+		Balancer:               &kafka.LeastBytes{},
+		BatchSize:              10000,
+		AllowAutoTopicCreation: true,
 	}
 
 	defer func() {
@@ -49,73 +52,63 @@ func main() {
 		}
 	}()
 
-	cfg := dcpg.Config{
-		Host:     "127.0.0.1",
-		Username: "dcp_user",
-		Password: "dcp_pass",
-		Database: "dcp_db",
-		Publication: dcpg.PublicationConfig{
+	messages := make(chan Message, 10000)
+	go Produce(ctx, w, messages)
+
+	cfg := config.Config{
+		Host:      "postgres:5432",
+		Username:  "dcp_user",
+		Password:  "dcp_pass",
+		Database:  "dcp_db",
+		DebugMode: false,
+		Publication: config.PublicationConfig{
 			Name:         "dcp_publication",
 			Create:       true,
 			DropIfExists: true,
 		},
-		Slot: dcpg.SlotConfig{
+		Slot: config.SlotConfig{
 			Name:   "dcp_slot",
 			Create: true,
 		},
+		Metric: config.MetricConfig{
+			Port: 2112,
+		},
 	}
 
-	connector, err := dcpg.NewConnector(ctx, cfg)
+	connector, err := dcpg.NewConnector(ctx, cfg, FilteredMapper(messages))
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)
 	}
 
-	ch, err := connector.Start(ctx)
-	if err != nil {
-		slog.Error("connector start", "error", err)
-		os.Exit(1)
-	}
-
-	Produce(ctx, w, Filter(ch))
+	connector.Start(ctx)
 }
 
-func Filter(ch <-chan dcpg.Context) <-chan Message {
-	messages := make(chan Message, 128)
-
-	go func() {
-		for {
-			event, ok := <-ch
-			if !ok {
-				os.Exit(1)
+func FilteredMapper(messages chan Message) pq.ListenerFunc {
+	return func(ctx pq.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Insert:
+			encoded, _ := json.Marshal(msg.Decoded)
+			messages <- Message{
+				Message: kafka.Message{
+					Key:   []byte(uuid.NewString()),
+					Value: encoded,
+					Time:  time.Now(),
+				},
+				Ack: ctx.Ack,
 			}
-
-			switch msg := event.Message.(type) {
-			case *format.Insert:
-				encoded, _ := json.Marshal(msg.Decoded)
-				messages <- Message{
-					Message: kafka.Message{
-						Key:   []byte(uuid.NewString()),
-						Value: encoded,
-						Time:  time.Now(),
-					},
-					Ack: event.Ack,
-				}
-			case *format.Delete:
-				slog.Info("delete message received", "old", msg.OldDecoded)
-			case *format.Update:
-				slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
-			}
+		case *format.Delete:
+			slog.Info("delete message received", "old", msg.OldDecoded)
+		case *format.Update:
+			slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
 		}
-	}()
-
-	return messages
+	}
 }
 
 func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
 	var err error
 	var lastAck func() error
-	message := make([]kafka.Message, 10000)
+	message := make([]kafka.Message, 100000)
 	counter := 0
 
 	for {
@@ -125,7 +118,7 @@ func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
 			lastAck = event.Ack
 			counter++
 
-			if counter == 10000 {
+			if counter == 100000 {
 				err = w.WriteMessages(ctx, message...)
 				if err != nil {
 					slog.Error("kafka produce", "error", err)
@@ -137,7 +130,7 @@ func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
 					slog.Error("ack", "error", err)
 				}
 			}
-		case <-time.After(time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 			if counter > 0 {
 				err = w.WriteMessages(ctx, message[:counter]...)
 				if err != nil {

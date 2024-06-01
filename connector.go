@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -28,6 +29,22 @@ type connector struct {
 	server             http.Server
 
 	cancelCh chan os.Signal
+}
+
+func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc pq.ListenerFunc) (Connector, error) {
+	var cfg config.Config
+	var err error
+
+	if strings.HasSuffix(configFilePath, ".json") {
+		cfg, err = config.ReadConfigJson(configFilePath)
+	} else {
+		cfg, err = config.ReadConfigYaml(configFilePath)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return NewConnector(ctx, cfg, listenerFunc)
 }
 
 func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.ListenerFunc) (Connector, error) {

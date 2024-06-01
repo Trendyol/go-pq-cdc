@@ -7,15 +7,14 @@ import (
 )
 
 type Config struct {
-	Host          string            `json:"host" yaml:"host"`
-	Username      string            `json:"username" yaml:"username"`
-	Password      string            `json:"password" yaml:"password"`
-	Database      string            `json:"database" yaml:"database"`
-	ChannelBuffer uint              `json:"channelBuffer" yaml:"channelBuffer"`
-	DebugMode     bool              `json:"debugMode" yaml:"debugMode"`
-	Publication   PublicationConfig `json:"publication" yaml:"publication"`
-	Slot          SlotConfig        `json:"slot" yaml:"slot"`
-	Metric        MetricConfig      `json:"metric" yaml:"metric"`
+	Host        string            `json:"host" yaml:"host"`
+	Username    string            `json:"username" yaml:"username"`
+	Password    string            `json:"password" yaml:"password"`
+	Database    string            `json:"database" yaml:"database"`
+	DebugMode   bool              `json:"debugMode" yaml:"debugMode"`
+	Publication PublicationConfig `json:"publication" yaml:"publication"`
+	Slot        SlotConfig        `json:"slot" yaml:"slot"`
+	Metric      MetricConfig      `json:"metric" yaml:"metric"`
 }
 
 type PublicationConfig struct {
@@ -38,10 +37,6 @@ func (c *Config) DSN() string {
 }
 
 func (c *Config) SetDefault() {
-	if c.ChannelBuffer == 0 {
-		c.ChannelBuffer = 1000
-	}
-
 	if c.Metric.Port == 0 {
 		c.Metric.Port = 8080
 	}

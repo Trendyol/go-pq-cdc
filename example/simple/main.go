@@ -28,12 +28,11 @@ import (
 func main() {
 	ctx := context.Background()
 	cfg := config.Config{
-		Host:          "127.0.0.1",
-		Username:      "dcp_user",
-		Password:      "dcp_pass",
-		Database:      "dcp_db",
-		ChannelBuffer: 1_000,
-		DebugMode:     false,
+		Host:      "127.0.0.1",
+		Username:  "dcp_user",
+		Password:  "dcp_pass",
+		Database:  "dcp_db",
+		DebugMode: false,
 		Publication: config.PublicationConfig{
 			Name:         "dcp_publication",
 			Create:       true,

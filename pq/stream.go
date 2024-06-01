@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/3n0ugh/dcpg/config"
 	"github.com/3n0ugh/dcpg/internal/metric"
+	"github.com/3n0ugh/dcpg/internal/slice"
 	"github.com/3n0ugh/dcpg/pq/message"
 	"github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/go-playground/errors"
@@ -35,8 +36,8 @@ type stream struct {
 	config config.Config
 
 	relation     map[uint32]*format.Relation
-	listenerCh   chan []byte
 	listenerFunc ListenerFunc
+	lastXLogPos  LSN
 }
 
 func NewStream(conn Connection, cfg config.Config, system IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
@@ -46,8 +47,8 @@ func NewStream(conn Connection, cfg config.Config, system IdentifySystemResult, 
 		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
-		listenerCh:   make(chan []byte, cfg.ChannelBuffer),
 		listenerFunc: listenerFunc,
+		lastXLogPos:  10,
 	}
 }
 
@@ -56,9 +57,7 @@ func (s *stream) Open(ctx context.Context) error {
 		return errors.Wrap(err, "replication setup")
 	}
 
-	s.sink(ctx)
-
-	go s.listen(ctx)
+	go s.sink(ctx)
 
 	slog.Info("cdc stream started")
 
@@ -83,96 +82,87 @@ func (s *stream) replicationSetup(ctx context.Context) error {
 
 func (s *stream) sink(ctx context.Context) {
 	slog.Info("postgres message sink started")
-	lastXLogPos := LSN(10)
 
-	go func() {
-		for {
-			msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*10))
-			rawMsg, err := s.conn.ReceiveMessage(msgCtx)
-			cancel()
-			if err != nil {
-				if pgconn.Timeout(err) {
-					err = SendStandbyStatusUpdate(ctx, s.conn, uint64(lastXLogPos))
-					if err != nil {
-						slog.Error("send stand by status update", "error", err)
-						break
-					}
-					slog.Info("send stand by status update")
-					continue
-				}
-				slog.Error("receive message error", "error", err)
-				break
-			}
-
-			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-				res, _ := errMsg.MarshalJSON()
-				slog.Error("receive postgres wal error: " + string(res))
-				continue
-			}
-
-			msg, ok := rawMsg.(*pgproto3.CopyData)
-			if !ok {
-				slog.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
-				continue
-			}
-
-			switch msg.Data[0] {
-			case message.PrimaryKeepaliveMessageByteID:
-				continue
-			case message.XLogDataByteID:
-				s.listenerCh <- msg.Data
-			}
-		}
-	}()
-}
-
-func (s *stream) listen(ctx context.Context) {
-	for data := range s.listenerCh {
-		xld, err := ParseXLogData(data[1:])
+	for {
+		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*10))
+		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
+		cancel()
 		if err != nil {
-			slog.Error("parse xLog data", "error", err)
+			if pgconn.Timeout(err) {
+				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.lastXLogPos))
+				if err != nil {
+					slog.Error("send stand by status update", "error", err)
+					break
+				}
+				slog.Info("send stand by status update")
+				continue
+			}
+			slog.Error("receive message error", "error", err)
+			break
+		}
+
+		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
+			res, _ := errMsg.MarshalJSON()
+			slog.Error("receive postgres wal error: " + string(res))
 			continue
 		}
 
-		slog.Debug("wal received", "walData", xld.WALData, "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
-
-		s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
-
-		s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
-
-		lCtx := ListenerContext{
-			Ack: func() error {
-				pos := s.system.XLogPos
-				slog.Info("send stand by status update", "xLogPos", pos.String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
-			},
-		}
-
-		lCtx.Message, err = message.New(xld.WALData, s.relation)
-		if err != nil || lCtx.Message == nil {
-			slog.Error("wal data message parsing", "error", err)
+		msg, ok := rawMsg.(*pgproto3.CopyData)
+		if !ok {
+			slog.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
 			continue
 		}
 
-		slog.Debug("wal converted to message", "message", lCtx.Message)
+		switch msg.Data[0] {
+		case message.PrimaryKeepaliveMessageByteID:
+			continue
+		case message.XLogDataByteID:
+			xld, err := ParseXLogData(msg.Data[1:])
+			if err != nil {
+				slog.Error("parse xLog data", "error", err)
+				continue
+			}
 
-		switch lCtx.Message.(type) {
-		case *format.Insert:
-			s.metric.InsertOpIncrement(1)
-		case *format.Delete:
-			s.metric.DeleteOpIncrement(1)
-		case *format.Update:
-			s.metric.UpdateOpIncrement(1)
+			slog.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
+
+			s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
+
+			s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
+
+			lCtx := ListenerContext{
+				Ack: func() error {
+					pos := s.system.XLogPos
+					s.lastXLogPos = pos
+					slog.Info("send stand by status update", "xLogPos", pos.String())
+					return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
+				},
+			}
+
+			lCtx.Message, err = message.New(xld.WALData, s.relation)
+			if err != nil || lCtx.Message == nil {
+				slog.Debug("wal data message parsing error", "error", err)
+				continue
+			}
+
+			slog.Debug("wal converted to message", "message", lCtx.Message)
+
+			switch lCtx.Message.(type) {
+			case *format.Insert:
+				s.metric.InsertOpIncrement(1)
+			case *format.Delete:
+				s.metric.DeleteOpIncrement(1)
+			case *format.Update:
+				s.metric.UpdateOpIncrement(1)
+			}
+
+			start := time.Now()
+			s.listenerFunc(lCtx)
+			s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 		}
-
-		start := time.Now()
-		s.listenerFunc(lCtx)
-		s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 	}
 }
 
 func (s *stream) Close(ctx context.Context) {
-	close(s.listenerCh)
 	_ = s.conn.Close(ctx)
 }
 

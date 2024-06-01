@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"github.com/3n0ugh/dcpg"
-	"github.com/3n0ugh/dcpg/message/format"
+	"github.com/3n0ugh/dcpg/config"
+	"github.com/3n0ugh/dcpg/pq"
+	"github.com/3n0ugh/dcpg/pq/message/format"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -55,71 +57,57 @@ func main() {
 		os.Exit(1)
 	}
 
-	cfg := dcpg.Config{
+	messages := make(chan Message, 10000)
+	go Produce(ctx, pool, messages)
+
+	cfg := config.Config{
 		Host:     "127.0.0.1",
 		Username: "dcp_user",
 		Password: "dcp_pass",
 		Database: "dcp_db",
-		Publication: dcpg.PublicationConfig{
+		Publication: config.PublicationConfig{
 			Name:         "dcp_publication",
 			Create:       true,
 			DropIfExists: true,
 		},
-		Slot: dcpg.SlotConfig{
+		Slot: config.SlotConfig{
 			Name:   "dcp_slot",
 			Create: true,
 		},
 	}
 
-	connector, err := dcpg.NewConnector(ctx, cfg)
+	connector, err := dcpg.NewConnector(ctx, cfg, FilteredMapper(messages))
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)
 	}
 
-	ch, err := connector.Start(ctx)
-	if err != nil {
-		slog.Error("connector start", "error", err)
-		os.Exit(1)
-	}
-
-	Produce(ctx, pool, Filter(ch))
+	connector.Start(ctx)
 }
 
-func Filter(ch <-chan dcpg.Context) <-chan Message {
-	messages := make(chan Message, 128)
-
-	go func() {
-		for {
-			event, ok := <-ch
-			if !ok {
-				os.Exit(1)
+func FilteredMapper(messages chan Message) pq.ListenerFunc {
+	return func(ctx pq.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Insert:
+			messages <- Message{
+				Query: UpsertQuery,
+				Args:  []any{msg.Decoded["id"].(int32), msg.Decoded["name"].(string)},
+				Ack:   ctx.Ack,
 			}
-
-			switch msg := event.Message.(type) {
-			case *format.Insert:
-				messages <- Message{
-					Query: UpsertQuery,
-					Args:  []any{msg.Decoded["id"].(int32), msg.Decoded["name"].(string)},
-					Ack:   event.Ack,
-				}
-			case *format.Delete:
-				messages <- Message{
-					Query: DeleteQuery,
-					Args:  []any{msg.OldDecoded["id"].(int32)},
-					Ack:   event.Ack,
-				}
-			case *format.Update:
-				messages <- Message{
-					Query: UpsertQuery,
-					Args:  []any{msg.NewDecoded["id"].(int32), msg.NewDecoded["name"].(string)},
-					Ack:   event.Ack,
-				}
+		case *format.Delete:
+			messages <- Message{
+				Query: DeleteQuery,
+				Args:  []any{msg.OldDecoded["id"].(int32)},
+				Ack:   ctx.Ack,
+			}
+		case *format.Update:
+			messages <- Message{
+				Query: UpsertQuery,
+				Args:  []any{msg.NewDecoded["id"].(int32), msg.NewDecoded["name"].(string)},
+				Ack:   ctx.Ack,
 			}
 		}
-	}()
-
-	return messages
+	}
 }
 
 func Produce(ctx context.Context, w *pgxpool.Pool, messages <-chan Message) {

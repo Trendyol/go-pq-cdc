@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const cdcNamespace = "go-pq-cdc"
+const cdcNamespace = "go_pq_cdc"
 
 type Metric interface {
 	InsertOpIncrement(count int64)

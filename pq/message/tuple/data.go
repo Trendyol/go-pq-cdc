@@ -38,7 +38,7 @@ type RelationColumn struct {
 
 func NewData(data []byte, tupleDataType uint8, skipByteLength int) (*Data, error) {
 	if data[skipByteLength] != tupleDataType {
-		return nil, errors.New("invalid tuple data type: " + string(tupleDataType))
+		return nil, errors.New("invalid tuple data type: " + string(data[skipByteLength]))
 	}
 	skipByteLength += 1
 

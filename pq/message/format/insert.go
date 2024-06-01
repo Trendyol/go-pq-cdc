@@ -70,10 +70,3 @@ func (m *Insert) decode(data []byte, streamedTransaction bool) error {
 
 	return nil
 }
-
-func decodeTextColumnData(data []byte, dataType uint32) (interface{}, error) {
-	if dt, ok := typeMap.TypeForOID(dataType); ok {
-		return dt.Codec.DecodeValue(typeMap, dataType, pgtype.TextFormatCode, data)
-	}
-	return string(data), nil
-}

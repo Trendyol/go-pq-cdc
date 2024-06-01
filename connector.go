@@ -7,9 +7,11 @@ import (
 	"github.com/3n0ugh/dcpg/pq"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"log/slog"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 )
 
@@ -78,6 +80,10 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 	stream := pq.NewStream(conn, cfg, system, listenerFunc)
 
 	prometheusRegistry := prometheus.NewRegistry()
+	prometheusRegistry.MustRegister(collectors.NewBuildInfoCollector())
+	prometheusRegistry.MustRegister(collectors.NewGoCollector(
+		collectors.WithGoCollectorRuntimeMetrics(collectors.GoRuntimeMetricsRule{Matcher: regexp.MustCompile("/.*")}),
+	))
 	stream.GetMetric().Register(prometheusRegistry)
 
 	return &connector{

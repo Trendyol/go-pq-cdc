@@ -5,9 +5,9 @@ services:
     restart: always
     command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
     environment:
-      POSTGRES_USER: "dcp_user"
-      POSTGRES_PASSWORD: "dcp_pass"
-      POSTGRES_DB: "dcp_db"
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
       POSTGRES_HOST_AUTH_METHOD: trust
     network_mode: "host"
     
@@ -34,7 +34,7 @@ services:
       - redpanda_data:/var/lib/redpanda/data
       - ~/pandapost_integration:/tmp/pandapost_integration
     networks:
-      - dcpg_net
+      - cdc_net
     healthcheck:
       test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
       interval: 15s
@@ -65,7 +65,7 @@ services:
     ports:
       - 8085:8080
     networks:
-      - dcpg_net
+      - cdc_net
     depends_on:
       - redpanda
 
@@ -74,7 +74,7 @@ services:
     hostname: connect
     container_name: connect
     networks:
-      - dcpg_net
+      - cdc_net
     # platform: 'linux/amd64'
     depends_on:
       - redpanda
@@ -109,5 +109,5 @@ volumes:
   kibana1_data: null
   es01_data: null
 networks:
-  dcpg_net:
+  cdc_net:
     driver: bridge

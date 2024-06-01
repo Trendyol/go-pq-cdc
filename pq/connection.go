@@ -2,8 +2,8 @@ package pq
 
 import (
 	"context"
-	"github.com/3n0ugh/dcpg/config"
-	"github.com/3n0ugh/dcpg/internal/retry"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/internal/retry"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"

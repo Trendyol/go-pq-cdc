@@ -1,7 +1,7 @@
 package format
 
 import (
-	"github.com/3n0ugh/dcpg/pq/message/tuple"
+	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

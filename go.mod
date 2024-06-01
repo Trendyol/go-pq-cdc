@@ -1,4 +1,4 @@
-module github.com/3n0ugh/dcpg
+module github.com/Trendyol/go-pq-cdc
 
 go 1.22
 

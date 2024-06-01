@@ -5,9 +5,9 @@ services:
     restart: always
     command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
     environment:
-      POSTGRES_USER: "dcp_user"
-      POSTGRES_PASSWORD: "dcp_pass"
-      POSTGRES_DB: "dcp_db"
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
       POSTGRES_HOST_AUTH_METHOD: trust
     network_mode: "host"
   postgres-target:
@@ -15,9 +15,9 @@ services:
     restart: always
     command: [ "-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10" ]
     environment:
-      POSTGRES_USER: "dcp_user"
-      POSTGRES_PASSWORD: "dcp_pass"
-      POSTGRES_DB: "dcp_db"
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5433:5432"

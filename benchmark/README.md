@@ -5,7 +5,7 @@
 PC: Macbook Apple M1 Pro (2021)
 Memory: 32 GB
 
-DCPG: 
+go-pq-cdc: 
   resources:
     limits:
       cpus: 1
@@ -25,7 +25,7 @@ Debezium:
 ```
 
 ### Result
-|                      | DCPG       | Debezium     |
+|                      | go-pq-cdc  | Debezium     |
 |----------------------|------------|--------------|
 | Row Count            | 10 m       | 10 m         |
 | Elapsed Time         | 2.5 min    | 21 min       |
@@ -49,7 +49,7 @@ Debezium:
     ```
 - Connect to Postgres database:
    ```sh
-   psql postgres://dcp_user:dcp_pass@127.0.0.1:5432/dcp_db
+   psql postgres://cdc_user:cdc_pass@127.0.0.1:5432/cdc_db
    ```
 - Insert data to users table: 
     ```sql
@@ -74,5 +74,5 @@ Debezium:
 - PostgreSQL:`5432` http://localhost:5432
 - PostgreSQL Metric Exporter: `9187` http://localhost:9187 
 - Debezium: `9093` http://localhost:9093
-- DCPG Metric: `2112` http://localhost:2112
+- go-pq-cdc Metric: `2112` http://localhost:2112
 

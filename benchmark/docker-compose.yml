@@ -6,21 +6,21 @@ services:
     ports:
       - '3000:3000'
     networks:
-      - dcpg_net
+      - cdc_net
     volumes:
       - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yaml
       - ./grafana/dashboard.yml:/etc/grafana/provisioning/dashboards/main.yaml
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
-      - dcpg
+      - go-pq-cdc-kafka
 
   prometheus:
     image: prom/prometheus
     ports:
       - "9090:9090"
     networks:
-      - dcpg_net
+      - cdc_net
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
@@ -32,7 +32,7 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - dcpg_net
+      - cdc_net
     volumes:
       - "/:/rootfs"
       - "/var/run:/var/run"
@@ -49,9 +49,9 @@ services:
     restart: always
     command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
     environment:
-      POSTGRES_USER: "dcp_user"
-      POSTGRES_PASSWORD: "dcp_pass"
-      POSTGRES_DB: "dcp_db"
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -61,7 +61,7 @@ services:
       timeout: 3s
       retries: 3
     networks:
-      - dcpg_net
+      - cdc_net
     ports:
       - "5432:5432"
 
@@ -70,9 +70,9 @@ services:
     ports:
       - "9187:9187"
     environment:
-      DATA_SOURCE_NAME: "postgresql://dcp_user:dcp_pass@postgres:5432/dcp_db?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://cdc_user:cdc_pass@postgres:5432/cdc_db?sslmode=disable"
     networks:
-      - dcpg_net
+      - cdc_net
     depends_on:
       - postgres
       - prometheus
@@ -98,7 +98,7 @@ services:
     volumes:
       - ~/pandapost_integration:/tmp/pandapost_integration
     networks:
-      - dcpg_net
+      - cdc_net
     healthcheck:
       test: [ "CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1" ]
       interval: 15s
@@ -129,7 +129,7 @@ services:
     ports:
       - 8085:8080
     networks:
-      - dcpg_net
+      - cdc_net
     depends_on:
       - redpanda
 
@@ -138,7 +138,7 @@ services:
     hostname: connect
     container_name: connect
     networks:
-      - dcpg_net
+      - cdc_net
     # platform: 'linux/amd64'
     depends_on:
       - redpanda
@@ -185,7 +185,7 @@ services:
       VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       ENABLE_DEBEZIUM_SCRIPTING: 'true'
     networks:
-      - dcpg_net
+      - cdc_net
     healthcheck:
       test:
         [
@@ -213,7 +213,7 @@ services:
   set-debezium-connector:
     image: curlimages/curl:latest
     networks:
-      - dcpg_net
+      - cdc_net
     depends_on:
       debezium:
         condition: service_healthy
@@ -229,9 +229,9 @@ services:
               \"tasks.max\": \"1\",
               \"database.hostname\": \"postgres\",
               \"database.port\": \"5432\",
-              \"database.user\": \"dcp_user\",
-              \"database.password\": \"dcp_pass\",
-              \"database.dbname\": \"dcp_db\",
+              \"database.user\": \"cdc_user\",
+              \"database.password\": \"cdc_pass\",
+              \"database.dbname\": \"cdc_db\",
               \"database.server.name\": \"postgres\",
               \"table.include.list\": \"public.users\",
               \"database.history.kafka.bootstrap.servers\": \"kafka:9092\",
@@ -248,11 +248,11 @@ services:
           }
       }'"
 
-  dcpg:
-    container_name: dcpg
+  go-pq-cdc-kafka:
+    container_name: go-pq-cdc-kafka
     build:
       context: .
-      dockerfile: ./dcpg-kafka/Dockerfile
+      dockerfile: ./go-pq-cdc-kafka/Dockerfile
     restart: on-failure
     ports:
       - '2112:2112'
@@ -262,7 +262,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - dcpg_net
+      - cdc_net
     deploy:
       resources:
         limits:
@@ -273,5 +273,5 @@ services:
           memory: 128M
 
 networks:
-  dcpg_net:
+  cdc_net:
     driver: bridge

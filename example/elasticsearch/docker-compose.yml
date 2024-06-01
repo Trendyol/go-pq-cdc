@@ -5,9 +5,9 @@ services:
     restart: always
     command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
     environment:
-      POSTGRES_USER: "dcp_user"
-      POSTGRES_PASSWORD: "dcp_pass"
-      POSTGRES_DB: "dcp_db"
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
       POSTGRES_HOST_AUTH_METHOD: trust
     network_mode: "host"
   es01:
@@ -17,14 +17,14 @@ services:
     volumes:
       - es01_data:/usr/share/elasticsearch/data
     networks:
-      - dcpg_net
+      - cdc_net
     ports:
       - "9200:9200"
     environment:
       - node.name=es01
-      - cluster.name=dcpg
+      - cluster.name=cdc
       - discovery.type=single-node
-      - ELASTIC_PASSWORD=dcpg_pass
+      - ELASTIC_PASSWORD=cdc_pass
       - bootstrap.memory_lock=true
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
@@ -49,7 +49,7 @@ services:
         condition: service_healthy
     image: docker.elastic.co/kibana/kibana:7.17.11
     networks:
-      - dcpg_net
+      - cdc_net
     labels:
       co.elastic.logs/module: kibana
     volumes:
@@ -60,7 +60,7 @@ services:
       - SERVERNAME=kibana
       - ELASTICSEARCH_HOSTS=http://es01:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=dcpg_pass
+      - ELASTICSEARCH_PASSWORD=cdc_pass
     healthcheck:
       test:
         [
@@ -76,5 +76,5 @@ volumes:
   kibana1_data: null
   es01_data: null
 networks:
-  dcpg_net:
+  cdc_net:
     driver: bridge

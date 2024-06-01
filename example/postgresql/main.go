@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/3n0ugh/dcpg"
-	"github.com/3n0ugh/dcpg/config"
-	"github.com/3n0ugh/dcpg/pq"
-	"github.com/3n0ugh/dcpg/pq/message/format"
+	cdc "github.com/Trendyol/go-pq-cdc"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -15,7 +15,7 @@ import (
 )
 
 /*
-	psql "postgres://dcp_user:dcp_pass@127.0.0.1:5433/dcp_db"
+	psql "postgres://cdc_user:cdc_pass@127.0.0.1:5433/cdc_db"
 
 	CREATE TABLE users (
 	 user_id integer PRIMARY KEY,
@@ -24,7 +24,7 @@ import (
 */
 
 /*
-	psql "postgres://dcp_user:dcp_pass@127.0.0.1/dcp_db?replication=database"
+	psql "postgres://cdc_user:cdc_pass@127.0.0.1/cdc_db?replication=database"
 
 	CREATE TABLE users (
 	 id serial PRIMARY KEY,
@@ -51,7 +51,7 @@ var (
 
 func main() {
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, "postgres://dcp_user:dcp_pass@127.0.0.1:5433/dcp_db")
+	pool, err := pgxpool.New(ctx, "postgres://cdc_user:cdc_pass@127.0.0.1:5433/cdc_db")
 	if err != nil {
 		slog.Error("new pool", "error", err)
 		os.Exit(1)
@@ -62,21 +62,21 @@ func main() {
 
 	cfg := config.Config{
 		Host:     "127.0.0.1",
-		Username: "dcp_user",
-		Password: "dcp_pass",
-		Database: "dcp_db",
+		Username: "cdc_user",
+		Password: "cdc_pass",
+		Database: "cdc_db",
 		Publication: config.PublicationConfig{
-			Name:         "dcp_publication",
+			Name:         "cdc_publication",
 			Create:       true,
 			DropIfExists: true,
 		},
 		Slot: config.SlotConfig{
-			Name:   "dcp_slot",
+			Name:   "cdc_slot",
 			Create: true,
 		},
 	}
 
-	connector, err := dcpg.NewConnector(ctx, cfg, FilteredMapper(messages))
+	connector, err := cdc.NewConnector(ctx, cfg, FilteredMapper(messages))
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)

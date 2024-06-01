@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/3n0ugh/dcpg"
-	"github.com/3n0ugh/dcpg/config"
-	"github.com/3n0ugh/dcpg/pq"
-	"github.com/3n0ugh/dcpg/pq/message/format"
+	cdc "github.com/Trendyol/go-pq-cdc"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	"log/slog"
@@ -15,7 +15,7 @@ import (
 )
 
 /*
-	psql "postgres://dcp_user:dcp_pass@127.0.0.1/dcp_db?replication=database"
+	psql "postgres://cdc_user:cdc_pass@127.0.0.1/cdc_db?replication=database"
 
 	CREATE TABLE users (
 	 id serial PRIMARY KEY,
@@ -39,7 +39,7 @@ func main() {
 
 	w := &kafka.Writer{
 		Addr:                   kafka.TCP("redpanda:9092"),
-		Topic:                  "dcpg.test.produce",
+		Topic:                  "cdc.test.produce",
 		Balancer:               &kafka.LeastBytes{},
 		BatchSize:              10000,
 		AllowAutoTopicCreation: true,
@@ -57,17 +57,17 @@ func main() {
 
 	cfg := config.Config{
 		Host:      "postgres:5432",
-		Username:  "dcp_user",
-		Password:  "dcp_pass",
-		Database:  "dcp_db",
+		Username:  "cdc_user",
+		Password:  "cdc_pass",
+		Database:  "cdc_db",
 		DebugMode: false,
 		Publication: config.PublicationConfig{
-			Name:         "dcp_publication",
+			Name:         "cdc_publication",
 			Create:       true,
 			DropIfExists: true,
 		},
 		Slot: config.SlotConfig{
-			Name:   "dcp_slot",
+			Name:   "cdc_slot",
 			Create: true,
 		},
 		Metric: config.MetricConfig{
@@ -75,7 +75,7 @@ func main() {
 		},
 	}
 
-	connector, err := dcpg.NewConnector(ctx, cfg, FilteredMapper(messages))
+	connector, err := cdc.NewConnector(ctx, cfg, FilteredMapper(messages))
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)

@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/3n0ugh/dcpg"
-	"github.com/3n0ugh/dcpg/config"
-	"github.com/3n0ugh/dcpg/pq"
-	"github.com/3n0ugh/dcpg/pq/message/format"
+	cdc "github.com/Trendyol/go-pq-cdc"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"log/slog"
@@ -19,7 +19,7 @@ import (
 )
 
 /*
-	psql "postgres://dcp_user:dcp_pass@127.0.0.1/dcp_db?replication=database"
+	psql "postgres://cdc_user:cdc_pass@127.0.0.1/cdc_db?replication=database"
 
 	CREATE TABLE users (
 	 id serial PRIMARY KEY,
@@ -49,7 +49,7 @@ func main() {
 		DiscoverNodesInterval: 5 * time.Minute,
 	}
 
-	w, err := NewElasticsearchBulkIndexer(esCfg, "dcpg_index")
+	w, err := NewElasticsearchBulkIndexer(esCfg, "cdc_index")
 	if err != nil {
 		slog.Error("new elasticsearch bulk indexer", "error", err)
 	}
@@ -66,21 +66,21 @@ func main() {
 
 	cfg := config.Config{
 		Host:     "127.0.0.1",
-		Username: "dcp_user",
-		Password: "dcp_pass",
-		Database: "dcp_db",
+		Username: "cdc_user",
+		Password: "cdc_pass",
+		Database: "cdc_db",
 		Publication: config.PublicationConfig{
-			Name:         "dcp_publication",
+			Name:         "cdc_publication",
 			Create:       true,
 			DropIfExists: true,
 		},
 		Slot: config.SlotConfig{
-			Name:   "dcp_slot",
+			Name:   "cdc_slot",
 			Create: true,
 		},
 	}
 
-	connector, err := dcpg.NewConnector(ctx, cfg, FilteredMapper(messages))
+	connector, err := cdc.NewConnector(ctx, cfg, FilteredMapper(messages))
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)

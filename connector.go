@@ -1,10 +1,10 @@
-package dcpg
+package cdc
 
 import (
 	"context"
-	"github.com/3n0ugh/dcpg/config"
-	"github.com/3n0ugh/dcpg/internal/http"
-	"github.com/3n0ugh/dcpg/pq"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/internal/http"
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"

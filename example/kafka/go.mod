@@ -1,11 +1,11 @@
-module github.com/3n0ugh/dcpg/example/kafka
+module github.com/Trendyol/go-pq-cdc/example/kafka
 
 go 1.22.1
 
-replace github.com/3n0ugh/dcpg => ../..
+replace github.com/Trendyol/go-pq-cdc => ../..
 
 require (
-	github.com/3n0ugh/dcpg v0.0.0-00010101000000-000000000000
+	github.com/Trendyol/go-pq-cdc v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/segmentio/kafka-go v0.4.47
 )

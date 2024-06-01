@@ -4,14 +4,13 @@ import (
 	"context"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/http"
+	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"log/slog"
 	"os"
 	"os/signal"
-	"regexp"
 	"syscall"
 )
 
@@ -22,11 +21,11 @@ type Connector interface {
 }
 
 type connector struct {
-	cfg              *config.Config
-	system           pq.IdentifySystemResult
-	stream           pq.Streamer
-	metricCollectors []prometheus.Collector
-	server           http.Server
+	cfg                *config.Config
+	system             pq.IdentifySystemResult
+	stream             pq.Streamer
+	prometheusRegistry metric.Registry
+	server             http.Server
 
 	cancelCh chan os.Signal
 }
@@ -81,20 +80,14 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 	}
 
 	stream := pq.NewStream(conn, cfg, system, listenerFunc)
-
-	prometheusRegistry := prometheus.NewRegistry()
-	prometheusRegistry.MustRegister(collectors.NewBuildInfoCollector())
-	prometheusRegistry.MustRegister(collectors.NewGoCollector(
-		collectors.WithGoCollectorRuntimeMetrics(collectors.GoRuntimeMetricsRule{Matcher: regexp.MustCompile("/.*")}),
-	))
-	stream.GetMetric().Register(prometheusRegistry)
+	prometheusRegistry := metric.NewRegistry(stream.GetMetric())
 
 	return &connector{
-		cfg:              &cfg,
-		system:           system,
-		stream:           stream,
-		metricCollectors: []prometheus.Collector{},
-		server:           http.NewServer(cfg, prometheusRegistry),
+		cfg:                &cfg,
+		system:             system,
+		stream:             stream,
+		prometheusRegistry: prometheusRegistry,
+		server:             http.NewServer(cfg, prometheusRegistry),
 
 		cancelCh: make(chan os.Signal, 1),
 	}, nil
@@ -130,5 +123,5 @@ func (c *connector) GetConfig() *config.Config {
 }
 
 func (c *connector) SetMetricCollectors(metricCollectors ...prometheus.Collector) {
-	c.metricCollectors = append(c.metricCollectors, metricCollectors...)
+	c.prometheusRegistry.AddMetricCollectors(metricCollectors...)
 }

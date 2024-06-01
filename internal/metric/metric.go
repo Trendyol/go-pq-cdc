@@ -13,7 +13,7 @@ type Metric interface {
 	SetCDCLatency(latency int64)
 	SetProcessLatency(latency int64)
 
-	Register(registry *prometheus.Registry)
+	PrometheusCollectors() []prometheus.Collector
 }
 
 type metric struct {
@@ -61,14 +61,14 @@ func NewMetric() Metric {
 
 }
 
-func (m *metric) Register(registry *prometheus.Registry) {
-	registry.MustRegister(
+func (m *metric) PrometheusCollectors() []prometheus.Collector {
+	return []prometheus.Collector{
 		m.totalInsert,
 		m.totalUpdate,
 		m.totalDelete,
 		m.cdcLatency,
 		m.processLatency,
-	)
+	}
 }
 
 func (m *metric) InsertOpIncrement(count int64) {

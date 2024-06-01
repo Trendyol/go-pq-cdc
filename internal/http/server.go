@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log/slog"
 	"net/http"
@@ -22,10 +22,10 @@ type server struct {
 	cdcConfig config.Config
 }
 
-func NewServer(cfg config.Config, registry *prometheus.Registry) Server {
+func NewServer(cfg config.Config, registry metric.Registry) Server {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{EnableOpenMetrics: true}))
+	mux.Handle("GET /metrics", promhttp.HandlerFor(registry.Prometheus(), promhttp.HandlerOpts{EnableOpenMetrics: true}))
 
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("OK"))

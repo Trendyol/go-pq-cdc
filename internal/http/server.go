@@ -25,7 +25,8 @@ type server struct {
 func NewServer(cfg config.Config, registry *prometheus.Registry) Server {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /metrics", promhttp.InstrumentMetricHandler(registry, mux))
+	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{EnableOpenMetrics: true}))
+
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("OK"))
 	})

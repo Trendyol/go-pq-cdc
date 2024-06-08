@@ -19,7 +19,7 @@ type Update struct {
 	NewDecoded   map[string]any
 	OldTupleType uint8
 	OldTupleData *tuple.Data
-	OldDecoded   map[string]any
+	OldDecoded   map[string]any // To get set REPLICA IDENTITY to FULL
 }
 
 func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Update, error) {
@@ -82,7 +82,7 @@ func (m *Update) decode(data []byte, streamedTransaction bool) error {
 		skipByte += m.OldTupleData.SkipByte + 1
 		fallthrough
 	case UpdateTupleTypeNew:
-		m.NewTupleData, err = tuple.NewData(data, UpdateTupleTypeNew, m.OldTupleData.SkipByte)
+		m.NewTupleData, err = tuple.NewData(data, UpdateTupleTypeNew, skipByte)
 		if err != nil {
 			return errors.Wrap(err, "update message new tuple data")
 		}

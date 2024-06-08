@@ -5,9 +5,10 @@ go 1.22
 require (
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/go-playground/errors v3.3.0+incompatible
-	github.com/jackc/pgx/v5 v5.5.5
+	github.com/jackc/pgx/v5 v5.6.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.9.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -26,6 +27,6 @@ require (
 	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/sys v0.19.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	google.golang.org/protobuf v1.33.0 // indirect
+	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

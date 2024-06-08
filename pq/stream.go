@@ -38,6 +38,7 @@ type stream struct {
 	relation     map[uint32]*format.Relation
 	listenerFunc ListenerFunc
 	lastXLogPos  LSN
+	closed       bool
 }
 
 func NewStream(conn Connection, cfg config.Config, system IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
@@ -88,6 +89,11 @@ func (s *stream) sink(ctx context.Context) {
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
 		cancel()
 		if err != nil {
+			if s.closed {
+				slog.Info("stream stopped")
+				break
+			}
+
 			if pgconn.Timeout(err) {
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.lastXLogPos))
 				if err != nil {
@@ -163,6 +169,7 @@ func (s *stream) sink(ctx context.Context) {
 }
 
 func (s *stream) Close(ctx context.Context) {
+	s.closed = true
 	_ = s.conn.Close(ctx)
 }
 

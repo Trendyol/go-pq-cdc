@@ -38,6 +38,10 @@ func (c *Config) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s/%s?replication=database", c.Username, c.Password, c.Host, c.Database)
 }
 
+func (c *Config) DSNWithoutSSL() string {
+	return fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", c.Username, c.Password, c.Host, c.Database)
+}
+
 func (c *Config) SetDefault() {
 	if c.Metric.Port == 0 {
 		c.Metric.Port = 8080

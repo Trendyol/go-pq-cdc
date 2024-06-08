@@ -18,6 +18,7 @@ import (
 type Connector interface {
 	Start(ctx context.Context)
 	WaitUntilReady(ctx context.Context) error
+	Close()
 	GetConfig() *config.Config
 	SetMetricCollectors(collectors ...prometheus.Collector)
 }
@@ -144,7 +145,13 @@ func (c *connector) WaitUntilReady(ctx context.Context) error {
 }
 
 func (c *connector) Close() {
-	close(c.cancelCh)
+	if !isClosed(c.cancelCh) {
+		close(c.cancelCh)
+	}
+	if !isClosed(c.readyCh) {
+		close(c.readyCh)
+	}
+
 	c.stream.Close(context.TODO())
 	c.server.Shutdown()
 }
@@ -155,4 +162,14 @@ func (c *connector) GetConfig() *config.Config {
 
 func (c *connector) SetMetricCollectors(metricCollectors ...prometheus.Collector) {
 	c.prometheusRegistry.AddMetricCollectors(metricCollectors...)
+}
+
+func isClosed[T any](ch <-chan T) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+	}
+
+	return false
 }

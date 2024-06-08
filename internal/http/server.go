@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
@@ -20,6 +21,8 @@ type Server interface {
 type server struct {
 	server    http.Server
 	cdcConfig config.Config
+
+	closed bool
 }
 
 func NewServer(cfg config.Config, registry metric.Registry) Server {
@@ -51,13 +54,16 @@ func (s *server) Listen() {
 
 	err := s.server.ListenAndServe()
 	if err != nil {
+		if errors.Is(err, http.ErrServerClosed) && s.closed {
+			slog.Info("server stopped")
+			return
+		}
 		slog.Error("server cannot start", "port", s.cdcConfig.Metric.Port, "error", err)
-		return
 	}
-	slog.Info("server stopped")
 }
 
 func (s *server) Shutdown() {
+	s.closed = true
 	err := s.server.Shutdown(context.Background())
 	if err != nil {
 		slog.Error("error while api cannot be shutdown", "error", err)

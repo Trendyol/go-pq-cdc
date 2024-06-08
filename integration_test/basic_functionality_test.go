@@ -13,7 +13,6 @@ import (
 )
 
 func TestBasicFunctionality(t *testing.T) {
-	// Run CDC with create publisher and slot option
 	ctx := context.Background()
 
 	messageCh := make(chan any, 500)
@@ -36,7 +35,6 @@ func TestBasicFunctionality(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		// Stop CDC - Restore to snapshot
 		connector.Close()
 		if err = RestoreDB(ctx); err != nil {
 			log.Fatal(err)
@@ -54,7 +52,6 @@ func TestBasicFunctionality(t *testing.T) {
 	cancel()
 
 	t.Run("Insert 10 book to table. Then check messages and metric", func(t *testing.T) {
-		// Insert 10 book to table
 		books := CreateBooks(10)
 		for _, b := range books {
 			err = pgExec(ctx, postgresConn, fmt.Sprintf("INSERT INTO books(id, name) VALUES(%d, '%s')", b.ID, b.Name))
@@ -63,19 +60,16 @@ func TestBasicFunctionality(t *testing.T) {
 			}
 		}
 
-		// Check messages
 		for i := range 10 {
 			m := <-messageCh
 			assert.Equal(t, books[i].Map(), m.(*format.Insert).Decoded)
 		}
 
-		// Check metric
 		metric, _ := fetchInsertOpMetric()
 		assert.True(t, metric == 10)
 	})
 
 	t.Run("Update 5 book on table. Then check messages and metric", func(t *testing.T) {
-		// Update 5 book
 		books := CreateBooks(5)
 		for i, b := range books {
 			b.ID = i + 1
@@ -86,19 +80,16 @@ func TestBasicFunctionality(t *testing.T) {
 			}
 		}
 
-		// Check messages
 		for i := range 5 {
 			m := <-messageCh
 			assert.Equal(t, books[i].Map(), m.(*format.Update).NewDecoded)
 		}
 
-		// Check metric
 		metric, _ := fetchUpdateOpMetric()
 		assert.True(t, metric == 5)
 	})
 
 	t.Run("Delete 5 book from table. Then check messages and metric", func(t *testing.T) {
-		// Delete 5 book
 		for i := range 5 {
 			err = pgExec(ctx, postgresConn, fmt.Sprintf("DELETE FROM books WHERE id = %d", i+1))
 			if err != nil {
@@ -106,13 +97,11 @@ func TestBasicFunctionality(t *testing.T) {
 			}
 		}
 
-		// Check messages
 		for i := range 5 {
 			m := <-messageCh
 			assert.Equal(t, int32(i+1), m.(*format.Delete).OldDecoded["id"])
 		}
 
-		// Check metric
 		metric, _ := fetchDeleteOpMetric()
 		assert.True(t, metric == 5)
 	})

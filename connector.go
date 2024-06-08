@@ -17,6 +17,7 @@ import (
 
 type Connector interface {
 	Start(ctx context.Context)
+	WaitUntilReady(ctx context.Context) error
 	GetConfig() *config.Config
 	SetMetricCollectors(collectors ...prometheus.Collector)
 }
@@ -29,6 +30,7 @@ type connector struct {
 	server             http.Server
 
 	cancelCh chan os.Signal
+	readyCh  chan struct{}
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc pq.ListenerFunc) (Connector, error) {
@@ -107,6 +109,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		server:             http.NewServer(cfg, prometheusRegistry),
 
 		cancelCh: make(chan os.Signal, 1),
+		readyCh:  make(chan struct{}, 1),
 	}, nil
 }
 
@@ -121,12 +124,23 @@ func (c *connector) Start(ctx context.Context) {
 
 	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
 
+	c.readyCh <- struct{}{}
+
 	select {
 	case <-c.cancelCh:
 		slog.Debug("cancel channel triggered")
 	}
 
 	c.Close()
+}
+
+func (c *connector) WaitUntilReady(ctx context.Context) error {
+	select {
+	case <-c.readyCh:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (c *connector) Close() {

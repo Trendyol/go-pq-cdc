@@ -39,6 +39,10 @@ func TestBasicFunctionality(t *testing.T) {
 		if err = RestoreDB(ctx); err != nil {
 			log.Fatal(err)
 		}
+
+		if err = postgresConn.Close(ctx); err != nil {
+			log.Fatal(err)
+		}
 	})
 
 	go func() {

@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	err = SetupTestDB(ctx, conn, Config)
+	err = createCDCUser(ctx, conn, Config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,10 +109,6 @@ func newPostgresConn() (pq.Connection, error) {
 }
 
 func SetupTestDB(ctx context.Context, conn pq.Connection, cfg config.Config) error {
-	if err := createCDCUser(ctx, conn, cfg); err != nil {
-		return err
-	}
-
 	if err := createBooksTable(ctx, conn); err != nil {
 		return err
 	}

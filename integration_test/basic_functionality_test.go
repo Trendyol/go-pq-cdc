@@ -7,7 +7,6 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/stretchr/testify/assert"
-	"log"
 	"testing"
 	"time"
 )
@@ -25,24 +24,15 @@ func TestBasicFunctionality(t *testing.T) {
 	}
 
 	connector, err := cdc.NewConnector(ctx, Config, handlerFunc)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	postgresConn, err := newPostgresConn()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
-		if err = RestoreDB(ctx); err != nil {
-			log.Fatal(err)
-		}
-
-		if err = postgresConn.Close(ctx); err != nil {
-			log.Fatal(err)
-		}
+		assert.NoError(t, RestoreDB(ctx))
+		assert.NoError(t, postgresConn.Close(ctx))
 	})
 
 	go func() {
@@ -50,18 +40,15 @@ func TestBasicFunctionality(t *testing.T) {
 	}()
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	if err = connector.WaitUntilReady(waitCtx); err != nil {
-		t.Fatal(err)
-	}
+	err = connector.WaitUntilReady(waitCtx)
+	assert.NoError(t, err)
 	cancel()
 
 	t.Run("Insert 10 book to table. Then check messages and metric", func(t *testing.T) {
 		books := CreateBooks(10)
 		for _, b := range books {
 			err = pgExec(ctx, postgresConn, fmt.Sprintf("INSERT INTO books(id, name) VALUES(%d, '%s')", b.ID, b.Name))
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
 		}
 
 		for i := range 10 {
@@ -79,9 +66,7 @@ func TestBasicFunctionality(t *testing.T) {
 			b.ID = i + 1
 			books[i] = b
 			err = pgExec(ctx, postgresConn, fmt.Sprintf("UPDATE books SET name = '%s' WHERE id = %d", b.Name, b.ID))
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
 		}
 
 		for i := range 5 {
@@ -96,9 +81,7 @@ func TestBasicFunctionality(t *testing.T) {
 	t.Run("Delete 5 book from table. Then check messages and metric", func(t *testing.T) {
 		for i := range 5 {
 			err = pgExec(ctx, postgresConn, fmt.Sprintf("DELETE FROM books WHERE id = %d", i+1))
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
 		}
 
 		for i := range 5 {

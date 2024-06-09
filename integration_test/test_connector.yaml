@@ -1,12 +1,9 @@
-host: 127.0.0.1
 username: cdc_user
 password: cdc_pass
 database: cdc_db
 debugMode: false
 publication:
   name: cdc_publication
-slot:
-  name: cdc_slot
 metric:
   port: 8083
 

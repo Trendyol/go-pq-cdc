@@ -10,12 +10,6 @@ import (
 	"strings"
 )
 
-var pluginArguments = []string{
-	"proto_version '3'",
-	"messages 'true'",
-	"streaming 'true'",
-}
-
 type Replication struct {
 	conn Connection
 }
@@ -27,7 +21,11 @@ func NewReplication(conn Connection) *Replication {
 func (r *Replication) Start(publicationName, slotName string) error {
 	startLSN := LSN(2)
 
-	pluginArguments = append(pluginArguments, "publication_names '"+publicationName+"'")
+	pluginArguments := append([]string{
+		"proto_version '3'",
+		"messages 'true'",
+		"streaming 'true'",
+	}, "publication_names '"+publicationName+"'")
 
 	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", slotName, startLSN, strings.Join(pluginArguments, ","))
 	r.conn.Frontend().SendQuery(&pgproto3.Query{String: sql})

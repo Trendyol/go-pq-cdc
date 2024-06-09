@@ -117,6 +117,10 @@ func SetupTestDB(ctx context.Context, conn pq.Connection, cfg config.Config) err
 		return err
 	}
 
+	if err := dropPublication(ctx, conn, cfg); err != nil {
+		return err
+	}
+
 	if err := createPublication(ctx, conn, cfg); err != nil {
 		return err
 	}
@@ -175,6 +179,15 @@ func createBooksTable(ctx context.Context, conn pq.Connection) error {
 	err := pgExec(ctx, conn, query)
 	if err != nil {
 		return errors.Wrap(err, "create books table")
+	}
+
+	return nil
+}
+
+func dropPublication(ctx context.Context, conn pq.Connection, cfg config.Config) error {
+	err := pgExec(ctx, conn, "DROP PUBLICATION IF EXISTS "+cfg.Publication.Name)
+	if err != nil {
+		return errors.Wrap(err, "drop publication")
 	}
 
 	return nil

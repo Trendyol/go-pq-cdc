@@ -14,6 +14,18 @@ import (
 func TestBasicFunctionality(t *testing.T) {
 	ctx := context.Background()
 
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_test_basic_functionality"
+
+	postgresConn, err := newPostgresConn()
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+
+	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+		t.FailNow()
+	}
+
 	messageCh := make(chan any, 500)
 	handlerFunc := func(ctx pq.ListenerContext) {
 		switch msg := ctx.Message.(type) {
@@ -23,11 +35,10 @@ func TestBasicFunctionality(t *testing.T) {
 		_ = ctx.Ack()
 	}
 
-	connector, err := cdc.NewConnector(ctx, Config, handlerFunc)
-	assert.NoError(t, err)
-
-	postgresConn, err := newPostgresConn()
-	assert.NoError(t, err)
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -41,7 +52,9 @@ func TestBasicFunctionality(t *testing.T) {
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	err = connector.WaitUntilReady(waitCtx)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 	cancel()
 
 	t.Run("Insert 10 book to table. Then check messages and metric", func(t *testing.T) {

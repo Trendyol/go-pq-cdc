@@ -15,6 +15,18 @@ import (
 func TestTransactionalProcess(t *testing.T) {
 	ctx := context.Background()
 
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_test_transactional_process"
+
+	postgresConn, err := newPostgresConn()
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+
+	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+		t.FailNow()
+	}
+
 	messageCh := make(chan any, 500)
 	handlerFunc := func(ctx pq.ListenerContext) {
 		switch msg := ctx.Message.(type) {
@@ -24,7 +36,7 @@ func TestTransactionalProcess(t *testing.T) {
 		_ = ctx.Ack()
 	}
 
-	connector, err := cdc.NewConnector(ctx, Config, handlerFunc)
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
 	assert.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Username: "postgres", Password: "postgres", Database: Config.Database}
@@ -45,7 +57,9 @@ func TestTransactionalProcess(t *testing.T) {
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	err = connector.WaitUntilReady(waitCtx)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 	cancel()
 
 	t.Run("Start transactional operation and commit. Then check the messages and metrics", func(t *testing.T) {

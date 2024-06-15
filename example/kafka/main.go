@@ -85,7 +85,7 @@ func main() {
 }
 
 func FilteredMapper(messages chan Message) pq.ListenerFunc {
-	return func(ctx pq.ListenerContext) {
+	return func(ctx *pq.ListenerContext) {
 		switch msg := ctx.Message.(type) {
 		case *format.Insert:
 			encoded, _ := json.Marshal(msg.Decoded)

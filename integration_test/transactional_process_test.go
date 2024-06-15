@@ -28,7 +28,7 @@ func TestTransactionalProcess(t *testing.T) {
 	}
 
 	messageCh := make(chan any, 500)
-	handlerFunc := func(ctx pq.ListenerContext) {
+	handlerFunc := func(ctx *pq.ListenerContext) {
 		switch msg := ctx.Message.(type) {
 		case *format.Insert, *format.Delete, *format.Update:
 			messageCh <- msg

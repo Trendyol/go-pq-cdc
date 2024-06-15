@@ -53,10 +53,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	defer connector.Close()
 	connector.Start(ctx)
 }
 
-func Handler(ctx pq.ListenerContext) {
+func Handler(ctx *pq.ListenerContext) {
 	switch msg := ctx.Message.(type) {
 	case *format.Insert:
 		slog.Info("insert message received", "new", msg.Decoded)

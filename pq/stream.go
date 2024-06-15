@@ -20,7 +20,7 @@ type ListenerContext struct {
 	Ack     func() error
 }
 
-type ListenerFunc func(ctx ListenerContext)
+type ListenerFunc func(ctx *ListenerContext)
 
 type Streamer interface {
 	Open(ctx context.Context) error
@@ -135,7 +135,7 @@ func (s *stream) sink(ctx context.Context) {
 
 			s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
 
-			lCtx := ListenerContext{
+			lCtx := &ListenerContext{
 				Ack: func() error {
 					pos := s.system.XLogPos
 					s.lastXLogPos = pos

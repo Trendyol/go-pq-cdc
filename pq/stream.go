@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+var (
+	ErrorSlotInUse = errors.New("replication slot in use")
+)
+
 type ListenerContext struct {
 	Message any
 	Ack     func() error
@@ -55,6 +59,9 @@ func NewStream(conn Connection, cfg config.Config, system IdentifySystemResult, 
 
 func (s *stream) Open(ctx context.Context) error {
 	if err := s.replicationSetup(ctx); err != nil {
+		if v, ok := err.(*pgconn.PgError); ok && v.Code == "55006" {
+			return ErrorSlotInUse
+		}
 		return errors.Wrap(err, "replication setup")
 	}
 

@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type Connector interface {
@@ -29,6 +30,7 @@ type connector struct {
 	stream             pq.Streamer
 	prometheusRegistry metric.Registry
 	server             http.Server
+	slot               *pq.Slot
 
 	cancelCh chan os.Signal
 	readyCh  chan struct{}
@@ -99,6 +101,17 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		slog.Info("slot created", "name", cfg.Slot.Name)
 	}
 
+	slot, err := pq.NewSlot(cfg.Slot.Name, conn)
+	if err != nil {
+		return nil, err
+	}
+
+	slotInfo, err := slot.GetInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("slot info", "info", slotInfo)
+
 	stream := pq.NewStream(conn, cfg, system, listenerFunc)
 	prometheusRegistry := metric.NewRegistry(stream.GetMetric())
 
@@ -108,6 +121,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		stream:             stream,
 		prometheusRegistry: prometheusRegistry,
 		server:             http.NewServer(cfg, prometheusRegistry),
+		slot:               slot,
 
 		cancelCh: make(chan os.Signal, 1),
 		readyCh:  make(chan struct{}, 1),
@@ -115,11 +129,20 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 }
 
 func (c *connector) Start(ctx context.Context) {
+	c.CaptureSlot(ctx)
+
 	err := c.stream.Open(ctx)
 	if err != nil {
+		if goerrors.Is(err, pq.ErrorSlotInUse) {
+			slog.Info("capture failed")
+			c.Start(ctx)
+			return
+		}
 		slog.Error("postgres stream open", "error", err)
 		return
 	}
+
+	slog.Info("slot captured")
 
 	go c.server.Listen()
 
@@ -131,8 +154,6 @@ func (c *connector) Start(ctx context.Context) {
 	case <-c.cancelCh:
 		slog.Debug("cancel channel triggered")
 	}
-
-	c.Close()
 }
 
 func (c *connector) WaitUntilReady(ctx context.Context) error {
@@ -162,6 +183,24 @@ func (c *connector) GetConfig() *config.Config {
 
 func (c *connector) SetMetricCollectors(metricCollectors ...prometheus.Collector) {
 	c.prometheusRegistry.AddMetricCollectors(metricCollectors...)
+}
+
+func (c *connector) CaptureSlot(ctx context.Context) {
+	slog.Info("slot capturing...")
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		info, err := c.slot.GetInfo(ctx)
+		if err != nil {
+			continue
+		}
+
+		if !info.Active {
+			break
+		}
+
+		slog.Debug("capture slot", "slotInfo", info)
+	}
 }
 
 func isClosed[T any](ch <-chan T) bool {

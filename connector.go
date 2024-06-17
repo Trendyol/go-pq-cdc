@@ -101,7 +101,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		slog.Info("slot created", "name", cfg.Slot.Name)
 	}
 
-	slot, err := pq.NewSlot(cfg.Slot.Name, conn)
+	m := metric.NewMetric(cfg.Slot.Name)
+
+	slot, err := pq.NewSlot(ctx, cfg, m)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +114,8 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 	}
 	slog.Info("slot info", "info", slotInfo)
 
-	stream := pq.NewStream(conn, cfg, system, listenerFunc)
-	prometheusRegistry := metric.NewRegistry(stream.GetMetric())
+	stream := pq.NewStream(conn, cfg, m, system, listenerFunc)
+	prometheusRegistry := metric.NewRegistry(m)
 
 	return &connector{
 		cfg:                &cfg,
@@ -144,6 +146,8 @@ func (c *connector) Start(ctx context.Context) {
 
 	slog.Info("slot captured")
 
+	go c.slot.Metrics(ctx)
+
 	go c.server.Listen()
 
 	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
@@ -173,6 +177,7 @@ func (c *connector) Close() {
 		close(c.readyCh)
 	}
 
+	c.slot.Close()
 	c.stream.Close(context.TODO())
 	c.server.Shutdown()
 }

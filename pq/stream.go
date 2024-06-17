@@ -45,10 +45,10 @@ type stream struct {
 	closed       bool
 }
 
-func NewStream(conn Connection, cfg config.Config, system IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
+func NewStream(conn Connection, cfg config.Config, m metric.Metric, system IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
 	return &stream{
 		conn:         conn,
-		metric:       metric.NewMetric(),
+		metric:       m,
 		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),

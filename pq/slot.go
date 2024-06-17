@@ -3,9 +3,13 @@ package pq
 import (
 	"context"
 	"fmt"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"log/slog"
+	"time"
 )
 
 const (
@@ -20,6 +24,8 @@ type SlotType string
 type Slot struct {
 	conn      Connection
 	statusSQL string
+	metric    metric.Metric
+	ticker    *time.Ticker
 }
 
 type SlotInfo struct {
@@ -27,20 +33,27 @@ type SlotInfo struct {
 	Type              SlotType `json:"type"`
 	Active            bool     `json:"active"`
 	ActivePID         int32    `json:"activePID"`
-	RestartLSN        string   `json:"restartLSN"`
-	ConfirmedFlushLSN string   `json:"confirmedFlushLSN"`
+	RestartLSN        LSN      `json:"restartLSN"`
+	ConfirmedFlushLSN LSN      `json:"confirmedFlushLSN"`
 	WalStatus         string   `json:"walStatus"`
-	CurrentLSN        string   `json:"currentLSN"`
-	RetainedWALSize   string   `json:"retainedWALSize"` // currentLSN - restartLSN
-	Lag               string   `json:"lag"`             // currentLSN -  confirmedLSN
+	CurrentLSN        LSN      `json:"currentLSN"`
+	RetainedWALSize   LSN      `json:"retainedWALSize"`
+	Lag               LSN      `json:"lag"`
 }
 
-func NewSlot(slotName string, conn Connection) (*Slot, error) {
-	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn, PG_SIZE_PRETTY(PG_WAL_LSN_DIFF(PG_CURRENT_WAL_LSN(), restart_lsn))AS retained_walsize, PG_SIZE_PRETTY(PG_WAL_LSN_DIFF(PG_CURRENT_WAL_LSN(), confirmed_flush_lsn)) AS subscriber_lag FROM pg_replication_slots WHERE slot_name = '%s';", slotName)
+func NewSlot(ctx context.Context, cfg config.Config, metric metric.Metric) (*Slot, error) {
+	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Slot.Name)
+
+	conn, err := NewConnection(ctx, cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "new slot connection")
+	}
 
 	return &Slot{
 		conn:      conn,
 		statusSQL: query,
+		metric:    metric,
+		ticker:    time.NewTicker(time.Second * 3), // TODO: config
 	}, nil
 }
 
@@ -67,6 +80,28 @@ func (s *Slot) GetInfo(ctx context.Context) (*SlotInfo, error) {
 	return slotInfo, nil
 }
 
+func (s *Slot) Metrics(ctx context.Context) {
+	for range s.ticker.C {
+		slotInfo, err := s.GetInfo(ctx)
+		if err != nil {
+			slog.Error("slot metrics", "error", err)
+			continue
+		}
+
+		s.metric.SetSlotActivity(slotInfo.Active)
+		s.metric.SetSlotCurrentLSN(float64(slotInfo.CurrentLSN))
+		s.metric.SetSlotConfirmedFlushLSN(float64(slotInfo.ConfirmedFlushLSN))
+		s.metric.SetSlotRetainedWALSize(float64(slotInfo.RetainedWALSize))
+		s.metric.SetSlotLag(float64(slotInfo.Lag))
+
+		slog.Debug("slot metrics", "info", slotInfo)
+	}
+}
+
+func (s *Slot) Close() {
+	s.ticker.Stop()
+}
+
 func decodeSlotInfoResult(result *pgconn.Result) (*SlotInfo, error) {
 	var slotInfo SlotInfo
 	for i, fd := range result.FieldDescriptions {
@@ -89,19 +124,18 @@ func decodeSlotInfoResult(result *pgconn.Result) (*SlotInfo, error) {
 		case "active_pid":
 			slotInfo.ActivePID = v.(int32)
 		case "restart_lsn":
-			slotInfo.RestartLSN = v.(string)
+			slotInfo.RestartLSN, _ = ParseLSN(v.(string))
 		case "confirmed_flush_lsn":
-			slotInfo.ConfirmedFlushLSN = v.(string)
+			slotInfo.ConfirmedFlushLSN, _ = ParseLSN(v.(string))
 		case "wal_status":
 			slotInfo.WalStatus = v.(string)
 		case "current_lsn":
-			slotInfo.CurrentLSN = v.(string)
-		case "retained_walsize":
-			slotInfo.RetainedWALSize = v.(string)
-		case "subscriber_lag":
-			slotInfo.Lag = v.(string)
+			slotInfo.CurrentLSN, _ = ParseLSN(v.(string))
 		}
 	}
+
+	slotInfo.RetainedWALSize = slotInfo.CurrentLSN - slotInfo.RestartLSN
+	slotInfo.Lag = slotInfo.CurrentLSN - slotInfo.ConfirmedFlushLSN
 
 	return &slotInfo, nil
 }

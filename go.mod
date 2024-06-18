@@ -6,6 +6,7 @@ require (
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/go-playground/errors v3.3.0+incompatible
 	github.com/jackc/pgx/v5 v5.6.0
+	github.com/lib/pq v1.10.9
 	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.9.0
 	gopkg.in/yaml.v2 v2.4.0

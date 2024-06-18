@@ -2,10 +2,14 @@ package cdc
 
 import (
 	"context"
+	goerrors "errors"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/http"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/Trendyol/go-pq-cdc/pq/replication"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"log/slog"
@@ -27,16 +31,16 @@ type Connector interface {
 type connector struct {
 	cfg                *config.Config
 	system             pq.IdentifySystemResult
-	stream             pq.Streamer
+	stream             replication.Streamer
 	prometheusRegistry metric.Registry
 	server             http.Server
-	slot               *pq.Slot
+	slot               *slot.Slot
 
 	cancelCh chan os.Signal
 	readyCh  chan struct{}
 }
 
-func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc pq.ListenerFunc) (Connector, error) {
+func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
 	var cfg config.Config
 	var err error
 
@@ -52,7 +56,7 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 	return NewConnector(ctx, cfg, listenerFunc)
 }
 
-func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.ListenerFunc) (Connector, error) {
+func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
 	}
@@ -61,31 +65,26 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 	cfg.Print()
 
 	logLevel := slog.LevelInfo
-	if cfg.DebugMode {
+	if cfg.DebugMode { // ayri bir config'i olsun
 		logLevel = slog.LevelDebug
 	}
 
+	// custom logger inject edilebilsin
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	})))
 
-	conn, err := pq.NewConnection(ctx, cfg)
+	conn, err := pq.NewConnection(ctx, cfg.DSN())
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.Publication.DropIfExists {
-		if err = pq.DropPublication(ctx, conn, cfg.Publication.Name); err != nil {
-			return nil, err
-		}
+	pub := publication.New(cfg.Publication, conn)
+	publicationInfo, err := pub.Create(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	if cfg.Publication.Create {
-		if err = pq.CreatePublication(ctx, conn, cfg.Publication.Name); err != nil {
-			return nil, err
-		}
-		slog.Info("publication created", "name", cfg.Publication.Name)
-	}
+	slog.Info("publication", "info", publicationInfo)
 
 	system, err := pq.IdentifySystem(ctx, conn)
 	if err != nil {
@@ -93,28 +92,20 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 	}
 	slog.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.XLogPos, "database:", system.Database)
 
-	if cfg.Slot.Create {
-		err = pq.CreateReplicationSlot(context.Background(), conn, cfg.Slot.Name)
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("slot created", "name", cfg.Slot.Name)
-	}
-
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	slot, err := pq.NewSlot(ctx, cfg, m)
+	sl, err := slot.NewSlot(ctx, cfg.DSN(), cfg.Slot, m)
 	if err != nil {
 		return nil, err
 	}
 
-	slotInfo, err := slot.GetInfo(ctx)
+	slotInfo, err := sl.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("slot info", "info", slotInfo)
 
-	stream := pq.NewStream(conn, cfg, m, system, listenerFunc)
+	stream := replication.NewStream(conn, cfg, m, system, listenerFunc)
 	prometheusRegistry := metric.NewRegistry(m)
 
 	return &connector{
@@ -123,7 +114,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc pq.Listen
 		stream:             stream,
 		prometheusRegistry: prometheusRegistry,
 		server:             http.NewServer(cfg, prometheusRegistry),
-		slot:               slot,
+		slot:               sl,
 
 		cancelCh: make(chan os.Signal, 1),
 		readyCh:  make(chan struct{}, 1),
@@ -135,7 +126,7 @@ func (c *connector) Start(ctx context.Context) {
 
 	err := c.stream.Open(ctx)
 	if err != nil {
-		if goerrors.Is(err, pq.ErrorSlotInUse) {
+		if goerrors.Is(err, replication.ErrorSlotInUse) {
 			slog.Info("capture failed")
 			c.Start(ctx)
 			return
@@ -195,7 +186,7 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		info, err := c.slot.GetInfo(ctx)
+		info, err := c.slot.Info(ctx)
 		if err != nil {
 			continue
 		}

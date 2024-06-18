@@ -105,7 +105,7 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 }
 
 func newPostgresConn() (pq.Connection, error) {
-	return pq.NewConnection(context.TODO(), config.Config{Host: Config.Host, Username: "postgres", Password: "postgres", Database: Config.Database})
+	return pq.NewConnection(context.TODO(), config.Config{Host: Config.Host, Username: "postgres", Password: "postgres", Database: Config.Database}.DSN())
 }
 
 func SetupTestDB(ctx context.Context, conn pq.Connection, cfg config.Config) error {

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/Trendyol/go-pq-cdc/pq/replication"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	"log/slog"
@@ -56,19 +58,20 @@ func main() {
 	go Produce(ctx, w, messages)
 
 	cfg := config.Config{
-		Host:      "postgres:5432",
+		Host:      "localhost:5432",
 		Username:  "cdc_user",
 		Password:  "cdc_pass",
 		Database:  "cdc_db",
 		DebugMode: false,
-		Publication: config.PublicationConfig{
-			Name:         "cdc_publication",
-			Create:       true,
-			DropIfExists: true,
+		Publication: publication.Config{
+			Name:      "cdc_publication",
+			AllTables: true,
+			Insert:    true,
+			Update:    true,
+			Delete:    true,
 		},
-		Slot: config.SlotConfig{
-			Name:   "cdc_slot",
-			Create: true,
+		Slot: slot.Config{
+			Name: "cdc_slot",
 		},
 		Metric: config.MetricConfig{
 			Port: 2112,
@@ -84,8 +87,8 @@ func main() {
 	connector.Start(ctx)
 }
 
-func FilteredMapper(messages chan Message) pq.ListenerFunc {
-	return func(ctx *pq.ListenerContext) {
+func FilteredMapper(messages chan Message) replication.ListenerFunc {
+	return func(ctx *replication.ListenerContext) {
 		switch msg := ctx.Message.(type) {
 		case *format.Insert:
 			encoded, _ := json.Marshal(msg.Decoded)

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/Trendyol/go-pq-cdc/pq/replication"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"log/slog"
@@ -69,14 +71,15 @@ func main() {
 		Username: "cdc_user",
 		Password: "cdc_pass",
 		Database: "cdc_db",
-		Publication: config.PublicationConfig{
-			Name:         "cdc_publication",
-			Create:       true,
-			DropIfExists: true,
+		Publication: publication.Config{
+			Name:      "cdc_publication",
+			AllTables: true,
+			Insert:    true,
+			Update:    true,
+			Delete:    true,
 		},
-		Slot: config.SlotConfig{
-			Name:   "cdc_slot",
-			Create: true,
+		Slot: slot.Config{
+			Name: "cdc_slot",
 		},
 	}
 
@@ -115,8 +118,8 @@ func NewElasticsearchBulkIndexer(cfg elasticsearch.Config, indexName string) (es
 	return bi, nil
 }
 
-func FilteredMapper(messages chan Message) pq.ListenerFunc {
-	return func(ctx *pq.ListenerContext) {
+func FilteredMapper(messages chan Message) replication.ListenerFunc {
+	return func(ctx *replication.ListenerContext) {
 		switch msg := ctx.Message.(type) {
 		case *format.Insert:
 			encoded, _ := json.Marshal(msg.Decoded)

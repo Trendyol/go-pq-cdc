@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	cdc "github.com/Trendyol/go-pq-cdc"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -27,7 +27,7 @@ func TestBasicFunctionality(t *testing.T) {
 	}
 
 	messageCh := make(chan any, 500)
-	handlerFunc := func(ctx *pq.ListenerContext) {
+	handlerFunc := func(ctx *replication.ListenerContext) {
 		switch msg := ctx.Message.(type) {
 		case *format.Insert, *format.Delete, *format.Update:
 			messageCh <- msg

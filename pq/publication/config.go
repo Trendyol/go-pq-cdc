@@ -9,7 +9,6 @@ import (
 
 type Config struct {
 	Name           string   `json:"name" yaml:"name"`
-	AllTables      bool     `json:"allTables" yaml:"allTables"`
 	Insert         bool     `json:"insert" yaml:"insert"`
 	Update         bool     `json:"update" yaml:"update"`
 	Delete         bool     `json:"delete" yaml:"delete"`
@@ -23,7 +22,7 @@ func (c Config) Validate() error {
 		err = errors.Join(err, errors.New("publication name cannot be empty"))
 	}
 
-	if !c.AllTables && len(c.IncludedTables) == 0 {
+	if len(c.IncludedTables) == 0 {
 		err = errors.Join(err, errors.New("publication table scope should be defined"))
 	}
 
@@ -36,6 +35,12 @@ func (c Config) Validate() error {
 
 func (c Config) createQuery() string {
 	sqlStatement := fmt.Sprintf(`CREATE PUBLICATION %s`, pq.QuoteIdentifier(c.Name))
+
+	quotedTables := make([]string, len(c.IncludedTables))
+	for i, table := range c.IncludedTables {
+		quotedTables[i] = pq.QuoteIdentifier(table)
+	}
+	sqlStatement += " FOR TABLE " + strings.Join(quotedTables, ", ")
 
 	var operations []string
 	if c.Insert {
@@ -51,41 +56,12 @@ func (c Config) createQuery() string {
 		operations = append(operations, "TRUNCATE")
 	}
 
-	sqlStatement += " FOR " + strings.Join(operations, ", ")
-
-	if c.AllTables {
-		sqlStatement += " FOR ALL TABLES"
-	} else if len(c.IncludedTables) > 0 {
-		quotedTables := make([]string, len(c.IncludedTables))
-		for i, table := range c.IncludedTables {
-			quotedTables[i] = pq.QuoteIdentifier(table)
-		}
-		sqlStatement += " TABLE " + strings.Join(quotedTables, ", ")
-	}
+	sqlStatement += fmt.Sprintf(" WITH (publish = '%s')", strings.Join(operations, ", "))
 
 	return sqlStatement
 }
 
 func (c Config) infoQuery() string {
-	return fmt.Sprintf(`
-		SELECT 
-			p.pubname, 
-			pg_get_userbyid(p.pubowner) AS owner, 
-			p.puballtables, 
-			p.pubinsert, 
-			p.pubupdate, 
-			p.pubdelete, 
-			p.pubtruncate,
-			COALESCE(array_agg(c.relname) FILTER (WHERE c.relname IS NOT NULL), ARRAY[]::text[]) AS included_tables
-		FROM 
-			pg_publication p
-		LEFT JOIN 
-			pg_publication_rel pr ON p.oid = pr.prpubid
-		LEFT JOIN 
-			pg_class c ON pr.prrelid = c.oid
-		WHERE 
-			p.pubname = %s
-		GROUP BY 
-			p.pubname, p.pubowner, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate;
-	`, pq.QuoteIdentifier(c.Name))
+	q := fmt.Sprintf(`SELECT p.pubname, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate, COALESCE(array_agg(c.relname) FILTER (WHERE c.relname IS NOT NULL), ARRAY[]::text[]) AS included_tables FROM pg_publication p LEFT JOIN pg_publication_rel pr ON p.oid = pr.prpubid LEFT JOIN pg_class c ON pr.prrelid = c.oid WHERE p.pubname = '%s' GROUP BY p.pubname, p.pubowner, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate; `, c.Name)
+	return q
 }

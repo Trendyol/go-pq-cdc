@@ -1,10 +1,11 @@
-package pq
+package slot
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
-	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -12,52 +13,65 @@ import (
 	"time"
 )
 
-const (
-	Logical  SlotType = "logical"
-	Physical SlotType = "physical"
+var (
+	ErrorSlotIsNotExists = errors.New("slot is not exists")
 )
 
 var typeMap = pgtype.NewMap()
 
-type SlotType string
-
 type Slot struct {
-	conn      Connection
+	cfg       Config
+	conn      pq.Connection
 	statusSQL string
 	metric    metric.Metric
 	ticker    *time.Ticker
 }
 
-type SlotInfo struct {
-	Name              string   `json:"name"`
-	Type              SlotType `json:"type"`
-	Active            bool     `json:"active"`
-	ActivePID         int32    `json:"activePID"`
-	RestartLSN        LSN      `json:"restartLSN"`
-	ConfirmedFlushLSN LSN      `json:"confirmedFlushLSN"`
-	WalStatus         string   `json:"walStatus"`
-	CurrentLSN        LSN      `json:"currentLSN"`
-	RetainedWALSize   LSN      `json:"retainedWALSize"`
-	Lag               LSN      `json:"lag"`
-}
+func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slot, error) {
+	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
 
-func NewSlot(ctx context.Context, cfg config.Config, metric metric.Metric) (*Slot, error) {
-	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Slot.Name)
-
-	conn, err := NewConnection(ctx, cfg)
+	conn, err := pq.NewConnection(ctx, dsn)
 	if err != nil {
 		return nil, errors.Wrap(err, "new slot connection")
 	}
 
 	return &Slot{
+		cfg:       cfg,
 		conn:      conn,
 		statusSQL: query,
-		metric:    metric,
+		metric:    m,
 		ticker:    time.NewTicker(time.Second * 3), // TODO: config
 	}, nil
 }
 
-func (s *Slot) GetInfo(ctx context.Context) (*SlotInfo, error) {
+func (s *Slot) Create(ctx context.Context) (*Info, error) {
+	info, err := s.Info(ctx)
+	if err != nil {
+		if !goerrors.Is(err, ErrorSlotIsNotExists) {
+			return nil, errors.Wrap(err, "replication slot info")
+		}
+	} else {
+		slog.Warn("replication slot already exists")
+		return info, nil
+	}
+
+	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s LOGICAL pgoutput", s.cfg.Name)
+	resultReader := s.conn.Exec(ctx, sql)
+	_, err = resultReader.ReadAll()
+	if err != nil {
+		return nil, errors.Wrap(err, "replication slot create result")
+	}
+
+	if err = resultReader.Close(); err != nil {
+		return nil, errors.Wrap(err, "replication slot create result reader close")
+	}
+
+	slog.Info("replication slot created", "name", s.cfg.Name)
+
+	return s.Info(ctx)
+}
+
+func (s *Slot) Info(ctx context.Context) (*Info, error) {
 	resultReader := s.conn.Exec(ctx, s.statusSQL)
 	results, err := resultReader.ReadAll()
 	if err != nil {
@@ -65,7 +79,7 @@ func (s *Slot) GetInfo(ctx context.Context) (*SlotInfo, error) {
 	}
 
 	if len(results) == 0 {
-		return nil, errors.New("replication slot info result empty")
+		return nil, ErrorSlotIsNotExists
 	}
 
 	slotInfo, err := decodeSlotInfoResult(results[0])
@@ -82,7 +96,7 @@ func (s *Slot) GetInfo(ctx context.Context) (*SlotInfo, error) {
 
 func (s *Slot) Metrics(ctx context.Context) {
 	for range s.ticker.C {
-		slotInfo, err := s.GetInfo(ctx)
+		slotInfo, err := s.Info(ctx)
 		if err != nil {
 			slog.Error("slot metrics", "error", err)
 			continue
@@ -102,8 +116,8 @@ func (s *Slot) Close() {
 	s.ticker.Stop()
 }
 
-func decodeSlotInfoResult(result *pgconn.Result) (*SlotInfo, error) {
-	var slotInfo SlotInfo
+func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {
+	var slotInfo Info
 	for i, fd := range result.FieldDescriptions {
 		v, err := decodeTextColumnData(result.Rows[0][i], fd.DataTypeOID)
 		if err != nil {
@@ -118,19 +132,19 @@ func decodeSlotInfoResult(result *pgconn.Result) (*SlotInfo, error) {
 		case "slot_name":
 			slotInfo.Name = v.(string)
 		case "slot_type":
-			slotInfo.Type = SlotType(v.(string))
+			slotInfo.Type = Type(v.(string))
 		case "active":
 			slotInfo.Active = v.(bool)
 		case "active_pid":
 			slotInfo.ActivePID = v.(int32)
 		case "restart_lsn":
-			slotInfo.RestartLSN, _ = ParseLSN(v.(string))
+			slotInfo.RestartLSN, _ = pq.ParseLSN(v.(string))
 		case "confirmed_flush_lsn":
-			slotInfo.ConfirmedFlushLSN, _ = ParseLSN(v.(string))
+			slotInfo.ConfirmedFlushLSN, _ = pq.ParseLSN(v.(string))
 		case "wal_status":
 			slotInfo.WalStatus = v.(string)
 		case "current_lsn":
-			slotInfo.CurrentLSN, _ = ParseLSN(v.(string))
+			slotInfo.CurrentLSN, _ = pq.ParseLSN(v.(string))
 		}
 	}
 

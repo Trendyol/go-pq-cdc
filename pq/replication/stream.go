@@ -136,7 +136,7 @@ func (s *stream) sink(ctx context.Context) {
 		case message.PrimaryKeepaliveMessageByteID:
 			continue
 		case message.XLogDataByteID:
-			xld, err := pq.ParseXLogData(msg.Data[1:])
+			xld, err := ParseXLogData(msg.Data[1:])
 			if err != nil {
 				slog.Error("parse xLog data", "error", err)
 				continue
@@ -220,5 +220,5 @@ func AppendUint64(buf []byte, n uint64) []byte {
 }
 
 func timeToPgTime(t time.Time) uint64 {
-	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - pq.MicroSecFromUnixEpochToY2K)
+	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - microSecFromUnixEpochToY2K)
 }

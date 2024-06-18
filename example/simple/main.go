@@ -36,11 +36,10 @@ func main() {
 		Database:  "cdc_db",
 		DebugMode: false,
 		Publication: publication.Config{
-			Name:      "cdc_publication",
-			AllTables: true,
-			Insert:    true,
-			Update:    true,
-			Delete:    true,
+			Name:   "cdc_publication",
+			Insert: true,
+			Update: true,
+			Delete: true,
 		},
 		Slot: slot.Config{
 			Name: "cdc_slot",

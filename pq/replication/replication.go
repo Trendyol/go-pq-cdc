@@ -1,8 +1,9 @@
-package pq
+package replication
 
 import (
 	"context"
 	"fmt"
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -11,15 +12,15 @@ import (
 )
 
 type Replication struct {
-	conn Connection
+	conn pq.Connection
 }
 
-func NewReplication(conn Connection) *Replication {
+func New(conn pq.Connection) *Replication {
 	return &Replication{conn: conn}
 }
 
 func (r *Replication) Start(publicationName, slotName string) error {
-	startLSN := LSN(2)
+	startLSN := pq.LSN(2)
 
 	pluginArguments := append([]string{
 		"proto_version '3'",
@@ -39,7 +40,7 @@ func (r *Replication) Start(publicationName, slotName string) error {
 func (r *Replication) Test(ctx context.Context) error {
 	var (
 		nextTli         int64
-		nextTliStartPos LSN
+		nextTliStartPos pq.LSN
 	)
 	for {
 		msg, err := r.conn.ReceiveMessage(ctx)
@@ -64,7 +65,7 @@ func (r *Replication) Test(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			nextTliStartPos, err = ParseLSN(tmpNextTliStartPos)
+			nextTliStartPos, err = pq.ParseLSN(tmpNextTliStartPos)
 			if err != nil {
 				return err
 			}

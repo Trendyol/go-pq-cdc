@@ -1,11 +1,13 @@
-package pq
+package replication
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/internal/slice"
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/go-playground/errors"
@@ -19,6 +21,10 @@ var (
 	ErrorSlotInUse = errors.New("replication slot in use")
 )
 
+const (
+	StandbyStatusUpdateByteID = 'r'
+)
+
 type ListenerContext struct {
 	Message any
 	Ack     func() error
@@ -29,23 +35,23 @@ type ListenerFunc func(ctx *ListenerContext)
 type Streamer interface {
 	Open(ctx context.Context) error
 	Close(ctx context.Context)
-	GetSystemInfo() IdentifySystemResult
+	GetSystemInfo() pq.IdentifySystemResult
 	GetMetric() metric.Metric
 }
 
 type stream struct {
-	conn   Connection
+	conn   pq.Connection
 	metric metric.Metric
-	system IdentifySystemResult
+	system pq.IdentifySystemResult
 	config config.Config
 
 	relation     map[uint32]*format.Relation
 	listenerFunc ListenerFunc
-	lastXLogPos  LSN
+	lastXLogPos  pq.LSN
 	closed       bool
 }
 
-func NewStream(conn Connection, cfg config.Config, m metric.Metric, system IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
+func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
 	return &stream{
 		conn:         conn,
 		metric:       m,
@@ -58,7 +64,7 @@ func NewStream(conn Connection, cfg config.Config, m metric.Metric, system Ident
 }
 
 func (s *stream) Open(ctx context.Context) error {
-	if err := s.replicationSetup(ctx); err != nil {
+	if err := s.setup(ctx); err != nil {
 		if v, ok := err.(*pgconn.PgError); ok && v.Code == "55006" {
 			return ErrorSlotInUse
 		}
@@ -72,8 +78,8 @@ func (s *stream) Open(ctx context.Context) error {
 	return nil
 }
 
-func (s *stream) replicationSetup(ctx context.Context) error {
-	replication := NewReplication(s.conn)
+func (s *stream) setup(ctx context.Context) error {
+	replication := New(s.conn)
 
 	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name); err != nil {
 		return err
@@ -130,7 +136,7 @@ func (s *stream) sink(ctx context.Context) {
 		case message.PrimaryKeepaliveMessageByteID:
 			continue
 		case message.XLogDataByteID:
-			xld, err := ParseXLogData(msg.Data[1:])
+			xld, err := pq.ParseXLogData(msg.Data[1:])
 			if err != nil {
 				slog.Error("parse xLog data", "error", err)
 				continue
@@ -180,10 +186,39 @@ func (s *stream) Close(ctx context.Context) {
 	_ = s.conn.Close(ctx)
 }
 
-func (s *stream) GetSystemInfo() IdentifySystemResult {
+func (s *stream) GetSystemInfo() pq.IdentifySystemResult {
 	return s.system
 }
 
 func (s *stream) GetMetric() metric.Metric {
 	return s.metric
+}
+
+func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, WALWritePosition uint64) error {
+	data := make([]byte, 0, 34)
+	data = append(data, StandbyStatusUpdateByteID)
+	data = AppendUint64(data, WALWritePosition)
+	data = AppendUint64(data, WALWritePosition)
+	data = AppendUint64(data, WALWritePosition)
+	data = AppendUint64(data, timeToPgTime(time.Now()))
+	data = append(data, 0)
+
+	cd := &pgproto3.CopyData{Data: data}
+	buf, err := cd.Encode(nil)
+	if err != nil {
+		return err
+	}
+
+	return conn.Frontend().SendUnbufferedEncodedCopyData(buf)
+}
+
+func AppendUint64(buf []byte, n uint64) []byte {
+	wp := len(buf)
+	buf = append(buf, 0, 0, 0, 0, 0, 0, 0, 0)
+	binary.BigEndian.PutUint64(buf[wp:], n)
+	return buf
+}
+
+func timeToPgTime(t time.Time) uint64 {
+	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - pq.MicroSecFromUnixEpochToY2K)
 }

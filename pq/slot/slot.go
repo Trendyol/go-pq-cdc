@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrorSlotIsNotExists = errors.New("slot is not exists")
+	ErrorSlotIsNotExists = goerrors.New("slot is not exists")
 )
 
 var typeMap = pgtype.NewMap()

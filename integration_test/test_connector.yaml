@@ -4,6 +4,12 @@ database: cdc_db
 debugMode: false
 publication:
   name: cdc_publication
+  insert: true
+  update: true
+  delete: true
+  truncate: true
+  includedTables:
+    - books
 metric:
   port: 8083
 

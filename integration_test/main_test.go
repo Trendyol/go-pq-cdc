@@ -150,7 +150,7 @@ func RestoreDB(ctx context.Context) error {
 func createCDCUser(ctx context.Context, conn pq.Connection, cfg config.Config) error {
 	commands := []string{
 		fmt.Sprintf("CREATE USER %s WITH REPLICATION PASSWORD '%s';", cfg.Username, cfg.Password),
-		fmt.Sprintf("GRANT CONNECT ON DATABASE cdc_db TO %s;", cfg.Username),
+		fmt.Sprintf("GRANT CONNECT, CREATE ON DATABASE %s TO %s;", cfg.Database, cfg.Username),
 		fmt.Sprintf("GRANT USAGE ON SCHEMA public TO %s;", cfg.Username),
 	}
 

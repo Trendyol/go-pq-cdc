@@ -28,8 +28,8 @@ type MetricConfig struct {
 }
 
 type LoggerConfig struct {
-	Logger   logger.Logger `json:"-" yaml:"-"`
-	LogLevel slog.Level    `json:"level" yaml:"level"`
+	Logger   logger.Logger `json:"-" yaml:"-"`         // custom logger
+	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
 }
 
 func (c Config) DSN() string {

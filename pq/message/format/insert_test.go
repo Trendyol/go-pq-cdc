@@ -7,8 +7,7 @@ import (
 )
 
 func TestInsert_New(t *testing.T) {
-	// data := []byte{73, 0, 0, 64, 6, 78, 0, 2, 116, 0, 0, 0, 3, 54, 48, 53, 116, 0, 0, 0, 3, 102, 111, 111}
-	data := []byte{73, 0, 0, 64, 2, 78, 0, 3, 116, 0, 0, 0, 3, 49, 54, 56, 116, 0, 0, 0, 8}
+	data := []byte{73, 0, 0, 64, 6, 78, 0, 2, 116, 0, 0, 0, 3, 54, 48, 53, 116, 0, 0, 0, 3, 102, 111, 111}
 
 	rel := map[uint32]*Relation{
 		16390: {
@@ -35,7 +34,7 @@ func TestInsert_New(t *testing.T) {
 		},
 	}
 
-	msg, err := NewInsert(data, true, rel)
+	msg, err := NewInsert(data, false, rel)
 	if err != nil {
 		t.Fatal(err)
 	}

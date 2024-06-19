@@ -152,7 +152,7 @@ func (s *stream) sink(ctx context.Context) {
 				Ack: func() error {
 					pos := s.system.XLogPos
 					s.lastXLogPos = pos
-					slog.Info("send stand by status update", "xLogPos", pos.String())
+					slog.Debug("send stand by status update", "xLogPos", pos.String())
 					return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
 				},
 			}

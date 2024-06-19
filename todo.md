@@ -3,7 +3,7 @@
 - [x] Add leader election (take the responsibility when slot is not active)
 - [x] Publication Create all options
 - [x] Slot Create all options
-- [ ] Support SET REPLICA IDENTITY
+- [x] Support SET REPLICA IDENTITY
 - [x] Fix race condition
 - [x] Custom Logger interface and log level for default 
 - [ ] Add integration test cases documentation
@@ -15,9 +15,15 @@
   - [ ] Add Multi Value Insert Test
   - [ ] Add Concurrent Operations Test
   - [x] Add Transaction Rollback Commit Test
-  - [ ] Add System IDENTIFY FULL Test
+  - [ ] Add Replica Identity Test
+    - [ ] Table is not exists
+    - [ ] Table replica identity is not changed
+    - [ ] Table replica identity is changed
   - [ ] Add Leader Election Test
   - [ ] Add prometheus metrics Test
+  - [ ] Add publication create/exists test
+  - [ ] Add slot create/exists test
+  - [ ] Add
 - [ ] Add unit tests
 - [ ] Add Contribution.md
 - [ ] Add ci pipeline for project

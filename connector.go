@@ -105,7 +105,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	}
 	slog.Info("slot info", "info", slotInfo)
 
-	stream := replication.NewStream(conn, cfg, m, system, listenerFunc)
+	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
 	prometheusRegistry := metric.NewRegistry(m)
 
 	return &connector{

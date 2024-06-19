@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"log/slog"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,24 +36,26 @@ type ListenerFunc func(ctx *ListenerContext)
 type Streamer interface {
 	Open(ctx context.Context) error
 	Close(ctx context.Context)
-	GetSystemInfo() pq.IdentifySystemResult
+	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
 }
 
 type stream struct {
 	conn   pq.Connection
 	metric metric.Metric
-	system pq.IdentifySystemResult
+	system *pq.IdentifySystemResult
 	config config.Config
 
 	relation     map[uint32]*format.Relation
 	messageCH    chan any
 	listenerFunc ListenerFunc
 	lastXLogPos  pq.LSN
-	closed       bool
+	sinkEnd      chan struct{}
+	processEnd   chan struct{}
+	closed       atomic.Bool
 }
 
-func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
+func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
 	return &stream{
 		conn:         conn,
 		metric:       m,
@@ -62,6 +65,8 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system pq
 		messageCH:    make(chan any, 1000),
 		listenerFunc: listenerFunc,
 		lastXLogPos:  10,
+		sinkEnd:      make(chan struct{}, 1),
+		processEnd:   make(chan struct{}, 1),
 	}
 }
 
@@ -106,7 +111,7 @@ func (s *stream) sink(ctx context.Context) {
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
 		cancel()
 		if err != nil {
-			if s.closed {
+			if s.closed.Load() {
 				slog.Info("stream stopped")
 				break
 			}
@@ -164,9 +169,12 @@ func (s *stream) sink(ctx context.Context) {
 			s.messageCH <- decodedMsg
 		}
 	}
+	s.sinkEnd <- struct{}{}
 }
 
 func (s *stream) process(ctx context.Context) {
+	slog.Info("postgres message process started")
+
 	for {
 		msg, ok := <-s.messageCH
 		if !ok {
@@ -196,15 +204,26 @@ func (s *stream) process(ctx context.Context) {
 		s.listenerFunc(lCtx)
 		s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 	}
+	s.processEnd <- struct{}{}
 }
 
 func (s *stream) Close(ctx context.Context) {
-	s.closed = true
+	s.closed.Store(true)
+
+	<-s.sinkEnd
+	close(s.sinkEnd)
+	slog.Info("postgres message sink stopped")
+
 	close(s.messageCH)
+	<-s.processEnd
+	close(s.processEnd)
+	slog.Info("postgres message process stopped")
+
 	_ = s.conn.Close(ctx)
+	slog.Info("postgres connection closed")
 }
 
-func (s *stream) GetSystemInfo() pq.IdentifySystemResult {
+func (s *stream) GetSystemInfo() *pq.IdentifySystemResult {
 	return s.system
 }
 

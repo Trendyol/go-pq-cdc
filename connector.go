@@ -72,6 +72,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	}
 
 	pub := publication.New(cfg.Publication, conn)
+	if err = pub.SetReplicaIdentities(ctx); err != nil {
+		return nil, err
+	}
 	publicationInfo, err := pub.Create(ctx)
 	if err != nil {
 		return nil, err

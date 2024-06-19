@@ -80,3 +80,23 @@ func (tc Table) Validate() error {
 
 	return nil
 }
+
+type Tables []Table
+
+func (ts Tables) Diff(tss Tables) Tables {
+	res := Tables{}
+	tssMap := make(map[string]Table)
+
+	for _, t := range tss {
+		tssMap[t.Name+t.ReplicaIdentity] = t
+	}
+
+	for _, t := range ts {
+		if v, found := tssMap[t.Name+t.ReplicaIdentity]; !found || v.ReplicaIdentity != t.ReplicaIdentity {
+			res = append(res, t)
+		}
+	}
+
+	return res
+
+}

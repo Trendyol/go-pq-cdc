@@ -36,6 +36,10 @@ func (c *Config) SetDefault() {
 	if c.Metric.Port == 0 {
 		c.Metric.Port = 8080
 	}
+
+	if c.Slot.SlotActivityCheckerIntervalMS == 0 {
+		c.Slot.SlotActivityCheckerIntervalMS = 1000
+	}
 }
 
 func (c *Config) Validate() error {

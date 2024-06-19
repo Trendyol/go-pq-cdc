@@ -107,7 +107,7 @@ func (s *stream) sink(ctx context.Context) {
 	slog.Info("postgres message sink started")
 
 	for {
-		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*10))
+		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*5))
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
 		cancel()
 		if err != nil {

@@ -40,7 +40,7 @@ func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slo
 		conn:      conn,
 		statusSQL: query,
 		metric:    m,
-		ticker:    time.NewTicker(time.Second * 3), // TODO: config
+		ticker:    time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerIntervalMS),
 	}, nil
 }
 

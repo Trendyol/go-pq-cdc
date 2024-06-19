@@ -6,13 +6,13 @@ import (
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/http"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -64,15 +64,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	cfg.SetDefault()
 	cfg.Print()
 
-	logLevel := slog.LevelInfo
-	if cfg.DebugMode { // ayri bir config'i olsun
-		logLevel = slog.LevelDebug
-	}
-
-	// custom logger inject edilebilsin
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	})))
+	logger.InitLogger(cfg.Logger.Logger)
 
 	conn, err := pq.NewConnection(ctx, cfg.DSN())
 	if err != nil {
@@ -84,13 +76,13 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("publication", "info", publicationInfo)
+	logger.Info("publication", "info", publicationInfo)
 
 	system, err := pq.IdentifySystem(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.XLogPos, "database:", system.Database)
+	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.XLogPos, "database:", system.Database)
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
@@ -103,7 +95,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("slot info", "info", slotInfo)
+	logger.Info("slot info", "info", slotInfo)
 
 	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
 	prometheusRegistry := metric.NewRegistry(m)
@@ -127,15 +119,15 @@ func (c *connector) Start(ctx context.Context) {
 	err := c.stream.Open(ctx)
 	if err != nil {
 		if goerrors.Is(err, replication.ErrorSlotInUse) {
-			slog.Info("capture failed")
+			logger.Info("capture failed")
 			c.Start(ctx)
 			return
 		}
-		slog.Error("postgres stream open", "error", err)
+		logger.Error("postgres stream open", "error", err)
 		return
 	}
 
-	slog.Info("slot captured")
+	logger.Info("slot captured")
 
 	go c.slot.Metrics(ctx)
 
@@ -147,7 +139,7 @@ func (c *connector) Start(ctx context.Context) {
 
 	select {
 	case <-c.cancelCh:
-		slog.Debug("cancel channel triggered")
+		logger.Debug("cancel channel triggered")
 	}
 }
 
@@ -182,7 +174,7 @@ func (c *connector) SetMetricCollectors(metricCollectors ...prometheus.Collector
 }
 
 func (c *connector) CaptureSlot(ctx context.Context) {
-	slog.Info("slot capturing...")
+	logger.Info("slot capturing...")
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -195,7 +187,7 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 			break
 		}
 
-		slog.Debug("capture slot", "slotInfo", info)
+		logger.Debug("capture slot", "slotInfo", info)
 	}
 }
 

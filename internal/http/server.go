@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"log/slog"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -50,15 +50,15 @@ func NewServer(cfg config.Config, registry metric.Registry) Server {
 }
 
 func (s *server) Listen() {
-	slog.Info(fmt.Sprintf("server starting on port :%d", s.cdcConfig.Metric.Port))
+	logger.Info(fmt.Sprintf("server starting on port :%d", s.cdcConfig.Metric.Port))
 
 	err := s.server.ListenAndServe()
 	if err != nil {
 		if errors.Is(err, http.ErrServerClosed) && s.closed {
-			slog.Info("server stopped")
+			logger.Info("server stopped")
 			return
 		}
-		slog.Error("server cannot start", "port", s.cdcConfig.Metric.Port, "error", err)
+		logger.Error("server cannot start", "port", s.cdcConfig.Metric.Port, "error", err)
 	}
 }
 
@@ -66,7 +66,7 @@ func (s *server) Shutdown() {
 	s.closed = true
 	err := s.server.Shutdown(context.Background())
 	if err != nil {
-		slog.Error("error while api cannot be shutdown", "error", err)
+		logger.Error("error while api cannot be shutdown", "error", err)
 		panic(err)
 	}
 }

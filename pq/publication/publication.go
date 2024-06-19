@@ -3,11 +3,11 @@ package publication
 import (
 	"context"
 	goerrors "errors"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"log/slog"
 )
 
 var (
@@ -32,7 +32,7 @@ func (c *Publication) Create(ctx context.Context) (*Config, error) {
 			return nil, errors.Wrap(err, "publication info")
 		}
 	} else {
-		slog.Warn("publication already exists")
+		logger.Warn("publication already exists")
 		return info, nil
 	}
 
@@ -46,7 +46,7 @@ func (c *Publication) Create(ctx context.Context) (*Config, error) {
 		return nil, errors.Wrap(err, "publication create result reader close")
 	}
 
-	slog.Info("publication created", "name", c.cfg.Name)
+	logger.Info("publication created", "name", c.cfg.Name)
 
 	return &c.cfg, nil
 }

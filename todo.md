@@ -5,6 +5,7 @@
 - [x] Slot Create all options
 - [ ] Support SET REPLICA IDENTITY
 - [x] Fix race condition
+- [x] Custom Logger interface and log level for default 
 - [ ] Add integration test cases documentation
   - [x] Write possible cases and make priority list for implementation
   - [x] Add priority list to todo.md

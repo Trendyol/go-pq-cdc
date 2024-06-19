@@ -5,11 +5,11 @@ import (
 	goerrors "errors"
 	"fmt"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"log/slog"
 	"time"
 )
 
@@ -51,7 +51,7 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 			return nil, errors.Wrap(err, "replication slot info")
 		}
 	} else {
-		slog.Warn("replication slot already exists")
+		logger.Warn("replication slot already exists")
 		return info, nil
 	}
 
@@ -66,7 +66,7 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 		return nil, errors.Wrap(err, "replication slot create result reader close")
 	}
 
-	slog.Info("replication slot created", "name", s.cfg.Name)
+	logger.Info("replication slot created", "name", s.cfg.Name)
 
 	return s.Info(ctx)
 }
@@ -98,7 +98,7 @@ func (s *Slot) Metrics(ctx context.Context) {
 	for range s.ticker.C {
 		slotInfo, err := s.Info(ctx)
 		if err != nil {
-			slog.Error("slot metrics", "error", err)
+			logger.Error("slot metrics", "error", err)
 			continue
 		}
 
@@ -108,7 +108,7 @@ func (s *Slot) Metrics(ctx context.Context) {
 		s.metric.SetSlotRetainedWALSize(float64(slotInfo.RetainedWALSize))
 		s.metric.SetSlotLag(float64(slotInfo.Lag))
 
-		slog.Debug("slot metrics", "info", slotInfo)
+		logger.Debug("slot metrics", "info", slotInfo)
 	}
 }
 

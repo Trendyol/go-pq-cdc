@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	"log/slog"
 	"strings"
 )
 
@@ -18,10 +20,16 @@ type Config struct {
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
+	Logger      LoggerConfig       `json:"-" yaml:"-"`
 }
 
 type MetricConfig struct {
 	Port int `json:"port" yaml:"port"`
+}
+
+type LoggerConfig struct {
+	Logger   logger.Logger `json:"-" yaml:"-"`
+	LogLevel slog.Level    `json:"-" yaml:"-"`
 }
 
 func (c Config) DSN() string {
@@ -39,6 +47,10 @@ func (c *Config) SetDefault() {
 
 	if c.Slot.SlotActivityCheckerIntervalMS == 0 {
 		c.Slot.SlotActivityCheckerIntervalMS = 1000
+	}
+
+	if c.Logger.Logger == nil {
+		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
 	}
 }
 

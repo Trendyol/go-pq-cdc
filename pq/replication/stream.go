@@ -7,13 +7,13 @@ import (
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/internal/slice"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
-	"log/slog"
 	"sync/atomic"
 	"time"
 )
@@ -82,7 +82,7 @@ func (s *stream) Open(ctx context.Context) error {
 
 	go s.process(ctx)
 
-	slog.Info("cdc stream started")
+	logger.Info("cdc stream started")
 
 	return nil
 }
@@ -98,13 +98,13 @@ func (s *stream) setup(ctx context.Context) error {
 		return err
 	}
 
-	slog.Info("replication started", "slot", s.config.Slot.Name)
+	logger.Info("replication started", "slot", s.config.Slot.Name)
 
 	return nil
 }
 
 func (s *stream) sink(ctx context.Context) {
-	slog.Info("postgres message sink started")
+	logger.Info("postgres message sink started")
 
 	for {
 		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*5))
@@ -112,32 +112,32 @@ func (s *stream) sink(ctx context.Context) {
 		cancel()
 		if err != nil {
 			if s.closed.Load() {
-				slog.Info("stream stopped")
+				logger.Info("stream stopped")
 				break
 			}
 
 			if pgconn.Timeout(err) {
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.lastXLogPos))
 				if err != nil {
-					slog.Error("send stand by status update", "error", err)
+					logger.Error("send stand by status update", "error", err)
 					break
 				}
-				slog.Info("send stand by status update")
+				logger.Info("send stand by status update")
 				continue
 			}
-			slog.Error("receive message error", "error", err)
+			logger.Error("receive message error", "error", err)
 			break
 		}
 
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
 			res, _ := errMsg.MarshalJSON()
-			slog.Error("receive postgres wal error: " + string(res))
+			logger.Error("receive postgres wal error: " + string(res))
 			continue
 		}
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			slog.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
+			logger.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
 			continue
 		}
 
@@ -149,11 +149,11 @@ func (s *stream) sink(ctx context.Context) {
 		case message.XLogDataByteID:
 			xld, err = ParseXLogData(msg.Data[1:])
 			if err != nil {
-				slog.Error("parse xLog data", "error", err)
+				logger.Error("parse xLog data", "error", err)
 				continue
 			}
 
-			slog.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
+			logger.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
 
 			s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
 
@@ -162,7 +162,7 @@ func (s *stream) sink(ctx context.Context) {
 			var decodedMsg any
 			decodedMsg, err = message.New(xld.WALData, s.relation)
 			if err != nil || decodedMsg == nil {
-				slog.Debug("wal data message parsing error", "error", err)
+				logger.Debug("wal data message parsing error", "error", err)
 				continue
 			}
 
@@ -173,7 +173,7 @@ func (s *stream) sink(ctx context.Context) {
 }
 
 func (s *stream) process(ctx context.Context) {
-	slog.Info("postgres message process started")
+	logger.Info("postgres message process started")
 
 	for {
 		msg, ok := <-s.messageCH
@@ -186,7 +186,7 @@ func (s *stream) process(ctx context.Context) {
 			Ack: func() error {
 				pos := s.system.LoadXLogPos()
 				s.system.UpdateXLogPos(pos)
-				slog.Debug("send stand by status update", "xLogPos", pos.String())
+				logger.Debug("send stand by status update", "xLogPos", pos.String())
 				return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
 			},
 		}
@@ -212,15 +212,15 @@ func (s *stream) Close(ctx context.Context) {
 
 	<-s.sinkEnd
 	close(s.sinkEnd)
-	slog.Info("postgres message sink stopped")
+	logger.Info("postgres message sink stopped")
 
 	close(s.messageCH)
 	<-s.processEnd
 	close(s.processEnd)
-	slog.Info("postgres message process stopped")
+	logger.Info("postgres message process stopped")
 
 	_ = s.conn.Close(ctx)
-	slog.Info("postgres connection closed")
+	logger.Info("postgres connection closed")
 }
 
 func (s *stream) GetSystemInfo() *pq.IdentifySystemResult {

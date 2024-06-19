@@ -10,16 +10,19 @@ import (
 	"strings"
 )
 
-var (
-	ErrorTablesNotExists = goerrors.New("publication is not exists")
+const (
+	ReplicaIdentityFull    = "FULL"
+	ReplicaIdentityDefault = "DEFAULT"
 )
 
-var ReplicaIdentityOptions = []string{"DEFAULT", "FULL"}
-
-var ReplicaIdentityMap = map[string]string{
-	"d": "DEFAULT", // primary key on old value
-	"f": "FULL",    // full row on old value
-}
+var (
+	ErrorTablesNotExists   = goerrors.New("publication is not exists")
+	ReplicaIdentityOptions = []string{ReplicaIdentityDefault, ReplicaIdentityFull}
+	ReplicaIdentityMap     = map[string]string{
+		"d": ReplicaIdentityDefault, // primary key on old value
+		"f": ReplicaIdentityFull,    // full row on old value
+	}
+)
 
 func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 	tables, err := c.GetReplicaIdentities(ctx)

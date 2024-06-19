@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
-	"log/slog"
 	"strings"
 )
 
@@ -72,7 +71,7 @@ func (c *Config) Print() {
 	cfg := *c
 	cfg.Password = "*******"
 	b, _ := json.Marshal(cfg)
-	slog.Info("used config: " + string(b))
+	fmt.Println("used config: " + string(b))
 }
 
 func isEmpty(s string) bool {

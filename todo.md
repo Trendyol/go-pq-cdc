@@ -32,5 +32,5 @@
 - [ ] Add License file
 - [ ] Add Dockerfile
 - [ ] Create Grafana dashboard
-  - [ ] Expose pg_stats
-  - [ ] Expose slot stats
+  - [x] Expose pg_stats
+  - [x] Expose slot stats

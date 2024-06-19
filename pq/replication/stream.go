@@ -152,7 +152,7 @@ func (s *stream) sink(ctx context.Context) {
 
 			s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
 
-			s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
+			s.system.UpdateXLogPos(xld.WALStart)
 
 			var decodedMsg any
 			decodedMsg, err = message.New(xld.WALData, s.relation)
@@ -176,8 +176,8 @@ func (s *stream) process(ctx context.Context) {
 		lCtx := &ListenerContext{
 			Message: msg,
 			Ack: func() error {
-				pos := s.system.XLogPos
-				s.lastXLogPos = pos
+				pos := s.system.LoadXLogPos()
+				s.system.UpdateXLogPos(pos)
 				slog.Debug("send stand by status update", "xLogPos", pos.String())
 				return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
 			},

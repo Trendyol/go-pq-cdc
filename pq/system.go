@@ -6,9 +6,11 @@ import (
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"strconv"
+	"sync"
 )
 
 type IdentifySystemResult struct {
+	mu       *sync.RWMutex
 	SystemID string
 	Timeline int32
 	XLogPos  LSN
@@ -58,5 +60,21 @@ func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, e
 
 	isr.Database = string(row[3])
 
+	isr.mu = &sync.RWMutex{}
 	return isr, nil
+}
+
+func (isr *IdentifySystemResult) UpdateXLogPos(l LSN) {
+	isr.mu.Lock()
+	defer isr.mu.Unlock()
+
+	if isr.XLogPos < l {
+		isr.XLogPos = l
+	}
+}
+
+func (isr *IdentifySystemResult) LoadXLogPos() LSN {
+	isr.mu.RLock()
+	defer isr.mu.RUnlock()
+	return isr.XLogPos
 }

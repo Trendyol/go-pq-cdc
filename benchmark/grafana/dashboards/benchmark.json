@@ -86,7 +86,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "go-pq-cdc",
+                  "go-pq-cdc-kafka",
                   "debezium"
                 ],
                 "prefix": "All except:",
@@ -138,7 +138,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "avg(container_memory_usage_bytes{name=~\"debezium|go-pq-cdc\"}) by (name)",
+          "expr": "avg(container_memory_usage_bytes{name=~\"debezium|go-pq-cdc-kafka\"}) by (name)",
           "instant": false,
           "legendFormat": "{{name}}",
           "range": true,
@@ -239,7 +239,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"debezium|go-pq-cdc\"}[$__rate_interval])) by (name) * 100",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"debezium|go-pq-cdc-kafka\"}[$__rate_interval])) by (name) * 100",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -314,7 +314,7 @@
                 "mode": "exclude",
                 "names": [
                   "debezium",
-                  "go-pq-cdc"
+                  "go-pq-cdc-kafka"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -365,7 +365,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"debezium|go-pq-cdc\"}[$__rate_interval])) by (name)",
+          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"debezium|go-pq-cdc-kafka\"}[$__rate_interval])) by (name)",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -466,7 +466,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"debezium|go-pq-cdc\"}[$__rate_interval])) by (name)",
+          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"debezium|go-pq-cdc-kafka\"}[$__rate_interval])) by (name)",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -568,12 +568,12 @@
           "disableTextWrap": false,
           "editorMode": "builder",
           "exemplar": false,
-          "expr": "vectorized_cluster_partition_end_offset{topic=\"go-pq-cdc.test.produce\"}",
+          "expr": "vectorized_cluster_partition_end_offset{topic=\"cdc.test.produce\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": false,
           "interval": "0",
-          "legendFormat": "go-pq-cdc",
+          "legendFormat": "go-pq-cdc-kafka",
           "range": true,
           "refId": "A",
           "useBackend": false

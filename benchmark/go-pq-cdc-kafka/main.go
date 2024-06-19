@@ -19,12 +19,6 @@ import (
 /*
 	psql "postgres://cdc_user:cdc_pass@127.0.0.1/cdc_db?replication=database"
 
-	CREATE TABLE users (
-	 id serial PRIMARY KEY,
-	 name text NOT NULL,
-	 created_on timestamptz
-	);
-
 	INSERT INTO users (name)
 	SELECT
 		'Oyleli' || i

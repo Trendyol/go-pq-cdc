@@ -4,12 +4,16 @@ database: cdc_db
 debugMode: false
 publication:
   name: cdc_publication
-  insert: true
-  update: true
-  delete: true
-  truncate: true
-  includedTables:
-    - books
+  operations:
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+  tables:
+    - name: books
+      replicaIdentity: FULL
+logger:
+  level: INFO
 metric:
   port: 8083
 

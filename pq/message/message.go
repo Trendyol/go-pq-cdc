@@ -54,6 +54,7 @@ func New(data []byte, relation map[uint32]*Relation) (any, error) {
 		streamedTransaction = true
 		return nil, nil
 	default:
-		return nil, errors.Wrap(ByteNotSupported, string(data[0]))
+		// return nil, errors.Wrap(ByteNotSupported, string(data[0]))
+		return nil, nil
 	}
 }

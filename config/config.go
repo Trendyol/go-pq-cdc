@@ -20,7 +20,7 @@ type Config struct {
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
-	Logger      LoggerConfig       `json:"-" yaml:"-"`
+	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
 }
 
 type MetricConfig struct {
@@ -29,7 +29,7 @@ type MetricConfig struct {
 
 type LoggerConfig struct {
 	Logger   logger.Logger `json:"-" yaml:"-"`
-	LogLevel slog.Level    `json:"-" yaml:"-"`
+	LogLevel slog.Level    `json:"level" yaml:"level"`
 }
 
 func (c Config) DSN() string {

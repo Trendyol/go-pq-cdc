@@ -117,14 +117,6 @@ func SetupTestDB(ctx context.Context, conn pq.Connection, cfg config.Config) err
 		return err
 	}
 
-	if err := createPublication(ctx, conn, cfg); err != nil {
-		return err
-	}
-
-	if err := createReplicationSlot(ctx, conn, cfg); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -149,7 +141,7 @@ func RestoreDB(ctx context.Context) error {
 
 func createCDCUser(ctx context.Context, conn pq.Connection, cfg config.Config) error {
 	commands := []string{
-		fmt.Sprintf("CREATE USER %s WITH REPLICATION PASSWORD '%s';", cfg.Username, cfg.Password),
+		fmt.Sprintf("CREATE USER %s WITH SUPERUSER REPLICATION PASSWORD '%s';", cfg.Username, cfg.Password),
 		fmt.Sprintf("GRANT CONNECT, CREATE ON DATABASE %s TO %s;", cfg.Database, cfg.Username),
 		fmt.Sprintf("GRANT USAGE ON SCHEMA public TO %s;", cfg.Username),
 	}
@@ -184,24 +176,6 @@ func dropPublication(ctx context.Context, conn pq.Connection, cfg config.Config)
 	err := pgExec(ctx, conn, "DROP PUBLICATION IF EXISTS "+cfg.Publication.Name)
 	if err != nil {
 		return errors.Wrap(err, "drop publication")
-	}
-
-	return nil
-}
-
-func createPublication(ctx context.Context, conn pq.Connection, cfg config.Config) error {
-	err := pgExec(ctx, conn, "CREATE PUBLICATION "+cfg.Publication.Name+" FOR TABLE books;")
-	if err != nil {
-		return errors.Wrap(err, "create publication")
-	}
-
-	return nil
-}
-
-func createReplicationSlot(ctx context.Context, conn pq.Connection, cfg config.Config) error {
-	err := pgExec(ctx, conn, "CREATE_REPLICATION_SLOT "+cfg.Slot.Name+" LOGICAL pgoutput;")
-	if err != nil {
-		return errors.Wrap(err, "create replication slot")
 	}
 
 	return nil

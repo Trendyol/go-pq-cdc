@@ -3,6 +3,8 @@
 - [x] Add leader election (take the responsibility when slot is not active)
 - [x] Publication Create all options
 - [x] Slot Create all options
+- [ ] Support SET REPLICA IDENTITY
+- [x] Fix race condition
 - [ ] Add integration test cases documentation
   - [x] Write possible cases and make priority list for implementation
   - [x] Add priority list to todo.md

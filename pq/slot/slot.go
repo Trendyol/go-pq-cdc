@@ -78,7 +78,7 @@ func (s *Slot) Info(ctx context.Context) (*Info, error) {
 		return nil, errors.Wrap(err, "replication slot info result")
 	}
 
-	if len(results) == 0 {
+	if len(results) == 0 || results[0].CommandTag.String() == "SELECT 0" {
 		return nil, ErrorSlotIsNotExists
 	}
 

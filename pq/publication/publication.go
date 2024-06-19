@@ -61,7 +61,7 @@ func (c *Publication) Info(ctx context.Context) (*Config, error) {
 		return nil, errors.Wrap(err, "publication info result")
 	}
 
-	if len(results) == 0 {
+	if len(results) == 0 || results[0].CommandTag.String() == "SELECT 0" {
 		return nil, ErrorPublicationIsNotExists
 	}
 
@@ -93,16 +93,24 @@ func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 		case "pubname":
 			publicationConfig.Name = v.(string)
 		case "pubinsert":
-			publicationConfig.Insert = v.(bool)
+			if v.(bool) {
+				publicationConfig.Operations = append(publicationConfig.Operations, "INSERT")
+			}
 		case "pubupdate":
-			publicationConfig.Update = v.(bool)
+			if v.(bool) {
+				publicationConfig.Operations = append(publicationConfig.Operations, "UPDATE")
+			}
 		case "pubdelete":
-			publicationConfig.Delete, _ = v.(bool)
+			if v.(bool) {
+				publicationConfig.Operations = append(publicationConfig.Operations, "DELETE")
+			}
 		case "pubtruncate":
-			publicationConfig.Truncate, _ = v.(bool)
+			if v.(bool) {
+				publicationConfig.Operations = append(publicationConfig.Operations, "TRUNCATE")
+			}
 		case "included_tables":
 			for _, val := range v.([]any) {
-				publicationConfig.IncludedTables = append(publicationConfig.IncludedTables, val.(string))
+				publicationConfig.Tables = append(publicationConfig.Tables, TableConfig{Name: val.(string)})
 			}
 		}
 	}

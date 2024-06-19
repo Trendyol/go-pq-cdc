@@ -64,16 +64,27 @@ func main() {
 		Database:  "cdc_db",
 		DebugMode: false,
 		Publication: publication.Config{
-			Name:   "cdc_publication",
-			Insert: true,
-			Update: true,
-			Delete: true,
+			Name: "cdc_publication",
+			Operations: publication.Operations{
+				publication.OperationInsert,
+				publication.OperationDelete,
+				publication.OperationTruncate,
+				publication.OperationUpdate,
+			},
+			Tables: publication.Tables{publication.Table{
+				Name:            "users",
+				ReplicaIdentity: publication.ReplicaIdentityFull,
+			}},
 		},
 		Slot: slot.Config{
-			Name: "cdc_slot",
+			Name:                          "cdc_slot",
+			SlotActivityCheckerIntervalMS: 3000,
 		},
 		Metric: config.MetricConfig{
 			Port: 2112,
+		},
+		Logger: config.LoggerConfig{
+			LogLevel: slog.LevelInfo,
 		},
 	}
 

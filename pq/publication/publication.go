@@ -110,7 +110,7 @@ func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 			}
 		case "included_tables":
 			for _, val := range v.([]any) {
-				publicationConfig.Tables = append(publicationConfig.Tables, TableConfig{Name: val.(string)})
+				publicationConfig.Tables = append(publicationConfig.Tables, Table{Name: val.(string)})
 			}
 		}
 	}

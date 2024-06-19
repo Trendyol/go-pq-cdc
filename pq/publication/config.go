@@ -11,9 +11,9 @@ import (
 var OperationOptions = []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE"}
 
 type Config struct {
-	Name       string        `json:"name" yaml:"name"`
-	Operations []string      `json:"operations" yaml:"operations"`
-	Tables     []TableConfig `json:"tables" yaml:"tables"`
+	Name       string   `json:"name" yaml:"name"`
+	Operations []string `json:"operations" yaml:"operations"`
+	Tables     Tables   `json:"tables" yaml:"tables"`
 }
 
 func (c Config) Validate() error {
@@ -64,14 +64,12 @@ func (c Config) infoQuery() string {
 	return q
 }
 
-var ReplicaIdentityOptions = []string{"DEFAULT", "NOTHING", "FULL"}
-
-type TableConfig struct {
+type Table struct {
 	Name            string `json:"name" yaml:"name"`
 	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
 }
 
-func (tc TableConfig) Validate() error {
+func (tc Table) Validate() error {
 	if strings.TrimSpace(tc.Name) == "" {
 		return errors.New("table name cannot be empty")
 	}

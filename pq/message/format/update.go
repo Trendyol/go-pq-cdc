@@ -79,7 +79,7 @@ func (m *Update) decode(data []byte, streamedTransaction bool) error {
 		if err != nil {
 			return errors.Wrap(err, "update message old tuple data")
 		}
-		skipByte += m.OldTupleData.SkipByte + 1
+		skipByte = m.OldTupleData.SkipByte
 		fallthrough
 	case UpdateTupleTypeNew:
 		m.NewTupleData, err = tuple.NewData(data, UpdateTupleTypeNew, skipByte)

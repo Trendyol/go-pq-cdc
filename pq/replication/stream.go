@@ -46,6 +46,7 @@ type stream struct {
 	config config.Config
 
 	relation     map[uint32]*format.Relation
+	messageCH    chan any
 	listenerFunc ListenerFunc
 	lastXLogPos  pq.LSN
 	closed       bool
@@ -58,6 +59,7 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system pq
 		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
+		messageCH:    make(chan any, 1000),
 		listenerFunc: listenerFunc,
 		lastXLogPos:  10,
 	}
@@ -72,6 +74,8 @@ func (s *stream) Open(ctx context.Context) error {
 	}
 
 	go s.sink(ctx)
+
+	go s.process(ctx)
 
 	slog.Info("cdc stream started")
 
@@ -132,11 +136,13 @@ func (s *stream) sink(ctx context.Context) {
 			continue
 		}
 
+		var xld XLogData
+
 		switch msg.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
 			continue
 		case message.XLogDataByteID:
-			xld, err := ParseXLogData(msg.Data[1:])
+			xld, err = ParseXLogData(msg.Data[1:])
 			if err != nil {
 				slog.Error("parse xLog data", "error", err)
 				continue
@@ -148,41 +154,53 @@ func (s *stream) sink(ctx context.Context) {
 
 			s.system.XLogPos = max(xld.WALStart, s.system.XLogPos)
 
-			lCtx := &ListenerContext{
-				Ack: func() error {
-					pos := s.system.XLogPos
-					s.lastXLogPos = pos
-					slog.Debug("send stand by status update", "xLogPos", pos.String())
-					return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
-				},
-			}
-
-			lCtx.Message, err = message.New(xld.WALData, s.relation)
-			if err != nil || lCtx.Message == nil {
+			var decodedMsg any
+			decodedMsg, err = message.New(xld.WALData, s.relation)
+			if err != nil || decodedMsg == nil {
 				slog.Debug("wal data message parsing error", "error", err)
 				continue
 			}
 
-			slog.Debug("wal converted to message", "message", lCtx.Message)
-
-			switch lCtx.Message.(type) {
-			case *format.Insert:
-				s.metric.InsertOpIncrement(1)
-			case *format.Delete:
-				s.metric.DeleteOpIncrement(1)
-			case *format.Update:
-				s.metric.UpdateOpIncrement(1)
-			}
-
-			start := time.Now()
-			s.listenerFunc(lCtx)
-			s.metric.SetProcessLatency(time.Since(start).Milliseconds())
+			s.messageCH <- decodedMsg
 		}
+	}
+}
+
+func (s *stream) process(ctx context.Context) {
+	for {
+		msg, ok := <-s.messageCH
+		if !ok {
+			break
+		}
+
+		lCtx := &ListenerContext{
+			Message: msg,
+			Ack: func() error {
+				pos := s.system.XLogPos
+				s.lastXLogPos = pos
+				slog.Debug("send stand by status update", "xLogPos", pos.String())
+				return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
+			},
+		}
+
+		switch lCtx.Message.(type) {
+		case *format.Insert:
+			s.metric.InsertOpIncrement(1)
+		case *format.Delete:
+			s.metric.DeleteOpIncrement(1)
+		case *format.Update:
+			s.metric.UpdateOpIncrement(1)
+		}
+
+		start := time.Now()
+		s.listenerFunc(lCtx)
+		s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 	}
 }
 
 func (s *stream) Close(ctx context.Context) {
 	s.closed = true
+	close(s.messageCH)
 	_ = s.conn.Close(ctx)
 }
 

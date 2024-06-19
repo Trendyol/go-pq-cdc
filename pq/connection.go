@@ -15,11 +15,19 @@ type Connection interface {
 	Exec(ctx context.Context, sql string) *pgconn.MultiResultReader
 }
 
-// connection config'leri ayarlayalim
 func NewConnection(ctx context.Context, dsn string) (Connection, error) {
 	retryConfig := retry.OnErrorConfig[Connection](5, func(err error) bool { return err == nil })
 	conn, err := retryConfig.Do(func() (Connection, error) {
-		return pgconn.Connect(ctx, dsn)
+		conn, err := pgconn.Connect(ctx, dsn)
+		if err != nil {
+			return nil, err
+		}
+
+		if err = conn.Ping(ctx); err != nil {
+			return nil, err
+		}
+
+		return conn, nil
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "postgres connection")

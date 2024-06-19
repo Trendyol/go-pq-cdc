@@ -4,16 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/lib/pq"
-	"slices"
 	"strings"
 )
 
-var OperationOptions = []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE"}
-
 type Config struct {
-	Name       string   `json:"name" yaml:"name"`
-	Operations []string `json:"operations" yaml:"operations"`
-	Tables     Tables   `json:"tables" yaml:"tables"`
+	Name       string     `json:"name" yaml:"name"`
+	Operations Operations `json:"operations" yaml:"operations"`
+	Tables     Tables     `json:"tables" yaml:"tables"`
 }
 
 func (c Config) Validate() error {
@@ -22,24 +19,12 @@ func (c Config) Validate() error {
 		err = errors.Join(err, errors.New("publication name cannot be empty"))
 	}
 
-	if len(c.Tables) == 0 {
-		err = errors.Join(err, errors.New("publication table scope should be defined"))
+	if validateErr := c.Tables.Validate(); validateErr != nil {
+		err = errors.Join(err, validateErr)
 	}
 
-	for i, t := range c.Tables {
-		if err = t.Validate(); err != nil {
-			err = errors.Join(err, errors.New(fmt.Sprintf("publication table [%d]: %s\n", i, err.Error())))
-		}
-	}
-
-	if len(c.Operations) == 0 {
-		err = errors.Join(err, errors.New("publication must have at least one operations: "+strings.Join(OperationOptions, ", ")))
-	}
-
-	for _, op := range c.Operations {
-		if !slices.Contains(OperationOptions, op) {
-			err = errors.Join(err, errors.New("publication operations: "+err.Error()))
-		}
+	if validateErr := c.Operations.Validate(); validateErr != nil {
+		err = errors.Join(err, validateErr)
 	}
 
 	return err
@@ -54,7 +39,7 @@ func (c Config) createQuery() string {
 	}
 	sqlStatement += " FOR TABLE " + strings.Join(quotedTables, ", ")
 
-	sqlStatement += fmt.Sprintf(" WITH (publish = '%s')", strings.Join(c.Operations, ", "))
+	sqlStatement += fmt.Sprintf(" WITH (publish = '%s')", c.Operations.String())
 
 	return sqlStatement
 }
@@ -62,41 +47,4 @@ func (c Config) createQuery() string {
 func (c Config) infoQuery() string {
 	q := fmt.Sprintf(`SELECT p.pubname, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate, COALESCE(array_agg(c.relname) FILTER (WHERE c.relname IS NOT NULL), ARRAY[]::text[]) AS included_tables FROM pg_publication p LEFT JOIN pg_publication_rel pr ON p.oid = pr.prpubid LEFT JOIN pg_class c ON pr.prrelid = c.oid WHERE p.pubname = '%s' GROUP BY p.pubname, p.pubowner, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate;`, c.Name)
 	return q
-}
-
-type Table struct {
-	Name            string `json:"name" yaml:"name"`
-	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
-}
-
-func (tc Table) Validate() error {
-	if strings.TrimSpace(tc.Name) == "" {
-		return errors.New("table name cannot be empty")
-	}
-
-	if !slices.Contains(ReplicaIdentityOptions, tc.ReplicaIdentity) {
-		return errors.New("undefined replica identity option")
-	}
-
-	return nil
-}
-
-type Tables []Table
-
-func (ts Tables) Diff(tss Tables) Tables {
-	res := Tables{}
-	tssMap := make(map[string]Table)
-
-	for _, t := range tss {
-		tssMap[t.Name+t.ReplicaIdentity] = t
-	}
-
-	for _, t := range ts {
-		if v, found := tssMap[t.Name+t.ReplicaIdentity]; !found || v.ReplicaIdentity != t.ReplicaIdentity {
-			res = append(res, t)
-		}
-	}
-
-	return res
-
 }

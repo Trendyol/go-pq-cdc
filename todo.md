@@ -10,7 +10,7 @@
   - [x] Write possible cases and make priority list for implementation
   - [x] Add priority list to todo.md
   - [x] Add Basic Functionality Test
-  - [ ] Add Copy Protocol Test
+  - [x] Add Copy Protocol Test
   - [ ] Add Several Transactions Test
   - [ ] Add Multi Value Insert Test
   - [ ] Add Concurrent Operations Test

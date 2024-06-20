@@ -51,7 +51,6 @@ type stream struct {
 	listenerFunc ListenerFunc
 	lastXLogPos  pq.LSN
 	sinkEnd      chan struct{}
-	processEnd   chan struct{}
 	closed       atomic.Bool
 }
 
@@ -66,7 +65,6 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *p
 		listenerFunc: listenerFunc,
 		lastXLogPos:  10,
 		sinkEnd:      make(chan struct{}, 1),
-		processEnd:   make(chan struct{}, 1),
 	}
 }
 
@@ -204,7 +202,6 @@ func (s *stream) process(ctx context.Context) {
 		s.listenerFunc(lCtx)
 		s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 	}
-	s.processEnd <- struct{}{}
 }
 
 func (s *stream) Close(ctx context.Context) {
@@ -215,8 +212,6 @@ func (s *stream) Close(ctx context.Context) {
 	logger.Info("postgres message sink stopped")
 
 	close(s.messageCH)
-	<-s.processEnd
-	close(s.processEnd)
 	logger.Info("postgres message process stopped")
 
 	_ = s.conn.Close(ctx)

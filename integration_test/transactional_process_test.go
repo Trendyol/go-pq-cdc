@@ -55,9 +55,7 @@ func TestTransactionalProcess(t *testing.T) {
 		pool.Close()
 	})
 
-	go func() {
-		connector.Start(ctx)
-	}()
+	go connector.Start(ctx)
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {

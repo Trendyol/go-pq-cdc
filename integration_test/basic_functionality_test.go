@@ -46,9 +46,7 @@ func TestBasicFunctionality(t *testing.T) {
 		assert.NoError(t, postgresConn.Close(ctx))
 	})
 
-	go func() {
-		connector.Start(ctx)
-	}()
+	go connector.Start(ctx)
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {

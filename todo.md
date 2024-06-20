@@ -6,24 +6,19 @@
 - [x] Support SET REPLICA IDENTITY
 - [x] Fix race condition
 - [x] Custom Logger interface and log level for default 
-- [ ] Add integration test cases documentation
+- [x] Add integration test cases documentation
   - [x] Write possible cases and make priority list for implementation
   - [x] Add priority list to todo.md
   - [x] Add Basic Functionality Test
   - [x] Add Copy Protocol Test
-  - [ ] Add Several Transactions Test
-  - [ ] Add Multi Value Insert Test
-  - [ ] Add Concurrent Operations Test
   - [x] Add Transaction Rollback Commit Test
-  - [ ] Add Replica Identity Test
-    - [ ] Table is not exists
-    - [ ] Table replica identity is not changed
-    - [ ] Table replica identity is changed
-  - [ ] Add Leader Election Test
-  - [ ] Add prometheus metrics Test
-  - [ ] Add publication create/exists test
-  - [ ] Add slot create/exists test
-  - [ ] Add
+  - [x] Add Replica Identity Test
+    - [x] Table is not exists
+    - [x] Table replica identity is not changed
+    - [x] Table replica identity is changed
+  - [x] Add Leader Election Test
+  - [x] Add publication create/exists test
+  - [x] Add slot create/exists test
 - [ ] Add unit tests
 - [ ] Add Contribution.md
 - [ ] Add ci pipeline for project
@@ -37,6 +32,7 @@
   - [ ] Add goreleaser implementation
 - [ ] Add License file
 - [ ] Add Dockerfile
+- [ ] Add Documentation
 - [ ] Create Grafana dashboard
   - [x] Expose pg_stats
   - [x] Expose slot stats

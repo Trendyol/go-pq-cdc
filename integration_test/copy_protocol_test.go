@@ -29,15 +29,14 @@ func TestCopyProtocol(t *testing.T) {
 		t.FailNow()
 	}
 
-	messageCh := make(chan any, 1)
+	messageCh := make(chan *replication.ListenerContext)
 	totalCounter := atomic.Int64{}
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
+		switch ctx.Message.(type) {
 		case *format.Insert, *format.Delete, *format.Update:
-			messageCh <- msg
+			messageCh <- ctx
 			totalCounter.Add(1)
 		}
-		_ = ctx.Ack()
 	}
 
 	cdc2Cfg := cdcCfg
@@ -95,7 +94,7 @@ func TestCopyProtocol(t *testing.T) {
 		counter := 0
 		for {
 			m := <-messageCh
-			if _, ok := m.(*format.Insert); ok {
+			if _, ok := m.Message.(*format.Insert); ok {
 				counter++
 			}
 
@@ -103,6 +102,8 @@ func TestCopyProtocol(t *testing.T) {
 				connector.Close()
 				break
 			}
+
+			_ = m.Ack()
 		}
 	})
 
@@ -115,7 +116,7 @@ func TestCopyProtocol(t *testing.T) {
 
 		for {
 			m := <-messageCh
-			if v, ok := m.(*format.Insert); ok {
+			if v, ok := m.Message.(*format.Insert); ok {
 				if v.Decoded["id"].(int32) == 1000 {
 					break
 				}

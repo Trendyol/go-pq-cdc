@@ -1,6 +1,6 @@
 module github.com/Trendyol/go-pq-cdc/example/postgresql
 
-go 1.22.1
+go 1.22.4
 
 replace github.com/Trendyol/go-pq-cdc => ../..
 

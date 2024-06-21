@@ -13,6 +13,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,6 +24,8 @@ var (
 	Config    config.Config
 	Container testcontainers.Container
 )
+
+var PostgresImageEnv = "POSTGRES_TEST_IMAGE"
 
 func TestMain(m *testing.M) {
 	var err error
@@ -77,8 +80,13 @@ func SetupTestContainer(ctx context.Context, cfg config.Config) (testcontainers.
 }
 
 func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest, error) {
+	image := os.Getenv(PostgresImageEnv)
+	if image == "" {
+		image = "docker.io/postgres:16-alpine"
+	}
+
 	req := testcontainers.ContainerRequest{
-		Image: "docker.io/postgres:16-alpine",
+		Image: image,
 		Env: map[string]string{
 			"POSTGRES_USER":     "postgres",
 			"POSTGRES_PASSWORD": "postgres",

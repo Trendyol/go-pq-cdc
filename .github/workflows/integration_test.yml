@@ -2,10 +2,10 @@ name: Test
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
-    types: [opened, reopened, synchronize]
+    branches: [ main ]
+    types: [ opened, reopened, synchronize ]
   workflow_dispatch:
 
 concurrency:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        version: [ "16-alpine", "15-alpine",  "15.7-alpine", "16.3-alpine"]
+        version: [ "15-alpine",  "15.7-alpine", "16-alpine", "16.3-alpine" ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -5,8 +5,6 @@ import (
 	"sync/atomic"
 )
 
-var idCounter atomic.Int64
-
 type Book struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
@@ -20,6 +18,7 @@ func (b *Book) Map() map[string]any {
 }
 
 func CreateBooks(count int) []Book {
+	var idCounter atomic.Int64
 	res := make([]Book, count)
 	for i := range count {
 		id := int(idCounter.Add(1))

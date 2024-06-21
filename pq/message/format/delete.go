@@ -2,16 +2,17 @@ package format
 
 import (
 	"encoding/binary"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
 
 type Delete struct {
+	OldTupleData *tuple.Data
+	OldDecoded   map[string]any
 	OID          uint32
 	XID          uint32
 	OldTupleType uint8
-	OldTupleData *tuple.Data
-	OldDecoded   map[string]any
 }
 
 func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Delete, error) {

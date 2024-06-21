@@ -2,6 +2,7 @@ package tuple
 
 import (
 	"encoding/binary"
+
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -16,24 +17,24 @@ const (
 var typeMap = pgtype.NewMap()
 
 type Data struct {
-	ColumnNumber uint16
 	Columns      DataColumns
 	SkipByte     int
+	ColumnNumber uint16
 }
 
 type DataColumns []*DataColumn
 
 type DataColumn struct {
-	DataType uint8
-	Length   uint32
 	Data     []byte
+	Length   uint32
+	DataType uint8
 }
 
 type RelationColumn struct {
-	Flags        uint8 // 0 (no flag) or 1 (part of the key)
 	Name         string
 	DataType     uint32
-	TypeModifier uint32 // (atttypmod)
+	TypeModifier uint32
+	Flags        uint8
 }
 
 func NewData(data []byte, tupleDataType uint8, skipByteLength int) (*Data, error) {

@@ -1,9 +1,10 @@
 package format
 
 import (
+	"testing"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestRelation_New(t *testing.T) {

@@ -1,9 +1,10 @@
 package publication
 
 import (
-	"github.com/go-playground/errors"
 	"slices"
 	"strings"
+
+	"github.com/go-playground/errors"
 )
 
 var OperationOptions = Operations{"INSERT", "UPDATE", "DELETE", "TRUNCATE"}

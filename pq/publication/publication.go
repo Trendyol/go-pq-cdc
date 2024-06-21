@@ -3,6 +3,7 @@ package publication
 import (
 	"context"
 	goerrors "errors"
+
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
@@ -17,8 +18,8 @@ var (
 var typeMap = pgtype.NewMap()
 
 type Publication struct {
-	cfg  Config
 	conn pq.Connection
+	cfg  Config
 }
 
 func New(cfg Config, conn pq.Connection) *Publication {

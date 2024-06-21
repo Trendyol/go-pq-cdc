@@ -14,12 +14,12 @@ type Type string
 type Info struct {
 	Name              string `json:"name"`
 	Type              Type   `json:"type"`
-	Active            bool   `json:"active"`
-	ActivePID         int32  `json:"activePID"`
+	WalStatus         string `json:"walStatus"`
 	RestartLSN        pq.LSN `json:"restartLSN"`
 	ConfirmedFlushLSN pq.LSN `json:"confirmedFlushLSN"`
-	WalStatus         string `json:"walStatus"`
 	CurrentLSN        pq.LSN `json:"currentLSN"`
 	RetainedWALSize   pq.LSN `json:"retainedWALSize"`
 	Lag               pq.LSN `json:"lag"`
+	ActivePID         int32  `json:"activePID"`
+	Active            bool   `json:"active"`
 }

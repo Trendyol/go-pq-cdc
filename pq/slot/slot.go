@@ -4,13 +4,14 @@ import (
 	"context"
 	goerrors "errors"
 	"fmt"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"time"
 )
 
 var (
@@ -20,11 +21,11 @@ var (
 var typeMap = pgtype.NewMap()
 
 type Slot struct {
-	cfg       Config
 	conn      pq.Connection
-	statusSQL string
 	metric    metric.Metric
 	ticker    *time.Ticker
+	statusSQL string
+	cfg       Config
 }
 
 func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slot, error) {

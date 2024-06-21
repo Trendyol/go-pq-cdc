@@ -2,6 +2,7 @@ package pq
 
 import (
 	"fmt"
+
 	"github.com/go-playground/errors"
 )
 

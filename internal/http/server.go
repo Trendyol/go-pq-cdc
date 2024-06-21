@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/pprof"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"net/http"
-	"net/http/pprof"
-	"time"
 )
 
 type Server interface {
@@ -19,10 +20,9 @@ type Server interface {
 }
 
 type server struct {
-	server    http.Server
 	cdcConfig config.Config
-
-	closed bool
+	server    http.Server
+	closed    bool
 }
 
 func NewServer(cfg config.Config, registry metric.Registry) Server {

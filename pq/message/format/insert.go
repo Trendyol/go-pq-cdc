@@ -2,6 +2,7 @@ package format
 
 import (
 	"encoding/binary"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -14,10 +15,10 @@ const (
 var typeMap = pgtype.NewMap()
 
 type Insert struct {
-	OID       uint32
-	XID       uint32
 	TupleData *tuple.Data
 	Decoded   map[string]any
+	OID       uint32
+	XID       uint32
 }
 
 func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Insert, error) {

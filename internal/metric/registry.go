@@ -1,9 +1,10 @@
 package metric
 
 import (
+	"regexp"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-	"regexp"
 )
 
 type Registry interface {

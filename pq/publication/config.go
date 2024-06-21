@@ -3,8 +3,9 @@ package publication
 import (
 	"errors"
 	"fmt"
-	"github.com/lib/pq"
 	"strings"
+
+	"github.com/lib/pq"
 )
 
 type Config struct {

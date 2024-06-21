@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/internal/slice"
@@ -14,8 +17,6 @@ import (
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
-	"sync/atomic"
-	"time"
 )
 
 var (
@@ -41,16 +42,15 @@ type Streamer interface {
 }
 
 type stream struct {
-	conn   pq.Connection
-	metric metric.Metric
-	system *pq.IdentifySystemResult
-	config config.Config
-
+	conn         pq.Connection
+	metric       metric.Metric
+	system       *pq.IdentifySystemResult
 	relation     map[uint32]*format.Relation
 	messageCH    chan any
 	listenerFunc ListenerFunc
-	lastXLogPos  pq.LSN
 	sinkEnd      chan struct{}
+	config       config.Config
+	lastXLogPos  pq.LSN
 	closed       atomic.Bool
 }
 

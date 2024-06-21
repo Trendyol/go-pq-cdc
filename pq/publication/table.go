@@ -1,9 +1,10 @@
 package publication
 
 import (
-	"github.com/go-playground/errors"
 	"slices"
 	"strings"
+
+	"github.com/go-playground/errors"
 )
 
 type Table struct {
@@ -54,5 +55,4 @@ func (ts Tables) Diff(tss Tables) Tables {
 	}
 
 	return res
-
 }

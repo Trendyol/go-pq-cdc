@@ -3,12 +3,13 @@ package replication
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
-	"strconv"
-	"strings"
 )
 
 type Replication struct {

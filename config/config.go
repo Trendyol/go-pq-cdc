@@ -4,23 +4,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
+
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
-	"log/slog"
-	"strings"
 )
 
 type Config struct {
+	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
 	Host        string             `json:"host" yaml:"host"`
 	Username    string             `json:"username" yaml:"username"`
 	Password    string             `json:"password" yaml:"password"`
 	Database    string             `json:"database" yaml:"database"`
-	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
-	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
+	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
 }
 
 type MetricConfig struct {

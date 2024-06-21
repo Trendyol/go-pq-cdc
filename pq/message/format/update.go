@@ -2,6 +2,7 @@ package format
 
 import (
 	"encoding/binary"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
@@ -13,13 +14,13 @@ const (
 )
 
 type Update struct {
-	OID          uint32
-	XID          uint32
 	NewTupleData *tuple.Data
 	NewDecoded   map[string]any
-	OldTupleType uint8
 	OldTupleData *tuple.Data
-	OldDecoded   map[string]any // To get set REPLICA IDENTITY to FULL
+	OldDecoded   map[string]any
+	OID          uint32
+	XID          uint32
+	OldTupleType uint8
 }
 
 func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Update, error) {

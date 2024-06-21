@@ -3,6 +3,12 @@ package cdc
 import (
 	"context"
 	goerrors "errors"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/http"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
@@ -13,11 +19,6 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"os"
-	"os/signal"
-	"strings"
-	"syscall"
-	"time"
 )
 
 type Connector interface {
@@ -29,15 +30,14 @@ type Connector interface {
 }
 
 type connector struct {
-	cfg                *config.Config
-	system             pq.IdentifySystemResult
 	stream             replication.Streamer
 	prometheusRegistry metric.Registry
 	server             http.Server
+	cfg                *config.Config
 	slot               *slot.Slot
-
-	cancelCh chan os.Signal
-	readyCh  chan struct{}
+	cancelCh           chan os.Signal
+	readyCh            chan struct{}
+	system             pq.IdentifySystemResult
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {

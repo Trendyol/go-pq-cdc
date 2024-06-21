@@ -3,18 +3,19 @@ package pq
 import (
 	"context"
 	"fmt"
-	"github.com/go-playground/errors"
-	"github.com/jackc/pgx/v5/pgconn"
 	"strconv"
 	"sync"
+
+	"github.com/go-playground/errors"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type IdentifySystemResult struct {
 	mu       *sync.RWMutex
 	SystemID string
-	Timeline int32
-	XLogPos  LSN
 	Database string
+	XLogPos  LSN
+	Timeline int32
 }
 
 func IdentifySystem(ctx context.Context, conn Connection) (IdentifySystemResult, error) {

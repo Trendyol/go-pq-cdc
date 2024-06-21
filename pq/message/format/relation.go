@@ -3,18 +3,19 @@ package format
 import (
 	"bytes"
 	"encoding/binary"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
 
 type Relation struct {
-	OID           uint32
-	XID           uint32
 	Namespace     string
 	Name          string
-	ReplicaID     uint8
-	ColumnNumbers uint16
 	Columns       []tuple.RelationColumn
+	OID           uint32
+	XID           uint32
+	ColumnNumbers uint16
+	ReplicaID     uint8
 }
 
 func NewRelation(data []byte, streamedTransaction bool) (*Relation, error) {

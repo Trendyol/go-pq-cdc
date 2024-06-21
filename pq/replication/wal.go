@@ -3,17 +3,18 @@ package replication
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"time"
+
+	"github.com/Trendyol/go-pq-cdc/pq"
 )
 
 const microSecFromUnixEpochToY2K = 946684800 * 1000000
 
 type XLogData struct {
-	WALStart     pq.LSN
-	ServerWALEnd pq.LSN
 	ServerTime   time.Time
 	WALData      []byte
+	WALStart     pq.LSN
+	ServerWALEnd pq.LSN
 }
 
 func ParseXLogData(buf []byte) (XLogData, error) {

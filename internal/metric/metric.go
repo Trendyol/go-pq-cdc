@@ -131,7 +131,6 @@ func NewMetric(slotName string) Metric {
 			},
 		}),
 	}
-
 }
 
 func (m *metric) PrometheusCollectors() []prometheus.Collector {

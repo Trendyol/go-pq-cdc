@@ -2,9 +2,10 @@ package config
 
 import (
 	"encoding/json"
+	"os"
+
 	"github.com/go-playground/errors"
 	"gopkg.in/yaml.v2"
-	"os"
 )
 
 func ReadConfigYaml(path string) (Config, error) {

@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore: update version"
+    allow:
+      - dependency-name: github.com/jackc/pgx/v5
+      - dependency-name: github.com/lib/pq

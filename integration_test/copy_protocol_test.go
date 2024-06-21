@@ -34,8 +34,8 @@ func TestCopyProtocol(t *testing.T) {
 	handlerFunc := func(ctx *replication.ListenerContext) {
 		switch ctx.Message.(type) {
 		case *format.Insert, *format.Delete, *format.Update:
-			messageCh <- ctx
 			totalCounter.Add(1)
+			messageCh <- ctx
 		}
 	}
 
@@ -91,19 +91,16 @@ func TestCopyProtocol(t *testing.T) {
 			t.Errorf("error copying into %s table: %v", "books", err)
 		}
 
-		counter := 0
 		for {
 			m := <-messageCh
-			if _, ok := m.Message.(*format.Insert); ok {
-				counter++
+			if v, ok := m.Message.(*format.Insert); ok {
+				if v.Decoded["id"].(int32) == 650 {
+					connector.Close()
+					break
+				}
 			}
 
-			if counter == 650 {
-				connector.Close()
-				break
-			}
-
-			_ = m.Ack()
+			assert.NoError(t, m.Ack())
 		}
 	})
 

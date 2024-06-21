@@ -1,5 +1,5 @@
 ### TODOs
-- [ ] Add README.md
+- [x] Add README.md
 - [x] Add leader election (take the responsibility when slot is not active)
 - [x] Publication Create all options
 - [x] Slot Create all options
@@ -30,7 +30,7 @@
 - [x] Add cd pipeline for project
   - [x] Add goreleaser implementation
 - [x] Add License file
-- [ ] Add Documentation
+- [x] Add Documentation
 - [ ] Create Grafana dashboard
   - [x] Expose pg_stats
   - [x] Expose slot stats

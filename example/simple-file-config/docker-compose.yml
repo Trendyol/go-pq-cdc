@@ -1,0 +1,12 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:16.2
+    restart: always
+    command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
+    environment:
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
+      POSTGRES_HOST_AUTH_METHOD: trust
+    network_mode: "host"

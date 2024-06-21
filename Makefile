@@ -35,6 +35,7 @@ tidy/all:
 	cd example/kafka && go mod tidy && cd ../..
 	cd example/postgresql && go mod tidy && cd ../..
 	cd example/simple && go mod tidy && cd ../..
+	cd example/simple-file-config && go mod tidy && cd ../..
 	cd integration_test && go mod tidy && cd ../
 	cd benchmark/go-pq-cdc-kafka && go mod tidy && cd ../..
 

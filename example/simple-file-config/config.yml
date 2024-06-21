@@ -1,0 +1,20 @@
+host: 127.0.0.1
+database: cdc_db
+username: cdc_user
+password: cdc_pass
+publication:
+  name: cdc_publication
+  operations:
+    - INSERT
+    - UPDATE
+    - DELETE
+  tables:
+    - name: users
+      replicaIdentity: FULL
+slot:
+  name: cdc_slot
+  slotActivityCheckerInterval: 2000
+metric:
+  port: 8083
+logger:
+  logLevel: INFO

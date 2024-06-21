@@ -108,6 +108,7 @@ func Handler(ctx *replication.ListenerContext) {
 ### Examples
 
 * [Simple](./example/simple)
+* [Simple File Config](./example/simple-file-config)
 * [PostgreSQL to Elasticsearch](./example/elasticsearch)
 * [PostgreSQL to Kafka](./example/kafka)
 * [PostgreSQL to PostgreSQL](./example/postgresql)

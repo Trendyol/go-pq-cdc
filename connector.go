@@ -46,9 +46,12 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 
 	if strings.HasSuffix(configFilePath, ".json") {
 		cfg, err = config.ReadConfigJSON(configFilePath)
-	} else {
+	}
+
+	if strings.HasSuffix(configFilePath, ".yml") || strings.HasSuffix(configFilePath, ".yaml") {
 		cfg, err = config.ReadConfigYAML(configFilePath)
 	}
+
 	if err != nil {
 		return nil, err
 	}

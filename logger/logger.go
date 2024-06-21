@@ -3,6 +3,7 @@ package logger
 import (
 	"log/slog"
 	"os"
+	"sync"
 )
 
 var _default Logger
@@ -14,8 +15,12 @@ type Logger interface {
 	Error(msg string, args ...any)
 }
 
+var once sync.Once
+
 func InitLogger(l Logger) {
-	_default = l
+	once.Do(func() {
+		_default = l
+	})
 }
 
 func Debug(msg string, args ...any) {

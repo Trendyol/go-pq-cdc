@@ -25,7 +25,10 @@ var (
 	Container testcontainers.Container
 )
 
-var PostgresImageEnv = "POSTGRES_TEST_IMAGE"
+var (
+	PostgresVersion = "POSTGRES_VERSION"
+	defaultVersion  = "16-alpine"
+)
 
 func TestMain(m *testing.M) {
 	var err error
@@ -80,13 +83,13 @@ func SetupTestContainer(ctx context.Context, cfg config.Config) (testcontainers.
 }
 
 func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest, error) {
-	image := os.Getenv(PostgresImageEnv)
-	if image == "" {
-		image = "docker.io/postgres:16-alpine"
+	version := os.Getenv(PostgresVersion)
+	if version == "" {
+		version = defaultVersion
 	}
 
 	req := testcontainers.ContainerRequest{
-		Image: image,
+		Image: "docker.io/postgres:" + version,
 		Env: map[string]string{
 			"POSTGRES_USER":     "postgres",
 			"POSTGRES_PASSWORD": "postgres",

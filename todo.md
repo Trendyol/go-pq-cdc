@@ -21,17 +21,15 @@
   - [x] Add slot create/exists test
 - [x] Add unit tests
 - [x] Add Contribution.md
-- [ ] Add ci pipeline for project
-  - [ ] Go Lint 
-  - [ ] Go Vet
-  - [ ] Go vulncheck
-  - [ ] Go Test (-race)
-  - [ ] Sonar - or any other code analysis tool
-- [ ] Add cd pipeline for project
-  - [ ] Create Config&Run docker images
-  - [ ] Add goreleaser implementation
+- [x] Add ci pipeline for project
+  - [x] Go Lint 
+  - [x] Go Vet
+  - [x] Go vulncheck
+  - [x] Go Test (-race)
+  - [x] Sonar - or any other code analysis tool
+- [x] Add cd pipeline for project
+  - [x] Add goreleaser implementation
 - [x] Add License file
-- [ ] Add Dockerfile
 - [ ] Add Documentation
 - [ ] Create Grafana dashboard
   - [x] Expose pg_stats

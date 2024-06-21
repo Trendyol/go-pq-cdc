@@ -60,7 +60,7 @@ func (m *Relation) decode(data []byte, streamedTransaction bool) error {
 	skipByte += usedByteCount
 
 	m.ReplicaID = data[skipByte]
-	skipByte += 1
+	skipByte++
 
 	m.ColumnNumbers = binary.BigEndian.Uint16(data[skipByte:])
 	skipByte += 2
@@ -69,7 +69,7 @@ func (m *Relation) decode(data []byte, streamedTransaction bool) error {
 	for i := range m.Columns {
 		col := tuple.RelationColumn{}
 		col.Flags = data[skipByte]
-		skipByte += 1
+		skipByte++
 
 		col.Name, usedByteCount = decodeString(data[skipByte:])
 		if usedByteCount < 0 {

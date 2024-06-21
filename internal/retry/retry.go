@@ -21,10 +21,10 @@ func (rc Config[T]) Do(f retry.RetryableFuncWithData[T]) (T, error) {
 	return retry.DoWithData(f, rc.Options...)
 }
 
-func OnErrorConfig[T any](AttemptCount uint, check func(error) bool) Config[T] {
+func OnErrorConfig[T any](attemptCount uint, check func(error) bool) Config[T] {
 	cfg := Config[T]{
 		If:      check,
-		Options: []retry.Option{retry.Attempts(AttemptCount)},
+		Options: []retry.Option{retry.Attempts(attemptCount)},
 	}
 	cfg.Options = append(cfg.Options, DefaultOptions...)
 	return cfg

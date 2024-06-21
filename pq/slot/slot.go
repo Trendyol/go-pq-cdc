@@ -41,7 +41,7 @@ func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slo
 		conn:      conn,
 		statusSQL: query,
 		metric:    m,
-		ticker:    time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerIntervalMS),
+		ticker:    time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
 	}, nil
 }
 

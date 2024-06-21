@@ -26,7 +26,7 @@ var (
 
 func TestMain(m *testing.M) {
 	var err error
-	Config, err = config.ReadConfigYaml("./test_connector.yaml")
+	Config, err = config.ReadConfigYAML("./test_connector.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -46,8 +46,8 @@ func (c *Config) SetDefault() {
 		c.Metric.Port = 8080
 	}
 
-	if c.Slot.SlotActivityCheckerIntervalMS == 0 {
-		c.Slot.SlotActivityCheckerIntervalMS = 1000
+	if c.Slot.SlotActivityCheckerInterval == 0 {
+		c.Slot.SlotActivityCheckerInterval = 1000
 	}
 
 	if c.Logger.Logger == nil {
@@ -81,7 +81,7 @@ func (c *Config) Validate() error {
 		err = errors.Join(err, cErr)
 	}
 
-	return nil
+	return err
 }
 
 func (c *Config) Print() {

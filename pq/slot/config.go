@@ -7,8 +7,8 @@ import (
 )
 
 type Config struct {
-	Name                          string        `json:"name" yaml:"name"`
-	SlotActivityCheckerIntervalMS time.Duration `json:"slotActivityCheckerIntervalMS" yaml:"slotActivityCheckerIntervalMS"`
+	Name                        string        `json:"name" yaml:"name"`
+	SlotActivityCheckerInterval time.Duration `json:"slotActivityCheckerInterval" yaml:"slotActivityCheckerInterval"`
 }
 
 func (c Config) Validate() error {
@@ -17,7 +17,7 @@ func (c Config) Validate() error {
 		err = errors.Join(err, errors.New("slot name cannot be empty"))
 	}
 
-	if c.SlotActivityCheckerIntervalMS < 1000 {
+	if c.SlotActivityCheckerInterval < 1000 {
 		err = errors.Join(err, errors.New("slot activity checker interval cannot be lower than 1000 ms"))
 	}
 

@@ -63,7 +63,6 @@ func (m *Delete) decode(data []byte, streamedTransaction bool) error {
 	if err != nil {
 		return errors.Wrap(err, "delete message old tuple data")
 	}
-	skipByte += m.OldTupleData.SkipByte + 1
 
 	return nil
 }

@@ -85,8 +85,8 @@ func main() {
 			}},
 		},
 		Slot: slot.Config{
-			Name:                          "cdc_slot",
-			SlotActivityCheckerIntervalMS: 3000,
+			Name:                        "cdc_slot",
+			SlotActivityCheckerInterval: 3000,
 		},
 		Metric: config.MetricConfig{
 			Port: 8081,

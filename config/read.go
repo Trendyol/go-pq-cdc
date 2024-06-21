@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func ReadConfigYaml(path string) (Config, error) {
+func ReadConfigYAML(path string) (Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "read yaml config")
@@ -24,7 +24,7 @@ func ReadConfigYaml(path string) (Config, error) {
 	return c, nil
 }
 
-func ReadConfigJson(path string) (Config, error) {
+func ReadConfigJSON(path string) (Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "read json config")

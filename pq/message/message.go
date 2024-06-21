@@ -1,7 +1,7 @@
 package message
 
 import (
-	. "github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/go-playground/errors"
 )
 
@@ -27,25 +27,25 @@ const (
 	PrimaryKeepaliveMessageByteID = 'k'
 )
 
-var ByteNotSupported = errors.New("message byte not supported")
+var ErrorByteNotSupported = errors.New("message byte not supported")
 
 type Type uint8
 
 var streamedTransaction bool
 
-func New(data []byte, relation map[uint32]*Relation) (any, error) {
+func New(data []byte, relation map[uint32]*format.Relation) (any, error) {
 	switch Type(data[0]) {
 	case InsertByte:
-		return NewInsert(data, streamedTransaction, relation)
+		return format.NewInsert(data, streamedTransaction, relation)
 	case UpdateByte:
-		return NewUpdate(data, streamedTransaction, relation)
+		return format.NewUpdate(data, streamedTransaction, relation)
 	case DeleteByte:
-		return NewDelete(data, streamedTransaction, relation)
+		return format.NewDelete(data, streamedTransaction, relation)
 	case StreamStopByte, StreamAbortByte, StreamCommitByte:
 		streamedTransaction = false
 		return nil, nil
 	case RelationByte:
-		msg, err := NewRelation(data, streamedTransaction)
+		msg, err := format.NewRelation(data, streamedTransaction)
 		if err == nil {
 			relation[msg.OID] = msg
 		}
@@ -54,7 +54,6 @@ func New(data []byte, relation map[uint32]*Relation) (any, error) {
 		streamedTransaction = true
 		return nil, nil
 	default:
-		// return nil, errors.Wrap(ByteNotSupported, string(data[0]))
-		return nil, nil
+		return nil, errors.Wrap(ErrorByteNotSupported, string(data[0]))
 	}
 }

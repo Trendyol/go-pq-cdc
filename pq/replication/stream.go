@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"encoding/binary"
+	goerrors "errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -70,7 +71,8 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *p
 
 func (s *stream) Open(ctx context.Context) error {
 	if err := s.setup(ctx); err != nil {
-		if v, ok := err.(*pgconn.PgError); ok && v.Code == "55006" {
+		var v *pgconn.PgError
+		if goerrors.As(err, &v) && v.Code == "55006" {
 			return ErrorSlotInUse
 		}
 		return errors.Wrap(err, "replication setup")
@@ -101,6 +103,7 @@ func (s *stream) setup(ctx context.Context) error {
 	return nil
 }
 
+//nolint:funlen
 func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
@@ -226,12 +229,12 @@ func (s *stream) GetMetric() metric.Metric {
 	return s.metric
 }
 
-func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, WALWritePosition uint64) error {
+func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {
 	data := make([]byte, 0, 34)
 	data = append(data, StandbyStatusUpdateByteID)
-	data = AppendUint64(data, WALWritePosition)
-	data = AppendUint64(data, WALWritePosition)
-	data = AppendUint64(data, WALWritePosition)
+	data = AppendUint64(data, walWritePosition)
+	data = AppendUint64(data, walWritePosition)
+	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, timeToPgTime(time.Now()))
 	data = append(data, 0)
 

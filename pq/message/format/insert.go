@@ -5,14 +5,11 @@ import (
 
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
 	InsertTupleDataType = 'N'
 )
-
-var typeMap = pgtype.NewMap()
 
 type Insert struct {
 	TupleData *tuple.Data

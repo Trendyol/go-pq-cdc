@@ -30,7 +30,7 @@ func NewServer(cfg config.Config, registry metric.Registry) Server {
 
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry.Prometheus(), promhttp.HandlerOpts{EnableOpenMetrics: true}))
 
-	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("OK"))
 	})
 

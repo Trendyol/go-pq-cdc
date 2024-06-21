@@ -41,7 +41,7 @@ func NewData(data []byte, tupleDataType uint8, skipByteLength int) (*Data, error
 	if data[skipByteLength] != tupleDataType {
 		return nil, errors.New("invalid tuple data type: " + string(data[skipByteLength]))
 	}
-	skipByteLength += 1
+	skipByteLength++
 
 	d := &Data{}
 	d.Decode(data, skipByteLength)
@@ -56,7 +56,7 @@ func (d *Data) Decode(data []byte, skipByteLength int) {
 	for range d.ColumnNumber {
 		col := new(DataColumn)
 		col.DataType = data[skipByteLength]
-		skipByteLength += 1
+		skipByteLength++
 
 		switch col.DataType {
 		case DataTypeNull, DataTypeToast:

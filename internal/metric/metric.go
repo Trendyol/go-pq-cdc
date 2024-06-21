@@ -38,6 +38,7 @@ type metric struct {
 	slotLag               prometheus.Gauge
 }
 
+//nolint:funlen
 func NewMetric(slotName string) Metric {
 	return &metric{
 		totalInsert: prometheus.NewCounter(prometheus.CounterOpts{

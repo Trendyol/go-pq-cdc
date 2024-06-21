@@ -56,7 +56,8 @@ func (c *Publication) Info(ctx context.Context) (*Config, error) {
 	resultReader := c.conn.Exec(ctx, c.cfg.infoQuery())
 	results, err := resultReader.ReadAll()
 	if err != nil {
-		if v, ok := err.(*pgconn.PgError); ok && v.Code == "42703" {
+		var v *pgconn.PgError
+		if goerrors.As(err, &v) && v.Code == "42703" {
 			return nil, ErrorPublicationIsNotExists
 		}
 		return nil, errors.Wrap(err, "publication info result")

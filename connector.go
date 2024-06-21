@@ -45,9 +45,9 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 	var err error
 
 	if strings.HasSuffix(configFilePath, ".json") {
-		cfg, err = config.ReadConfigJson(configFilePath)
+		cfg, err = config.ReadConfigJSON(configFilePath)
 	} else {
-		cfg, err = config.ReadConfigYaml(configFilePath)
+		cfg, err = config.ReadConfigYAML(configFilePath)
 	}
 	if err != nil {
 		return nil, err
@@ -57,11 +57,10 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 }
 
 func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
+	cfg.SetDefault()
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
 	}
-
-	cfg.SetDefault()
 	cfg.Print()
 
 	logger.InitLogger(cfg.Logger.Logger)
@@ -140,10 +139,8 @@ func (c *connector) Start(ctx context.Context) {
 
 	c.readyCh <- struct{}{}
 
-	select {
-	case <-c.cancelCh:
-		logger.Debug("cancel channel triggered")
-	}
+	<-c.cancelCh
+	logger.Debug("cancel channel triggered")
 }
 
 func (c *connector) WaitUntilReady(ctx context.Context) error {

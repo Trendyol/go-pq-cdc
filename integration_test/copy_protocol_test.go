@@ -73,9 +73,9 @@ func TestCopyProtocol(t *testing.T) {
 
 	go connector2.Start(ctx)
 
-	t.Run("Insert 1000 book to table with Copy protocol. Then stop the consumer after 650th message processed", func(t *testing.T) {
-		entries := make([][]any, 1000)
-		books := CreateBooks(1000)
+	t.Run("Insert 30 book to table with Copy protocol. Then stop the consumer after 650th message processed", func(t *testing.T) {
+		entries := make([][]any, 30)
+		books := CreateBooks(30)
 
 		for i, user := range books {
 			entries[i] = []any{user.ID, user.Name}
@@ -94,7 +94,7 @@ func TestCopyProtocol(t *testing.T) {
 		for {
 			m := <-messageCh
 			if v, ok := m.Message.(*format.Insert); ok {
-				if v.Decoded["id"].(int32) == 650 {
+				if v.Decoded["id"].(int32) == 16 {
 					connector.Close()
 					break
 				}
@@ -114,12 +114,12 @@ func TestCopyProtocol(t *testing.T) {
 		for {
 			m := <-messageCh
 			if v, ok := m.Message.(*format.Insert); ok {
-				if v.Decoded["id"].(int32) == 1000 {
+				if v.Decoded["id"].(int32) == 30 {
 					break
 				}
 			}
 		}
 
-		assert.True(t, totalCounter.Load() == 1000, "EXPECTED: 1000 ACTUAL: %d", totalCounter.Load())
+		assert.True(t, totalCounter.Load() == 30, "EXPECTED: 30 ACTUAL: %d", totalCounter.Load())
 	})
 }

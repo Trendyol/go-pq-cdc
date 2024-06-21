@@ -30,7 +30,7 @@
 - [ ] Add cd pipeline for project
   - [ ] Create Config&Run docker images
   - [ ] Add goreleaser implementation
-- [ ] Add License file
+- [x] Add License file
 - [ ] Add Dockerfile
 - [ ] Add Documentation
 - [ ] Create Grafana dashboard

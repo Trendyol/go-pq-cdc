@@ -7,7 +7,6 @@ init: init/lint
 init/lint:
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
 	go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@v0.22.0
-	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 .PHONY: init/vulnCheck
 init/vulnCheck:

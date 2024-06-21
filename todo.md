@@ -19,8 +19,8 @@
   - [x] Add Leader Election Test
   - [x] Add publication create/exists test
   - [x] Add slot create/exists test
-- [ ] Add unit tests
-- [ ] Add Contribution.md
+- [x] Add unit tests
+- [x] Add Contribution.md
 - [ ] Add ci pipeline for project
   - [ ] Go Lint 
   - [ ] Go Vet

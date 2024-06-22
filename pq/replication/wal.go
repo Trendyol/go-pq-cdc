@@ -8,7 +8,9 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq"
 )
 
-const microSecFromUnixEpochToY2K = 946684800 * 1000000
+// The server's system clock at the time of transmission, as microseconds since midnight on 2000-01-01.
+// microSecFromUnixEpochToY2K is unix timestamp of 2000-01-01.
+var microSecFromUnixEpochToY2K = int64(946684800)
 
 type XLogData struct {
 	ServerTime   time.Time
@@ -32,5 +34,5 @@ func ParseXLogData(buf []byte) (XLogData, error) {
 }
 
 func pgTimeToTime(microSecSinceY2K int64) time.Time {
-	return time.Unix(0, microSecFromUnixEpochToY2K+microSecSinceY2K*1000)
+	return time.Unix(microSecFromUnixEpochToY2K+(microSecSinceY2K/1_000_000), (microSecSinceY2K%1_000_000)*1_000).UTC()
 }

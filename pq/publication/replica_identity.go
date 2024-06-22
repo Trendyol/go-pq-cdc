@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	ErrorTablesNotExists   = goerrors.New("publication is not exists")
+	ErrorTablesNotExists   = goerrors.New("table is not exists")
 	ReplicaIdentityOptions = []string{ReplicaIdentityDefault, ReplicaIdentityFull}
 	ReplicaIdentityMap     = map[string]string{
 		"d": ReplicaIdentityDefault, // primary key on old value

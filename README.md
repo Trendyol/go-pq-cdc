@@ -176,6 +176,11 @@ the `/metrics` endpoint.
 | go_pq_cdc_replication_slot_slot_retained_wal_size   | The size of Write-Ahead Logging (WAL) files retained for the replication slot in bytes.               | slot_name | Gauge      |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A       | N/A        |
 
+### Grafana Dashboard
+
+Import the grafana dashboard [json file](./grafana/dashboard.json).
+![Dashboard](./grafana/dashboard.png)
+
 ### Compatibility
 
 | go-pq-cdc Version | Minimum PostgreSQL Server Version |

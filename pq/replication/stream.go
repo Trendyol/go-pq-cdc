@@ -156,7 +156,7 @@ func (s *stream) sink(ctx context.Context) {
 
 			logger.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
 
-			s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
+			s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
 			s.system.UpdateXLogPos(xld.WALStart)
 
@@ -201,9 +201,9 @@ func (s *stream) process(ctx context.Context) {
 			s.metric.UpdateOpIncrement(1)
 		}
 
-		start := time.Now()
+		start := time.Now().UTC()
 		s.listenerFunc(lCtx)
-		s.metric.SetProcessLatency(time.Since(start).Milliseconds())
+		s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
 	}
 }
 
@@ -235,7 +235,7 @@ func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosi
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, walWritePosition)
-	data = AppendUint64(data, timeToPgTime(time.Now()))
+	data = AppendUint64(data, timeToPgTime(time.Now().UTC()))
 	data = append(data, 0)
 
 	cd := &pgproto3.CopyData{Data: data}

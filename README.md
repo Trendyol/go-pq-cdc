@@ -7,6 +7,8 @@ The architecture leverages PostgreSQL's built-in logical replication capabilitie
 stream these changes to downstream systems, such as Kafka, Elasticsearch etc. The entire system is written in Golang,
 ensuring low resource consumption and high performance.
 
+[Debezium vs go-pq-cdc benchmark](./benchmark)
+
 ### Contents
 
 * [Why?](#why)

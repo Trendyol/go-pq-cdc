@@ -35,6 +35,11 @@ type ListenerContext struct {
 
 type ListenerFunc func(ctx *ListenerContext)
 
+type Message struct {
+	message  any
+	walStart int64
+}
+
 type Streamer interface {
 	Open(ctx context.Context) error
 	Close(ctx context.Context)
@@ -47,7 +52,7 @@ type stream struct {
 	metric       metric.Metric
 	system       *pq.IdentifySystemResult
 	relation     map[uint32]*format.Relation
-	messageCH    chan any
+	messageCH    chan *Message
 	listenerFunc ListenerFunc
 	sinkEnd      chan struct{}
 	config       config.Config
@@ -62,7 +67,7 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *p
 		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
-		messageCH:    make(chan any, 1000),
+		messageCH:    make(chan *Message, 1000),
 		listenerFunc: listenerFunc,
 		lastXLogPos:  10,
 		sinkEnd:      make(chan struct{}, 1),
@@ -118,7 +123,7 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
-				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()-1))
+				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(0))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
 					break
@@ -158,8 +163,6 @@ func (s *stream) sink(ctx context.Context) {
 
 			s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
-			s.system.UpdateXLogPos(xld.WALStart)
-
 			var decodedMsg any
 			decodedMsg, err = message.New(xld.WALData, s.relation)
 			if err != nil || decodedMsg == nil {
@@ -167,7 +170,10 @@ func (s *stream) sink(ctx context.Context) {
 				continue
 			}
 
-			s.messageCH <- decodedMsg
+			s.messageCH <- &Message{
+				message:  decodedMsg,
+				walStart: int64(xld.WALStart),
+			}
 		}
 	}
 	s.sinkEnd <- struct{}{}
@@ -183,12 +189,12 @@ func (s *stream) process(ctx context.Context) {
 		}
 
 		lCtx := &ListenerContext{
-			Message: msg,
+			Message: msg.message,
 			Ack: func() error {
-				pos := s.system.LoadXLogPos()
+				pos := pq.LSN(msg.walStart)
 				s.system.UpdateXLogPos(pos)
 				logger.Debug("send stand by status update", "xLogPos", pos.String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(pos))
+				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()))
 			},
 		}
 

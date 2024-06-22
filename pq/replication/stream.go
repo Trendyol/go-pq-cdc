@@ -235,7 +235,7 @@ func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosi
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, walWritePosition)
-	data = AppendUint64(data, timeToPgTime(time.Now().UTC()))
+	data = AppendUint64(data, timeToPgTime(time.Now()))
 	data = append(data, 0)
 
 	cd := &pgproto3.CopyData{Data: data}

@@ -127,7 +127,7 @@ func (s *stream) sink(ctx context.Context) {
 				continue
 			}
 			logger.Error("receive message error", "error", err)
-			break
+			panic(err)
 		}
 
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {

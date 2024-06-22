@@ -14,7 +14,7 @@ type IdentifySystemResult struct {
 	mu       *sync.RWMutex
 	SystemID string
 	Database string
-	XLogPos  LSN
+	xLogPos  LSN
 	Timeline int32
 }
 
@@ -54,7 +54,7 @@ func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, e
 	}
 	isr.Timeline = int32(timeline)
 
-	isr.XLogPos, err = ParseLSN(string(row[2]))
+	isr.xLogPos, err = ParseLSN(string(row[2]))
 	if err != nil {
 		return isr, fmt.Errorf("failed to parse xlogpos as LSN: %w", err)
 	}
@@ -65,17 +65,21 @@ func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, e
 	return isr, nil
 }
 
+func (isr *IdentifySystemResult) SetXLogPos(l LSN) {
+	isr.xLogPos = l
+}
+
 func (isr *IdentifySystemResult) UpdateXLogPos(l LSN) {
 	isr.mu.Lock()
 	defer isr.mu.Unlock()
 
-	if isr.XLogPos < l {
-		isr.XLogPos = l
+	if isr.xLogPos < l {
+		isr.xLogPos = l
 	}
 }
 
 func (isr *IdentifySystemResult) LoadXLogPos() LSN {
 	isr.mu.RLock()
 	defer isr.mu.RUnlock()
-	return isr.XLogPos
+	return isr.xLogPos
 }

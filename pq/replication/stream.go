@@ -118,7 +118,7 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
-				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.lastXLogPos))
+				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()-1))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
 					break

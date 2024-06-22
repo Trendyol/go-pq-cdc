@@ -87,7 +87,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.XLogPos, "database:", system.Database)
+	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
 
 	m := metric.NewMetric(cfg.Slot.Name)
 

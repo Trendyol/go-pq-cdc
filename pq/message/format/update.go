@@ -18,11 +18,11 @@ type Update struct {
 	NewDecoded     map[string]any
 	OldTupleData   *tuple.Data
 	OldDecoded     map[string]any
+	TableNamespace string
+	TableName      string
 	OID            uint32
 	XID            uint32
 	OldTupleType   uint8
-	TableNamespace string
-	TableName      string
 }
 
 func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Update, error) {

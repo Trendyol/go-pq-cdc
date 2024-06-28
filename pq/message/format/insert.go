@@ -14,10 +14,10 @@ const (
 type Insert struct {
 	TupleData      *tuple.Data
 	Decoded        map[string]any
-	OID            uint32
-	XID            uint32
 	TableNamespace string
 	TableName      string
+	OID            uint32
+	XID            uint32
 }
 
 func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Insert, error) {

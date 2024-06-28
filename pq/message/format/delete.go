@@ -10,11 +10,11 @@ import (
 type Delete struct {
 	OldTupleData   *tuple.Data
 	OldDecoded     map[string]any
+	TableNamespace string
+	TableName      string
 	OID            uint32
 	XID            uint32
 	OldTupleType   uint8
-	TableNamespace string
-	TableName      string
 }
 
 func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Delete, error) {

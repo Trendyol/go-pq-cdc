@@ -73,7 +73,7 @@ func TestCopyProtocol(t *testing.T) {
 
 	go connector2.Start(ctx)
 
-	t.Run("Insert 30 book to table with Copy protocol. Then stop the consumer after 650th message processed", func(t *testing.T) {
+	t.Run("Insert 30 book to table with Copy protocol. Then stop the consumer after 16th message processed", func(t *testing.T) {
 		entries := make([][]any, 30)
 		books := CreateBooks(30)
 

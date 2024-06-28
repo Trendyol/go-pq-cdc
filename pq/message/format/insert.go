@@ -12,10 +12,12 @@ const (
 )
 
 type Insert struct {
-	TupleData *tuple.Data
-	Decoded   map[string]any
-	OID       uint32
-	XID       uint32
+	TupleData      *tuple.Data
+	Decoded        map[string]any
+	OID            uint32
+	XID            uint32
+	TableNamespace string
+	TableName      string
 }
 
 func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Insert, error) {
@@ -28,6 +30,9 @@ func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relat
 	if !ok {
 		return nil, errors.New("relation not found")
 	}
+
+	msg.TableNamespace = rel.Namespace
+	msg.TableName = rel.Name
 
 	msg.Decoded = make(map[string]any)
 

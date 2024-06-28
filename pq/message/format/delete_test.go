@@ -64,6 +64,8 @@ func TestDelete_New(t *testing.T) {
 			"id":   int32(645),
 			"name": "foo",
 		},
+		TableNamespace: "public",
+		TableName:      "t",
 	}
 
 	assert.Equal(t, expected, msg)

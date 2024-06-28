@@ -84,6 +84,8 @@ func TestUpdate_New(t *testing.T) {
 			"id":   int32(53),
 			"name": "bar2",
 		},
+		TableNamespace: "public",
+		TableName:      "t",
 	}
 
 	assert.Equal(t, expected, msg)

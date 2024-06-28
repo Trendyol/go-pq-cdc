@@ -51,7 +51,9 @@ func TestInsert_New(t *testing.T) {
 			},
 			SkipByte: 24,
 		},
-		Decoded: map[string]any{"id": int32(605), "name": "foo"},
+		Decoded:        map[string]any{"id": int32(605), "name": "foo"},
+		TableNamespace: "public",
+		TableName:      "t",
 	}
 
 	assert.EqualValues(t, expected, msg)

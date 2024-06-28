@@ -8,11 +8,13 @@ import (
 )
 
 type Delete struct {
-	OldTupleData *tuple.Data
-	OldDecoded   map[string]any
-	OID          uint32
-	XID          uint32
-	OldTupleType uint8
+	OldTupleData   *tuple.Data
+	OldDecoded     map[string]any
+	OID            uint32
+	XID            uint32
+	OldTupleType   uint8
+	TableNamespace string
+	TableName      string
 }
 
 func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Delete, error) {
@@ -25,6 +27,9 @@ func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relat
 	if !ok {
 		return nil, errors.New("relation not found")
 	}
+
+	msg.TableNamespace = rel.Namespace
+	msg.TableName = rel.Name
 
 	var err error
 

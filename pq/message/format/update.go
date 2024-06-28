@@ -14,13 +14,15 @@ const (
 )
 
 type Update struct {
-	NewTupleData *tuple.Data
-	NewDecoded   map[string]any
-	OldTupleData *tuple.Data
-	OldDecoded   map[string]any
-	OID          uint32
-	XID          uint32
-	OldTupleType uint8
+	NewTupleData   *tuple.Data
+	NewDecoded     map[string]any
+	OldTupleData   *tuple.Data
+	OldDecoded     map[string]any
+	OID            uint32
+	XID            uint32
+	OldTupleType   uint8
+	TableNamespace string
+	TableName      string
 }
 
 func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Update, error) {
@@ -33,6 +35,9 @@ func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relat
 	if !ok {
 		return nil, errors.New("relation not found")
 	}
+
+	msg.TableNamespace = rel.Namespace
+	msg.TableName = rel.Name
 
 	var err error
 

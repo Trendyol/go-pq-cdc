@@ -2,6 +2,7 @@ package format
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,8 @@ func TestUpdate_New(t *testing.T) {
 		},
 	}
 
-	msg, err := NewUpdate(data, false, rel)
+	now := time.Now()
+	msg, err := NewUpdate(data, false, rel, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +88,7 @@ func TestUpdate_New(t *testing.T) {
 		},
 		TableNamespace: "public",
 		TableName:      "t",
+		MessageTime:    now,
 	}
 
 	assert.Equal(t, expected, msg)

@@ -2,6 +2,7 @@ package format
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
@@ -12,6 +13,7 @@ const (
 )
 
 type Insert struct {
+	MessageTime    time.Time
 	TupleData      *tuple.Data
 	Decoded        map[string]any
 	TableNamespace string
@@ -20,8 +22,10 @@ type Insert struct {
 	XID            uint32
 }
 
-func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Insert, error) {
-	msg := &Insert{}
+func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relation, serverTime time.Time) (*Insert, error) {
+	msg := &Insert{
+		MessageTime: serverTime,
+	}
 	if err := msg.decode(data, streamedTransaction); err != nil {
 		return nil, err
 	}

@@ -1,6 +1,8 @@
 package message
 
 import (
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/go-playground/errors"
 )
@@ -33,14 +35,14 @@ type Type uint8
 
 var streamedTransaction bool
 
-func New(data []byte, relation map[uint32]*format.Relation) (any, error) {
+func New(data []byte, serverTime time.Time, relation map[uint32]*format.Relation) (any, error) {
 	switch Type(data[0]) {
 	case InsertByte:
-		return format.NewInsert(data, streamedTransaction, relation)
+		return format.NewInsert(data, streamedTransaction, relation, serverTime)
 	case UpdateByte:
-		return format.NewUpdate(data, streamedTransaction, relation)
+		return format.NewUpdate(data, streamedTransaction, relation, serverTime)
 	case DeleteByte:
-		return format.NewDelete(data, streamedTransaction, relation)
+		return format.NewDelete(data, streamedTransaction, relation, serverTime)
 	case StreamStopByte, StreamAbortByte, StreamCommitByte:
 		streamedTransaction = false
 		return nil, nil

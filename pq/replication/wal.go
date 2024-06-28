@@ -2,8 +2,9 @@ package replication
 
 import (
 	"encoding/binary"
-	"github.com/go-playground/errors"
 	"time"
+
+	"github.com/go-playground/errors"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 )

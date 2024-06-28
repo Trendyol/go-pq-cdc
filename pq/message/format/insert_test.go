@@ -2,6 +2,7 @@ package format
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,8 @@ func TestInsert_New(t *testing.T) {
 		},
 	}
 
-	msg, err := NewInsert(data, false, rel)
+	now := time.Now()
+	msg, err := NewInsert(data, false, rel, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +56,7 @@ func TestInsert_New(t *testing.T) {
 		Decoded:        map[string]any{"id": int32(605), "name": "foo"},
 		TableNamespace: "public",
 		TableName:      "t",
+		MessageTime:    now,
 	}
 
 	assert.EqualValues(t, expected, msg)

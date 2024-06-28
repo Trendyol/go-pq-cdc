@@ -164,7 +164,7 @@ func (s *stream) sink(ctx context.Context) {
 			s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
 			var decodedMsg any
-			decodedMsg, err = message.New(xld.WALData, s.relation)
+			decodedMsg, err = message.New(xld.WALData, xld.ServerTime, s.relation)
 			if err != nil || decodedMsg == nil {
 				logger.Debug("wal data message parsing error", "error", err)
 				continue

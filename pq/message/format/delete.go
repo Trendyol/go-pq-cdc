@@ -2,12 +2,14 @@ package format
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
 
 type Delete struct {
+	MessageTime    time.Time
 	OldTupleData   *tuple.Data
 	OldDecoded     map[string]any
 	TableNamespace string
@@ -17,8 +19,10 @@ type Delete struct {
 	OldTupleType   uint8
 }
 
-func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Delete, error) {
-	msg := &Delete{}
+func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relation, serverTime time.Time) (*Delete, error) {
+	msg := &Delete{
+		MessageTime: serverTime,
+	}
 	if err := msg.decode(data, streamedTransaction); err != nil {
 		return nil, err
 	}

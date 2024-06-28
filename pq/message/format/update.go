@@ -2,6 +2,7 @@ package format
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
@@ -14,6 +15,7 @@ const (
 )
 
 type Update struct {
+	MessageTime    time.Time
 	NewTupleData   *tuple.Data
 	NewDecoded     map[string]any
 	OldTupleData   *tuple.Data
@@ -25,8 +27,10 @@ type Update struct {
 	OldTupleType   uint8
 }
 
-func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation) (*Update, error) {
-	msg := &Update{}
+func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation, serverTime time.Time) (*Update, error) {
+	msg := &Update{
+		MessageTime: serverTime,
+	}
 	if err := msg.decode(data, streamedTransaction); err != nil {
 		return nil, err
 	}

@@ -128,7 +128,7 @@ func (s *stream) sink(ctx context.Context) {
 					logger.Error("send stand by status update", "error", err)
 					break
 				}
-				logger.Info("send stand by status update")
+				logger.Debug("send stand by status update")
 				continue
 			}
 			logger.Error("receive message error", "error", err)

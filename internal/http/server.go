@@ -20,8 +20,8 @@ type Server interface {
 }
 
 type server struct {
-	cdcConfig config.Config
 	server    http.Server
+	cdcConfig config.Config
 	closed    bool
 }
 

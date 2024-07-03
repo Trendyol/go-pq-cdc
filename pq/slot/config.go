@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Name                        string        `json:"name" yaml:"name"`
 	SlotActivityCheckerInterval time.Duration `json:"slotActivityCheckerInterval" yaml:"slotActivityCheckerInterval"`
+	CreateIfNotExists           bool          `json:"createIfNotExists" yaml:"createIfNotExists"`
 }
 
 func (c Config) Validate() error {

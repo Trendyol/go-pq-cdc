@@ -68,7 +68,8 @@ func main() {
 		Password: "cdc_pass",
 		Database: "cdc_db",
 		Publication: publication.Config{
-			Name: "cdc_publication",
+			CreateIfNotExists: true,
+			Name:              "cdc_publication",
 			Operations: publication.Operations{
 				publication.OperationInsert,
 				publication.OperationDelete,
@@ -81,6 +82,7 @@ func main() {
 			}},
 		},
 		Slot: slot.Config{
+			CreateIfNotExists:           true,
 			Name:                        "cdc_slot",
 			SlotActivityCheckerInterval: 3000,
 		},

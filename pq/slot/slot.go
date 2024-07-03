@@ -48,7 +48,7 @@ func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slo
 func (s *Slot) Create(ctx context.Context) (*Info, error) {
 	info, err := s.Info(ctx)
 	if err != nil {
-		if !goerrors.Is(err, ErrorSlotIsNotExists) {
+		if !goerrors.Is(err, ErrorSlotIsNotExists) || !s.cfg.CreateIfNotExists {
 			return nil, errors.Wrap(err, "replication slot info")
 		}
 	} else {

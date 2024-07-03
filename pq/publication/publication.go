@@ -29,7 +29,7 @@ func New(cfg Config, conn pq.Connection) *Publication {
 func (c *Publication) Create(ctx context.Context) (*Config, error) {
 	info, err := c.Info(ctx)
 	if err != nil {
-		if !goerrors.Is(err, ErrorPublicationIsNotExists) {
+		if !goerrors.Is(err, ErrorPublicationIsNotExists) || !c.cfg.CreateIfNotExists {
 			return nil, errors.Wrap(err, "publication info")
 		}
 	} else {

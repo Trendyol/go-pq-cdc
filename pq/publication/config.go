@@ -9,15 +9,20 @@ import (
 )
 
 type Config struct {
-	Name       string     `json:"name" yaml:"name"`
-	Operations Operations `json:"operations" yaml:"operations"`
-	Tables     Tables     `json:"tables" yaml:"tables"`
+	Name              string     `json:"name" yaml:"name"`
+	Operations        Operations `json:"operations" yaml:"operations"`
+	Tables            Tables     `json:"tables" yaml:"tables"`
+	CreateIfNotExists bool       `json:"createIfNotExists" yaml:"createIfNotExists"`
 }
 
 func (c Config) Validate() error {
 	var err error
 	if strings.TrimSpace(c.Name) == "" {
 		err = errors.Join(err, errors.New("publication name cannot be empty"))
+	}
+
+	if !c.CreateIfNotExists {
+		return err
 	}
 
 	if validateErr := c.Tables.Validate(); validateErr != nil {

@@ -26,6 +26,10 @@ var (
 )
 
 func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
+	if !c.cfg.CreateIfNotExists {
+		return nil
+	}
+
 	tables, err := c.GetReplicaIdentities(ctx)
 	if err != nil {
 		return err

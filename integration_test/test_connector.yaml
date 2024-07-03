@@ -3,6 +3,7 @@ password: cdc_pass
 database: cdc_db
 debugMode: false
 publication:
+  createIfNotExists: true
   name: cdc_publication
   operations:
     - INSERT
@@ -12,6 +13,8 @@ publication:
   tables:
     - name: books
       replicaIdentity: FULL
+slot:
+  createIfNotExists: true
 logger:
   level: INFO
 metric:

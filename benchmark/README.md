@@ -60,7 +60,7 @@ Debezium:
     ```
 - Go to grafana dashboard: http://localhost:3000/d/edl1ybvsmc64gb/benchmark?orgId=1
     > **Grafana Credentials**  
-     Username: `admin` Password: `admin`
+     Username: `go-pq-cdc-user` Password: `go-pq-cdc-pass`
 - Trace the process 
 ![benchmark_dashboard](./dashboard.png)
 

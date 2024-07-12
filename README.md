@@ -189,7 +189,7 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 
 | go-pq-cdc Version | Minimum PostgreSQL Server Version |
 |-------------------|-----------------------------------|
-| 0.0.1 or higher   | 15                                |
+| 0.0.2 or higher   | 14                                |
 
 ### Breaking Changes
 

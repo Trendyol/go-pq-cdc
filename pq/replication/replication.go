@@ -24,7 +24,7 @@ func (r *Replication) Start(publicationName, slotName string) error {
 	startLSN := pq.LSN(2)
 
 	pluginArguments := append([]string{
-		"proto_version '3'",
+		"proto_version '2'",
 		"messages 'true'",
 		"streaming 'true'",
 	}, "publication_names '"+publicationName+"'")

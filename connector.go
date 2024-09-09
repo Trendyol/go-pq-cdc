@@ -3,12 +3,13 @@ package cdc
 import (
 	"context"
 	goerrors "errors"
-	"github.com/Trendyol/go-pq-cdc/pq/timescaledb"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Trendyol/go-pq-cdc/pq/timescaledb"
 
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/http"
@@ -38,8 +39,8 @@ type connector struct {
 	slot               *slot.Slot
 	cancelCh           chan os.Signal
 	readyCh            chan struct{}
-	system             pq.IdentifySystemResult
 	timescaleDB        *timescaledb.TimescaleDB
+	system             pq.IdentifySystemResult
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {

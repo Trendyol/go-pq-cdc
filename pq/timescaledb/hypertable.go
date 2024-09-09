@@ -2,14 +2,16 @@ package timescaledb
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"sync"
-	"time"
 )
 
 var typeMap = pgtype.NewMap()
@@ -47,7 +49,8 @@ func (tdb *TimescaleDB) FindHyperTables(ctx context.Context) (map[string]string,
 	resultReader := tdb.conn.Exec(ctx, query)
 	results, err := resultReader.ReadAll()
 	if err != nil {
-		if pgErr, ok := err.(*pgconn.PgError); ok {
+		var pgErr *pgconn.PgError
+		if goerrors.As(err, &pgErr) {
 			if pgErr.Code == "42P01" {
 				return nil, nil
 			}
@@ -101,7 +104,6 @@ func decodeHyperTablesResult(results []*pgconn.Result) (map[string]string, error
 				case "chunk_name":
 					chunkName = v.(string)
 				}
-
 			}
 			res[fmt.Sprintf("%s.%s", chunkSchema, chunkName)] = fmt.Sprintf("%s.%s", hyperSchema, hyperName)
 		}

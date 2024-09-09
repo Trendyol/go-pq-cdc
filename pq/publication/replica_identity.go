@@ -96,26 +96,28 @@ func (c *Publication) GetReplicaIdentities(ctx context.Context) ([]Table, error)
 func decodeReplicaIdentitiesResult(results []*pgconn.Result) ([]Table, error) {
 	var res []Table
 
-	for i, result := range results {
-		var t Table
-		for j, fd := range result.FieldDescriptions {
-			v, err := decodeTextColumnData(result.Rows[i][j], fd.DataTypeOID)
-			if err != nil {
-				return nil, err
-			}
+	for _, result := range results {
+		for i := range len(result.Rows) {
+			var t Table
+			for j, fd := range result.FieldDescriptions {
+				v, err := decodeTextColumnData(result.Rows[i][j], fd.DataTypeOID)
+				if err != nil {
+					return nil, err
+				}
 
-			if v == nil {
-				continue
-			}
+				if v == nil {
+					continue
+				}
 
-			switch fd.Name {
-			case "table_name":
-				t.Name = v.(string)
-			case "replica_identity":
-				t.ReplicaIdentity = ReplicaIdentityMap[string(v.(int32))]
+				switch fd.Name {
+				case "table_name":
+					t.Name = v.(string)
+				case "replica_identity":
+					t.ReplicaIdentity = ReplicaIdentityMap[string(v.(int32))]
+				}
 			}
+			res = append(res, t)
 		}
-		res = append(res, t)
 	}
 
 	return res, nil

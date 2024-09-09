@@ -3,6 +3,7 @@ package cdc
 import (
 	"context"
 	goerrors "errors"
+	"github.com/Trendyol/go-pq-cdc/pq/timescaledb"
 	"os"
 	"os/signal"
 	"strings"
@@ -38,6 +39,7 @@ type connector struct {
 	cancelCh           chan os.Signal
 	readyCh            chan struct{}
 	system             pq.IdentifySystemResult
+	timescaleDB        *timescaledb.TimescaleDB
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
@@ -105,6 +107,16 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
 	prometheusRegistry := metric.NewRegistry(m)
 
+	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = tdb.FindHyperTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return &connector{
 		cfg:                &cfg,
 		system:             system,
@@ -112,6 +124,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		prometheusRegistry: prometheusRegistry,
 		server:             http.NewServer(cfg, prometheusRegistry),
 		slot:               sl,
+		timescaleDB:        tdb,
 
 		cancelCh: make(chan os.Signal, 1),
 		readyCh:  make(chan struct{}, 1),
@@ -135,6 +148,7 @@ func (c *connector) Start(ctx context.Context) {
 	logger.Info("slot captured")
 
 	go c.slot.Metrics(ctx)
+	go c.timescaleDB.SyncHyperTables(ctx)
 
 	go c.server.Listen()
 

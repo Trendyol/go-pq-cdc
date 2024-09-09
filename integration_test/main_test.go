@@ -96,7 +96,7 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 			"POSTGRES_DB":       cfg.Database,
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		Cmd:          []string{"postgres", "-c", "fsync=off", "-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"},
+		Cmd:          []string{"postgres", "-c", "fsync=off", "-c", "wal_level=logical", "-c", "max_wal_senders=20", "-c", "max_replication_slots=10"},
 	}
 
 	genericContainerReq := testcontainers.GenericContainerRequest{

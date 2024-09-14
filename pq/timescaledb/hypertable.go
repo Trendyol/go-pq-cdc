@@ -29,7 +29,7 @@ func NewTimescaleDB(ctx context.Context, dsn string) (*TimescaleDB, error) {
 		return nil, errors.Wrap(err, "new postgresql connection")
 	}
 
-	return &TimescaleDB{conn: conn, ticker: time.NewTicker(time.Minute * 5)}, nil
+	return &TimescaleDB{conn: conn, ticker: time.NewTicker(time.Second)}, nil
 }
 
 func (tdb *TimescaleDB) SyncHyperTables(ctx context.Context) {
@@ -55,6 +55,7 @@ func (tdb *TimescaleDB) FindHyperTables(ctx context.Context) (map[string]string,
 				return nil, nil
 			}
 		}
+
 		return nil, errors.Wrap(err, "hyper tables result")
 	}
 

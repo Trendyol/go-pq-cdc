@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -41,6 +42,8 @@ type connector struct {
 	readyCh            chan struct{}
 	timescaleDB        *timescaledb.TimescaleDB
 	system             pq.IdentifySystemResult
+
+	once sync.Once
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
@@ -133,6 +136,10 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 }
 
 func (c *connector) Start(ctx context.Context) {
+	c.once.Do(func() {
+		go c.server.Listen()
+	})
+
 	c.CaptureSlot(ctx)
 
 	err := c.stream.Open(ctx)
@@ -147,11 +154,8 @@ func (c *connector) Start(ctx context.Context) {
 	}
 
 	logger.Info("slot captured")
-
 	go c.slot.Metrics(ctx)
 	go c.timescaleDB.SyncHyperTables(ctx)
-
-	go c.server.Listen()
 
 	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
 

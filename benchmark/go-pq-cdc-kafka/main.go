@@ -23,7 +23,7 @@ import (
 	INSERT INTO users (name)
 	SELECT
 		'Oyleli' || i
-	FROM generate_series(1, 100) AS i;
+	FROM generate_series(1, 10000000) AS i;
 */
 
 type Message struct {

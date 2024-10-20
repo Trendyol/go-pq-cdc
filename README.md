@@ -25,6 +25,7 @@ CDC systems are crucial for real-time data synchronization, analytics, and event
 Our main goal is to build a cdc base library for faster and stateful systems.
 
 - [Postgresql to Elasticsearch Connector](https://github.com/Trendyol/go-pq-cdc-elasticsearch)
+- [Postgresql to Kafka Connector](https://github.com/Trendyol/go-pq-cdc-kafka)
 
 ### Usage
 

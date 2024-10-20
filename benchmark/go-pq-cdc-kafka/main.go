@@ -3,17 +3,18 @@ package main
 import (
 	"context"
 	"encoding/json"
-	cdc "github.com/Trendyol/go-pq-cdc"
-	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq/message/format"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
-	"github.com/Trendyol/go-pq-cdc/pq/replication"
-	"github.com/Trendyol/go-pq-cdc/pq/slot"
-	"github.com/google/uuid"
-	"github.com/segmentio/kafka-go"
 	"log/slog"
 	"os"
+	"strconv"
 	"time"
+
+	cdc "github.com/Trendyol/go-pq-cdc-kafka"
+	"github.com/Trendyol/go-pq-cdc-kafka/config"
+	cdcconfig "github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	"github.com/segmentio/kafka-go"
+	gokafka "github.com/segmentio/kafka-go"
 )
 
 /*
@@ -33,58 +34,51 @@ type Message struct {
 func main() {
 	ctx := context.Background()
 
-	w := &kafka.Writer{
-		Addr:                   kafka.TCP("redpanda:9092"),
-		Topic:                  "cdc.test.produce",
-		Balancer:               &kafka.LeastBytes{},
-		BatchSize:              10000,
-		AllowAutoTopicCreation: true,
-	}
-
-	defer func() {
-		err := w.Close()
-		if err != nil {
-			slog.Error("kafka writer close", "error", err)
-		}
-	}()
-
-	messages := make(chan Message, 10000)
-	go Produce(ctx, w, messages)
-
-	cfg := config.Config{
-		Host:      "postgres:5432",
-		Username:  "cdc_user",
-		Password:  "cdc_pass",
-		Database:  "cdc_db",
-		DebugMode: false,
-		Publication: publication.Config{
-			CreateIfNotExists: true,
-			Name:              "cdc_publication",
-			Operations: publication.Operations{
-				publication.OperationInsert,
-				publication.OperationDelete,
-				publication.OperationTruncate,
-				publication.OperationUpdate,
+	cfg := config.Connector{
+		CDC: cdcconfig.Config{
+			Host:      "postgres:5432",
+			Username:  "cdc_user",
+			Password:  "cdc_pass",
+			Database:  "cdc_db",
+			DebugMode: false,
+			Publication: publication.Config{
+				CreateIfNotExists: true,
+				Name:              "cdc_publication",
+				Operations: publication.Operations{
+					publication.OperationInsert,
+					publication.OperationDelete,
+					publication.OperationTruncate,
+					publication.OperationUpdate,
+				},
+				Tables: publication.Tables{publication.Table{
+					Name:            "users",
+					ReplicaIdentity: publication.ReplicaIdentityFull,
+				}},
 			},
-			Tables: publication.Tables{publication.Table{
-				Name:            "users",
-				ReplicaIdentity: publication.ReplicaIdentityFull,
-			}},
+			Slot: slot.Config{
+				CreateIfNotExists:           true,
+				Name:                        "cdc_slot",
+				SlotActivityCheckerInterval: 3000,
+			},
+			Metric: cdcconfig.MetricConfig{
+				Port: 2112,
+			},
+			Logger: cdcconfig.LoggerConfig{
+				LogLevel: slog.LevelInfo,
+			},
 		},
-		Slot: slot.Config{
-			CreateIfNotExists:           true,
-			Name:                        "cdc_slot",
-			SlotActivityCheckerInterval: 3000,
-		},
-		Metric: config.MetricConfig{
-			Port: 2112,
-		},
-		Logger: config.LoggerConfig{
-			LogLevel: slog.LevelInfo,
+		Kafka: config.Kafka{
+			TableTopicMapping: map[string]string{
+				"public.users": "cdc.test.produce",
+			},
+			Brokers:                     []string{"redpanda:9092"},
+			AllowAutoTopicCreation:      true,
+			ProducerBatchTickerDuration: time.Millisecond * 100,
+			ProducerBatchSize:           10000,
 		},
 	}
 
-	connector, err := cdc.NewConnector(ctx, cfg, FilteredMapper(messages))
+	connector, err := cdc.NewConnector(ctx, cfg, Handler)
 	if err != nil {
 		slog.Error("new connector", "error", err)
 		os.Exit(1)
@@ -93,65 +87,33 @@ func main() {
 	connector.Start(ctx)
 }
 
-func FilteredMapper(messages chan Message) replication.ListenerFunc {
-	return func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Insert:
-			encoded, _ := json.Marshal(msg.Decoded)
-			messages <- Message{
-				Message: kafka.Message{
-					Key:   []byte(uuid.NewString()),
-					Value: encoded,
-					Time:  time.Now(),
-				},
-				Ack: ctx.Ack,
-			}
-		case *format.Delete:
-			slog.Info("delete message received", "old", msg.OldDecoded)
-		case *format.Update:
-			slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
+func Handler(msg *cdc.Message) []gokafka.Message {
+	slog.Info("change captured", "message", msg)
+	if msg.Type.IsUpdate() || msg.Type.IsInsert() {
+		msg.NewData["operation"] = msg.Type
+		newData, _ := json.Marshal(msg.NewData)
+
+		return []gokafka.Message{
+			{
+				Headers: nil,
+				Key:     []byte(strconv.Itoa(int(msg.NewData["id"].(int32)))),
+				Value:   newData,
+			},
 		}
 	}
-}
 
-func Produce(ctx context.Context, w *kafka.Writer, messages <-chan Message) {
-	var err error
-	var lastAck func() error
-	message := make([]kafka.Message, 100000)
-	counter := 0
+	if msg.Type.IsDelete() {
+		msg.OldData["operation"] = msg.Type
+		oldData, _ := json.Marshal(msg.OldData)
 
-	for {
-		select {
-		case event := <-messages:
-			message[counter] = event.Message
-			lastAck = event.Ack
-			counter++
-
-			if counter == 100000 {
-				err = w.WriteMessages(ctx, message...)
-				if err != nil {
-					slog.Error("kafka produce", "error", err)
-					continue
-				}
-				slog.Info("kafka produce", "count", counter)
-				counter = 0
-				if err = event.Ack(); err != nil {
-					slog.Error("ack", "error", err)
-				}
-			}
-		case <-time.After(100 * time.Millisecond):
-			if counter > 0 {
-				err = w.WriteMessages(ctx, message[:counter]...)
-				if err != nil {
-					slog.Error("kafka produce", "error", err)
-					continue
-				}
-				slog.Info("kafka produce time", "count", counter)
-				counter = 0
-				if err = lastAck(); err != nil {
-					slog.Error("ack", "error", err)
-				}
-			}
+		return []gokafka.Message{
+			{
+				Headers: nil,
+				Key:     []byte(strconv.Itoa(int(msg.OldData["id"].(int32)))),
+				Value:   oldData,
+			},
 		}
 	}
+
+	return []gokafka.Message{}
 }

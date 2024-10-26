@@ -1,6 +1,8 @@
 package metric
 
 import (
+	"os"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -40,6 +42,7 @@ type metric struct {
 
 //nolint:funlen
 func NewMetric(slotName string) Metric {
+	hostname, _ := os.Hostname()
 	return &metric{
 		totalInsert: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: cdcNamespace,
@@ -48,6 +51,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "total number of insert operation message in cdc",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		totalUpdate: prometheus.NewCounter(prometheus.CounterOpts{
@@ -57,6 +61,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "total number of update operation message in cdc",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		totalDelete: prometheus.NewCounter(prometheus.CounterOpts{
@@ -66,6 +71,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "total number of delete operation message in cdc",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		cdcLatency: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -75,6 +81,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "latest consumed cdc message latency ms",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		processLatency: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -84,6 +91,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "latest cdc process latency",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		slotActivity: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -93,6 +101,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "whether the replication slot is active or not",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		slotConfirmedFlushLSN: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -102,6 +111,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "last lsn confirmed flushed to the replication slot",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		slotCurrentLSN: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -111,6 +121,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "current lsn",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		slotRetainedWALSize: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -120,6 +131,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "current lsn - restart lsn",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 		slotLag: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -129,6 +141,7 @@ func NewMetric(slotName string) Metric {
 			Help:      "current lsn - confirmed flush lsn",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
+				"host":      hostname,
 			},
 		}),
 	}

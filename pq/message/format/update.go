@@ -96,6 +96,15 @@ func (m *Update) decode(data []byte, streamedTransaction bool) error {
 		if err != nil {
 			return errors.Wrap(err, "update message new tuple data")
 		}
+
+		if m.OldTupleData != nil {
+			for i, col := range m.NewTupleData.Columns {
+				// because toasted columns not sent until the toasted column not updated
+				if col.DataType == tuple.DataTypeToast {
+					m.NewTupleData.Columns[i] = m.OldTupleData.Columns[i]
+				}
+			}
+		}
 	default:
 		return errors.New("update message undefined tuple type")
 	}

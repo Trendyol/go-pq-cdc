@@ -99,7 +99,7 @@ func (m *Update) decode(data []byte, streamedTransaction bool) error {
 
 		if m.OldTupleData != nil {
 			for i, col := range m.NewTupleData.Columns {
-				// because toasted columns not sent until the toasted column not updated
+				// because toasted columns not sent until the toasted column updated
 				if col.DataType == tuple.DataTypeToast {
 					m.NewTupleData.Columns[i] = m.OldTupleData.Columns[i]
 				}

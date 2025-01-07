@@ -20,15 +20,20 @@ var (
 
 var typeMap = pgtype.NewMap()
 
-type Slot struct {
-	conn      pq.Connection
-	metric    metric.Metric
-	ticker    *time.Ticker
-	statusSQL string
-	cfg       Config
+type XLogUpdater interface {
+	UpdateXLogPos(l pq.LSN)
 }
 
-func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slot, error) {
+type Slot struct {
+	conn       pq.Connection
+	metric     metric.Metric
+	ticker     *time.Ticker
+	statusSQL  string
+	cfg        Config
+	logUpdater XLogUpdater
+}
+
+func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric, updater XLogUpdater) (*Slot, error) {
 	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
 
 	conn, err := pq.NewConnection(ctx, dsn)
@@ -37,11 +42,12 @@ func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric) (*Slo
 	}
 
 	return &Slot{
-		cfg:       cfg,
-		conn:      conn,
-		statusSQL: query,
-		metric:    m,
-		ticker:    time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
+		cfg:        cfg,
+		conn:       conn,
+		statusSQL:  query,
+		metric:     m,
+		ticker:     time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
+		logUpdater: updater,
 	}, nil
 }
 
@@ -108,6 +114,8 @@ func (s *Slot) Metrics(ctx context.Context) {
 		s.metric.SetSlotConfirmedFlushLSN(float64(slotInfo.ConfirmedFlushLSN))
 		s.metric.SetSlotRetainedWALSize(float64(slotInfo.RetainedWALSize))
 		s.metric.SetSlotLag(float64(slotInfo.Lag))
+
+		s.logUpdater.UpdateXLogPos(slotInfo.CurrentLSN)
 
 		logger.Debug("slot metrics", "info", slotInfo)
 	}

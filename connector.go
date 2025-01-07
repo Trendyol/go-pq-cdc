@@ -97,7 +97,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	sl, err := slot.NewSlot(ctx, cfg.DSN(), cfg.Slot, m)
+	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
+
+	sl, err := slot.NewSlot(ctx, cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +110,6 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	}
 	logger.Info("slot info", "info", slotInfo)
 
-	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
 	prometheusRegistry := metric.NewRegistry(m)
 
 	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())

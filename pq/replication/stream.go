@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	goerrors "errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -58,6 +59,7 @@ type stream struct {
 	config       config.Config
 	lastXLogPos  pq.LSN
 	closed       atomic.Bool
+	mu           *sync.RWMutex
 }
 
 func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
@@ -71,6 +73,7 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *p
 		listenerFunc: listenerFunc,
 		lastXLogPos:  10,
 		sinkEnd:      make(chan struct{}, 1),
+		mu:           &sync.RWMutex{},
 	}
 }
 
@@ -123,7 +126,7 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
-				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(0))
+				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
 					break
@@ -233,6 +236,21 @@ func (s *stream) GetSystemInfo() *pq.IdentifySystemResult {
 
 func (s *stream) GetMetric() metric.Metric {
 	return s.metric
+}
+
+func (s *stream) UpdateXLogPos(l pq.LSN) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.lastXLogPos < l {
+		s.lastXLogPos = l
+	}
+}
+
+func (s *stream) LoadXLogPos() pq.LSN {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastXLogPos
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {

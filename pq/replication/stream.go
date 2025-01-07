@@ -56,10 +56,10 @@ type stream struct {
 	messageCH    chan *Message
 	listenerFunc ListenerFunc
 	sinkEnd      chan struct{}
+	mu           *sync.RWMutex
 	config       config.Config
 	lastXLogPos  pq.LSN
 	closed       atomic.Bool
-	mu           *sync.RWMutex
 }
 
 func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {

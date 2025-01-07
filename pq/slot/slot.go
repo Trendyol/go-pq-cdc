@@ -27,10 +27,10 @@ type XLogUpdater interface {
 type Slot struct {
 	conn       pq.Connection
 	metric     metric.Metric
+	logUpdater XLogUpdater
 	ticker     *time.Ticker
 	statusSQL  string
 	cfg        Config
-	logUpdater XLogUpdater
 }
 
 func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric, updater XLogUpdater) (*Slot, error) {

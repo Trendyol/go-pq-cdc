@@ -1,5 +1,9 @@
 module github.com/vskurikhin/go-pq-cdc
 
+replace github.com/Trendyol/go-pq-cdc => ../..
+
+require github.com/Trendyol/go-pq-cdc v0.0.0-00010101000000-000000000000
+
 go 1.22.4
 
 require (

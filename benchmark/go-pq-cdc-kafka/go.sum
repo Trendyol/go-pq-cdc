@@ -1,5 +1,5 @@
-github.com/Trendyol/go-pq-cdc-kafka v0.0.1 h1:O2mHulrV8/9Z3d1up7+e3B14YmYL92NjiPCUCj0D/uw=
-github.com/Trendyol/go-pq-cdc-kafka v0.0.1/go.mod h1:6w2V9heigEKjIJJ7sq8mHqoKUqOXBM+AmeibFXS+vCc=
+github.com/vskurikhin/go-pq-cdc-kafka v0.0.1 h1:O2mHulrV8/9Z3d1up7+e3B14YmYL92NjiPCUCj0D/uw=
+github.com/vskurikhin/go-pq-cdc-kafka v0.0.1/go.mod h1:6w2V9heigEKjIJJ7sq8mHqoKUqOXBM+AmeibFXS+vCc=
 github.com/avast/retry-go/v4 v4.6.0 h1:K9xNA+KeB8HHc2aWFuLb25Offp+0iVRXEvFx8IinRJA=
 github.com/avast/retry-go/v4 v4.6.0/go.mod h1:gvWlPhBVsvBbLkVGDg/KwvBv0bEkCOLRRSHKIr2PyOE=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

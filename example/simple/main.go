@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	cdc "github.com/Trendyol/go-pq-cdc"
-	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq/message/format"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
-	"github.com/Trendyol/go-pq-cdc/pq/replication"
-	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	cdc "github.com/vskurikhin/go-pq-cdc"
+	"github.com/vskurikhin/go-pq-cdc/config"
+	"github.com/vskurikhin/go-pq-cdc/pq/message/format"
+	"github.com/vskurikhin/go-pq-cdc/pq/publication"
+	"github.com/vskurikhin/go-pq-cdc/pq/replication"
+	"github.com/vskurikhin/go-pq-cdc/pq/slot"
 	"log/slog"
 	"os"
 )

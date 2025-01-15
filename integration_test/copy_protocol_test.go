@@ -2,17 +2,45 @@ package integration
 
 import (
 	"context"
-	cdc "github.com/Trendyol/go-pq-cdc"
-	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq/message/format"
-	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	cdc "github.com/vskurikhin/go-pq-cdc"
+	"github.com/vskurikhin/go-pq-cdc/config"
+	"github.com/vskurikhin/go-pq-cdc/pq"
+	"github.com/vskurikhin/go-pq-cdc/pq/message/format"
+	"github.com/vskurikhin/go-pq-cdc/pq/replication"
 	"github.com/stretchr/testify/assert"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+var _ replication.Listeners = (*listenersContainerCopy)(nil)
+
+type listenersContainerCopy struct {
+	messageCh    chan *replication.ListenerContext
+	totalCounter *atomic.Int64
+}
+
+func (l *listenersContainerCopy) ListenerFunc() replication.ListenerFunc {
+	return func(ctx *replication.ListenerContext) {
+		switch ctx.Message.(type) {
+		case *format.Insert, *format.Delete, *format.Update:
+			l.totalCounter.Add(1)
+			l.messageCh <- ctx
+		}
+	}
+}
+
+func (l *listenersContainerCopy) SendLSNHookFunc() replication.SendLSNHookFunc {
+	return func(pq.LSN) {
+	}
+}
+
+func (l *listenersContainerCopy) SinkHookFunc() replication.SinkHookFunc {
+	return func(xLogData *replication.XLogData) {
+	}
+}
 
 func TestCopyProtocol(t *testing.T) {
 	ctx := context.Background()
@@ -31,22 +59,19 @@ func TestCopyProtocol(t *testing.T) {
 
 	messageCh := make(chan *replication.ListenerContext)
 	totalCounter := atomic.Int64{}
-	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch ctx.Message.(type) {
-		case *format.Insert, *format.Delete, *format.Update:
-			totalCounter.Add(1)
-			messageCh <- ctx
-		}
+	lc := &listenersContainerCopy{
+		messageCh:    messageCh,
+		totalCounter: &totalCounter,
 	}
 
 	cdc2Cfg := cdcCfg
 	cdc2Cfg.Metric.Port = 8085
-	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	connector, err := cdc.NewConnector(ctx, cdcCfg, lc)
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
 
-	connector2, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	connector2, err := cdc.NewConnector(ctx, cdcCfg, lc)
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}

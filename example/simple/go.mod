@@ -1,10 +1,10 @@
-module github.com/Trendyol/go-pq-cdc/example/simple
+module github.com/vskurikhin/go-pq-cdc/example/simple
 
 go 1.22.4
 
-replace github.com/Trendyol/go-pq-cdc => ../..
+replace github.com/vskurikhin/go-pq-cdc => ../..
 
-require github.com/Trendyol/go-pq-cdc v0.0.0-00010101000000-000000000000
+require github.com/vskurikhin/go-pq-cdc v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/avast/retry-go/v4 v4.6.0 // indirect

@@ -9,16 +9,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/internal/metric"
-	"github.com/Trendyol/go-pq-cdc/internal/slice"
-	"github.com/Trendyol/go-pq-cdc/logger"
-	"github.com/Trendyol/go-pq-cdc/pq"
-	"github.com/Trendyol/go-pq-cdc/pq/message"
-	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/vskurikhin/go-pq-cdc/config"
+	"github.com/vskurikhin/go-pq-cdc/internal/metric"
+	"github.com/vskurikhin/go-pq-cdc/internal/slice"
+	"github.com/vskurikhin/go-pq-cdc/logger"
+	"github.com/vskurikhin/go-pq-cdc/pq"
+	"github.com/vskurikhin/go-pq-cdc/pq/message"
+	"github.com/vskurikhin/go-pq-cdc/pq/message/format"
 )
 
 var (
@@ -35,6 +35,14 @@ type ListenerContext struct {
 }
 
 type ListenerFunc func(ctx *ListenerContext)
+type SendLSNHookFunc func(xLogPos pq.LSN)
+type SinkHookFunc func(xLogData *XLogData)
+
+type Listeners interface {
+	ListenerFunc() ListenerFunc
+	SendLSNHookFunc() SendLSNHookFunc
+	SinkHookFunc() SinkHookFunc
+}
 
 type Message struct {
 	message  any
@@ -49,31 +57,35 @@ type Streamer interface {
 }
 
 type stream struct {
-	conn         pq.Connection
-	metric       metric.Metric
-	system       *pq.IdentifySystemResult
-	relation     map[uint32]*format.Relation
-	messageCH    chan *Message
-	listenerFunc ListenerFunc
-	sinkEnd      chan struct{}
-	mu           *sync.RWMutex
-	config       config.Config
-	lastXLogPos  pq.LSN
-	closed       atomic.Bool
+	conn            pq.Connection
+	metric          metric.Metric
+	system          *pq.IdentifySystemResult
+	relation        map[uint32]*format.Relation
+	messageCH       chan *Message
+	listenerFunc    ListenerFunc
+	sendLSNHookFunc SendLSNHookFunc
+	sinkHookFunc    SinkHookFunc
+	sinkEnd         chan struct{}
+	mu              *sync.RWMutex
+	config          config.Config
+	lastXLogPos     pq.LSN
+	closed          atomic.Bool
 }
 
-func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
+func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listeners Listeners) Streamer {
 	return &stream{
-		conn:         conn,
-		metric:       m,
-		system:       system,
-		config:       cfg,
-		relation:     make(map[uint32]*format.Relation),
-		messageCH:    make(chan *Message, 1000),
-		listenerFunc: listenerFunc,
-		lastXLogPos:  10,
-		sinkEnd:      make(chan struct{}, 1),
-		mu:           &sync.RWMutex{},
+		conn:            conn,
+		metric:          m,
+		system:          system,
+		config:          cfg,
+		relation:        make(map[uint32]*format.Relation),
+		messageCH:       make(chan *Message, 1000),
+		listenerFunc:    listeners.ListenerFunc(),
+		sendLSNHookFunc: listeners.SendLSNHookFunc(),
+		sinkHookFunc:    listeners.SinkHookFunc(),
+		lastXLogPos:     10,
+		sinkEnd:         make(chan struct{}, 1),
+		mu:              &sync.RWMutex{},
 	}
 }
 
@@ -126,12 +138,14 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
-				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
+				xLogPos := s.LoadXLogPos()
+				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(xLogPos))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
 					break
 				}
 				logger.Debug("send stand by status update")
+				s.sendLSNHookFunc(xLogPos)
 				continue
 			}
 			logger.Error("receive message error", "error", err)
@@ -163,7 +177,7 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			logger.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
-
+			s.sinkHookFunc(&xld)
 			s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
 			var decodedMsg any
@@ -197,7 +211,10 @@ func (s *stream) process(ctx context.Context) {
 				pos := pq.LSN(msg.walStart)
 				s.system.UpdateXLogPos(pos)
 				logger.Debug("send stand by status update", "xLogPos", pos.String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()))
+				xLogPos := s.system.LoadXLogPos()
+				err := SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()))
+				s.sendLSNHookFunc(xLogPos)
+				return err
 			},
 		}
 

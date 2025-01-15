@@ -1,7 +1,7 @@
 ##- Build Stage
 #FROM golang:1.22.2-alpine3.19 AS builder
 #
-#WORKDIR /go/src/github.com/Trendyol/go-pq-cdc/benchmark
+#WORKDIR /go/src/github.com/vskurikhin/go-pq-cdc/benchmark
 #
 #COPY . .
 #

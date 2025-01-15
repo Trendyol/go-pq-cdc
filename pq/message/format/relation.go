@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
+	"github.com/vskurikhin/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
 

@@ -20,7 +20,7 @@ func (b *Book) Map() map[string]any {
 func CreateBooks(count int) []Book {
 	var idCounter atomic.Int64
 	res := make([]Book, count)
-	for i := range count {
+	for i := 0; i < count; i++ {
 		id := int(idCounter.Add(1))
 		res[i] = Book{
 			ID:   id,

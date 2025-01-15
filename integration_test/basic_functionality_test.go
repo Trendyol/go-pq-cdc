@@ -3,13 +3,40 @@ package integration
 import (
 	"context"
 	"fmt"
-	cdc "github.com/Trendyol/go-pq-cdc"
-	"github.com/Trendyol/go-pq-cdc/pq/message/format"
-	"github.com/Trendyol/go-pq-cdc/pq/replication"
+	cdc "github.com/vskurikhin/go-pq-cdc"
+	"github.com/vskurikhin/go-pq-cdc/pq"
+	"github.com/vskurikhin/go-pq-cdc/pq/message/format"
+	"github.com/vskurikhin/go-pq-cdc/pq/replication"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
+
+var _ replication.Listeners = (*listenersContainerBasic)(nil)
+
+type listenersContainerBasic struct {
+	messageCh chan any
+}
+
+func (l *listenersContainerBasic) ListenerFunc() replication.ListenerFunc {
+	return func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Insert, *format.Delete, *format.Update:
+			l.messageCh <- msg
+		}
+		_ = ctx.Ack()
+	}
+}
+
+func (l *listenersContainerBasic) SendLSNHookFunc() replication.SendLSNHookFunc {
+	return func(pq.LSN) {
+	}
+}
+
+func (l *listenersContainerBasic) SinkHookFunc() replication.SinkHookFunc {
+	return func(xLogData *replication.XLogData) {
+	}
+}
 
 func TestBasicFunctionality(t *testing.T) {
 	ctx := context.Background()
@@ -27,15 +54,11 @@ func TestBasicFunctionality(t *testing.T) {
 	}
 
 	messageCh := make(chan any, 500)
-	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Insert, *format.Delete, *format.Update:
-			messageCh <- msg
-		}
-		_ = ctx.Ack()
+	lc := &listenersContainerBasic{
+		messageCh: messageCh,
 	}
 
-	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	connector, err := cdc.NewConnector(ctx, cdcCfg, lc)
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
@@ -61,7 +84,7 @@ func TestBasicFunctionality(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		for i := range 10 {
+		for i := 0; i < 10; i++ {
 			m := <-messageCh
 			assert.Equal(t, books[i].Map(), m.(*format.Insert).Decoded)
 		}
@@ -79,7 +102,7 @@ func TestBasicFunctionality(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		for i := range 5 {
+		for i := 0; i < 5; i++ {
 			m := <-messageCh
 			assert.Equal(t, books[i].Map(), m.(*format.Update).NewDecoded)
 		}
@@ -89,12 +112,12 @@ func TestBasicFunctionality(t *testing.T) {
 	})
 
 	t.Run("Delete 5 book from table. Then check messages and metric", func(t *testing.T) {
-		for i := range 5 {
+		for i := 0; i < 5; i++ {
 			err = pgExec(ctx, postgresConn, fmt.Sprintf("DELETE FROM books WHERE id = %d", i+1))
 			assert.NoError(t, err)
 		}
 
-		for i := range 5 {
+		for i := 0; i < 5; i++ {
 			m := <-messageCh
 			assert.Equal(t, int32(i+1), m.(*format.Delete).OldDecoded["id"])
 		}

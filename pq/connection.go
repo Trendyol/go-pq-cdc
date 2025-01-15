@@ -3,7 +3,7 @@ package pq
 import (
 	"context"
 
-	"github.com/Trendyol/go-pq-cdc/internal/retry"
+	"github.com/vskurikhin/go-pq-cdc/internal/retry"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"

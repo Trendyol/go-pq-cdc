@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"time"
 
-	cdc "github.com/Trendyol/go-pq-cdc-kafka"
-	"github.com/Trendyol/go-pq-cdc-kafka/config"
-	cdcconfig "github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
-	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	cdc "github.com/vskurikhin/go-pq-cdc-kafka"
+	"github.com/vskurikhin/go-pq-cdc-kafka/config"
+	cdcconfig "github.com/vskurikhin/go-pq-cdc/config"
+	"github.com/vskurikhin/go-pq-cdc/pq/publication"
+	"github.com/vskurikhin/go-pq-cdc/pq/slot"
 	"github.com/segmentio/kafka-go"
 	gokafka "github.com/segmentio/kafka-go"
 )

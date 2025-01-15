@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Trendyol/go-pq-cdc/logger"
-	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/vskurikhin/go-pq-cdc/logger"
+	"github.com/vskurikhin/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"

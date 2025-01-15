@@ -1,11 +1,11 @@
-module github.com/Trendyol/go-pq-cdc/example/postgresql
+module github.com/vskurikhin/go-pq-cdc/example/postgresql
 
 go 1.22.4
 
-replace github.com/Trendyol/go-pq-cdc => ../..
+replace github.com/vskurikhin/go-pq-cdc => ../..
 
 require (
-	github.com/Trendyol/go-pq-cdc v0.0.0-00010101000000-000000000000
+	github.com/vskurikhin/go-pq-cdc v0.0.0-00010101000000-000000000000
 	github.com/jackc/pgx/v5 v5.6.0
 )
 

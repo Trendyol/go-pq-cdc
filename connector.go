@@ -10,18 +10,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Trendyol/go-pq-cdc/pq/timescaledb"
+	"github.com/vskurikhin/go-pq-cdc/pq/timescaledb"
 
-	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/internal/http"
-	"github.com/Trendyol/go-pq-cdc/internal/metric"
-	"github.com/Trendyol/go-pq-cdc/logger"
-	"github.com/Trendyol/go-pq-cdc/pq"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
-	"github.com/Trendyol/go-pq-cdc/pq/replication"
-	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/go-playground/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/vskurikhin/go-pq-cdc/config"
+	"github.com/vskurikhin/go-pq-cdc/internal/http"
+	"github.com/vskurikhin/go-pq-cdc/internal/metric"
+	"github.com/vskurikhin/go-pq-cdc/logger"
+	"github.com/vskurikhin/go-pq-cdc/pq"
+	"github.com/vskurikhin/go-pq-cdc/pq/publication"
+	"github.com/vskurikhin/go-pq-cdc/pq/replication"
+	"github.com/vskurikhin/go-pq-cdc/pq/slot"
 )
 
 type Connector interface {
@@ -46,7 +46,7 @@ type connector struct {
 	once sync.Once
 }
 
-func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
+func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listeners replication.Listeners) (Connector, error) {
 	var cfg config.Config
 	var err error
 
@@ -62,10 +62,10 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 		return nil, err
 	}
 
-	return NewConnector(ctx, cfg, listenerFunc)
+	return NewConnector(ctx, cfg, listeners)
 }
 
-func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
+func NewConnector(ctx context.Context, cfg config.Config, listeners replication.Listeners) (Connector, error) {
 	cfg.SetDefault()
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
@@ -97,7 +97,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
+	stream := replication.NewStream(conn, cfg, m, &system, listeners)
 
 	sl, err := slot.NewSlot(ctx, cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
 	if err != nil {

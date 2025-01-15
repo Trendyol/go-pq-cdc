@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/Trendyol/go-pq-cdc/logger"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
-	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	"github.com/vskurikhin/go-pq-cdc/logger"
+	"github.com/vskurikhin/go-pq-cdc/pq/publication"
+	"github.com/vskurikhin/go-pq-cdc/pq/slot"
 )
 
 type Config struct {

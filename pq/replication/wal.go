@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-playground/errors"
 
-	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/vskurikhin/go-pq-cdc/pq"
 )
 
 // The server's system clock at the time of transmission, as microseconds since midnight on 2000-01-01.

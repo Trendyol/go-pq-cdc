@@ -33,7 +33,7 @@ type LoggerConfig struct {
 	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
 }
 
-func (c Config) DSN() string {
+func (c *Config) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s/%s?replication=database", c.Username, c.Password, c.Host, c.Database)
 }
 

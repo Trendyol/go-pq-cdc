@@ -20,4 +20,5 @@ slot:
 metric:
   port: 8083
 logger:
-  logLevel: INFO
+  level: DEBUG
+debugMode: true

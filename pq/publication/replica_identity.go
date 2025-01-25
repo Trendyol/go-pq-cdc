@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	ErrorTablesNotExists   = goerrors.New("table is not exists")
+	ErrorTablesNotExists   = goerrors.New("table does not exists")
 	ReplicaIdentityOptions = []string{ReplicaIdentityDefault, ReplicaIdentityFull}
 	ReplicaIdentityMap     = map[string]string{
 		"d": ReplicaIdentityDefault, // primary key on old value
@@ -75,6 +75,8 @@ func (c *Publication) GetReplicaIdentities(ctx context.Context) ([]Table, error)
 	}
 
 	query := "SELECT relname AS table_name, n.nspname AS schema_name, relreplident AS replica_identity FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE concat(n.nspname, '.', c.relname) IN (" + strings.Join(tableNames, ", ") + ")"
+
+	logger.Debug("executing query: ", query)
 
 	resultReader := c.conn.Exec(ctx, query)
 	results, err := resultReader.ReadAll()

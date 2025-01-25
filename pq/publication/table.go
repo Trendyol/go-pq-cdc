@@ -10,6 +10,7 @@ import (
 type Table struct {
 	Name            string `json:"name" yaml:"name"`
 	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
+	Schema          string `json:"schema" yaml:"schema"`
 }
 
 func (tc Table) Validate() error {

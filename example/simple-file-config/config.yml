@@ -12,6 +12,7 @@ publication:
   tables:
     - name: users
       replicaIdentity: FULL
+      schema: public
 slot:
   createIfNotExists: true
   name: cdc_slot

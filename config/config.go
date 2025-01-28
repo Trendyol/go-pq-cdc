@@ -53,6 +53,13 @@ func (c *Config) SetDefault() {
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
 	}
+
+	// Set default schema names for tables
+	for tableID, table := range c.Publication.Tables {
+		if table.Schema == "" {
+			c.Publication.Tables[tableID].Schema = "public"
+		}
+	}
 }
 
 func (c *Config) Validate() error {

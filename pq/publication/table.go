@@ -1,7 +1,6 @@
 package publication
 
 import (
-	"encoding/json"
 	"slices"
 	"strings"
 
@@ -57,52 +56,4 @@ func (ts Tables) Diff(tss Tables) Tables {
 	}
 
 	return res
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface for Table.
-// Custom unmarshalling logic is required to avoid infinite recursion.
-// Pointer receiver is used since we have to change the data in original variable
-func (t *Table) UnmarshalJSON(data []byte) error {
-	type Alias Table
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(t),
-	}
-
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	// Set default value for Schema if it's empty
-	if aux.Schema == "" {
-		aux.Schema = "public"
-	}
-
-	*t = Table(*aux.Alias)
-	return nil
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for Table
-// Custom unmarshalling logic is required to avoid infinite recursion.
-// Pointer receiver is used since we have to change the data in original variable
-func (t *Table) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type Alias Table
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(t),
-	}
-
-	if err := unmarshal(&aux); err != nil {
-		return err
-	}
-
-	// Set default value for Schema if it's empty
-	if aux.Schema == "" {
-		aux.Schema = "public"
-	}
-
-	*t = Table(*aux.Alias)
-	return nil
 }

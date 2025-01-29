@@ -79,6 +79,7 @@ func main() {
 			Tables: publication.Tables{publication.Table{
 				Name:            "users",
 				ReplicaIdentity: publication.ReplicaIdentityDefault,
+				Schema:          "public",
 			}},
 		},
 		Slot: slot.Config{

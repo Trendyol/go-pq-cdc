@@ -33,7 +33,7 @@ type LoggerConfig struct {
 	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
 }
 
-func (c Config) DSN() string {
+func (c *Config) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s/%s?replication=database", c.Username, c.Password, c.Host, c.Database)
 }
 
@@ -52,6 +52,13 @@ func (c *Config) SetDefault() {
 
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
+	}
+
+	// Set default schema names for tables
+	for tableID, table := range c.Publication.Tables {
+		if table.Schema == "" {
+			c.Publication.Tables[tableID].Schema = "public"
+		}
 	}
 }
 

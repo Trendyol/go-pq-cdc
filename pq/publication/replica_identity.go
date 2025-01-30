@@ -47,7 +47,7 @@ func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 }
 
 func (c *Publication) AlterTableReplicaIdentity(ctx context.Context, t Table) error {
-	resultReader := c.conn.Exec(ctx, fmt.Sprintf("ALTER TABLE %s REPLICA IDENTITY %s;", t.Name, t.ReplicaIdentity))
+	resultReader := c.conn.Exec(ctx, fmt.Sprintf("ALTER TABLE %s.%s REPLICA IDENTITY %s;", t.Schema, t.Name, t.ReplicaIdentity))
 	_, err := resultReader.ReadAll()
 	if err != nil {
 		return errors.Wrap(err, "table replica identity update result")

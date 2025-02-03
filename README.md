@@ -1,3 +1,5 @@
+
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Trendyol/go-pq-cdc/badge)](https://scorecard.dev/viewer/?uri=github.com/Trendyol/go-pq-cdc)
 # go-pq-cdc [![Go Reference](https://pkg.go.dev/badge/github.com/Trendyol/go-dcp.svg)](https://pkg.go.dev/github.com/Trendyol/go-pq-cdc) [![Go Report Card](https://goreportcard.com/badge/github.com/Trendyol/go-pq-cdc)](https://goreportcard.com/report/github.com/Trendyol/go-pq-cdc)
 
 go-pq-cdc is designed to provide efficient and lightweight Change Data Capture (CDC) for PostgreSQL databases.

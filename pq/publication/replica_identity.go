@@ -119,6 +119,8 @@ func decodeReplicaIdentitiesResult(results []*pgconn.Result) ([]Table, error) {
 				switch fd.Name {
 				case "table_name":
 					t.Name = v.(string)
+				case "schema_name":
+					t.Schema = v.(string)
 				case "replica_identity":
 					t.ReplicaIdentity = ReplicaIdentityMap[string(v.(int32))]
 				}

@@ -129,12 +129,14 @@ func (s *stream) sink(ctx context.Context) {
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
+					s.Close(ctx)
 					break
 				}
 				logger.Debug("send stand by status update")
 				continue
 			}
 			logger.Error("receive message error", "error", err)
+			s.Close(ctx)
 			panic(err)
 		}
 

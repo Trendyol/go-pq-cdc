@@ -130,7 +130,23 @@ func (s *stream) sink(ctx context.Context) {
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
 					s.Close(ctx)
-					break
+
+					// Trying to reopen connection
+					errOpen := s.Open(ctx)
+					if errOpen != nil {
+						// we've failed to reopen connection - log an error and fail
+						logger.Error("open stream", "error", errOpen)
+						break
+					} else {
+						// Trying to send status update after connection was reopened
+						err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
+						if err != nil {
+							// give up, log an error and fail
+							logger.Error("send stand by status update after reconnect", "error", err)
+							s.Close(ctx)
+							break
+						}
+					}
 				}
 				logger.Debug("send stand by status update")
 				continue

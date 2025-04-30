@@ -231,9 +231,6 @@ func (s *stream) Close(ctx context.Context) {
 	close(s.sinkEnd)
 	logger.Info("postgres message sink stopped")
 
-	close(s.messageCH)
-	logger.Info("postgres message process stopped")
-
 	_ = s.conn.Close(ctx)
 	logger.Info("postgres connection closed")
 }

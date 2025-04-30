@@ -10,6 +10,7 @@ import (
 )
 
 type Connection interface {
+	IsClosed() bool
 	Close(ctx context.Context) error
 	ReceiveMessage(ctx context.Context) (pgproto3.BackendMessage, error)
 	Frontend() *pgproto3.Frontend

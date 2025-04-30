@@ -184,9 +184,11 @@ func (s *stream) sink(ctx context.Context) {
 		}
 	}
 	s.sinkEnd <- struct{}{}
-	s.Close(ctx)
-	if corruptedConn {
-		panic("corrupted connection")
+	if !s.closed.Load() {
+		s.Close(ctx)
+		if corruptedConn {
+			panic("corrupted connection")
+		}
 	}
 }
 
@@ -228,11 +230,15 @@ func (s *stream) Close(ctx context.Context) {
 	s.closed.Store(true)
 
 	<-s.sinkEnd
-	close(s.sinkEnd)
+	if !isClosed(s.sinkEnd) {
+		close(s.sinkEnd)
+	}
 	logger.Info("postgres message sink stopped")
 
-	_ = s.conn.Close(ctx)
-	logger.Info("postgres connection closed")
+	if !s.conn.IsClosed() {
+		_ = s.conn.Close(ctx)
+		logger.Info("postgres connection closed")
+	}
 }
 
 func (s *stream) GetSystemInfo() *pq.IdentifySystemResult {
@@ -285,4 +291,14 @@ func AppendUint64(buf []byte, n uint64) []byte {
 
 func timeToPgTime(t time.Time) uint64 {
 	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - microSecFromUnixEpochToY2K)
+}
+
+func isClosed[T any](ch <-chan T) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+	}
+
+	return false
 }

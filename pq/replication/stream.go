@@ -115,8 +115,10 @@ func (s *stream) setup(ctx context.Context) error {
 func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
+	var corruptedConn bool
+
 	for {
-		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*500))
+		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*300))
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
 		cancel()
 		if err != nil {
@@ -126,18 +128,18 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
+				logger.Error("receive message got timeout, retrying...")
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
-					s.Close(ctx)
 					break
 				}
 				logger.Debug("send stand by status update")
 				continue
 			}
 			logger.Error("receive message error", "error", err)
-			s.Close(ctx)
-			panic(err)
+			corruptedConn = true
+			break
 		}
 
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
@@ -182,6 +184,12 @@ func (s *stream) sink(ctx context.Context) {
 		}
 	}
 	s.sinkEnd <- struct{}{}
+	if !s.closed.Load() {
+		s.Close(ctx)
+		if corruptedConn {
+			panic("corrupted connection")
+		}
+	}
 }
 
 func (s *stream) process(ctx context.Context) {
@@ -222,14 +230,15 @@ func (s *stream) Close(ctx context.Context) {
 	s.closed.Store(true)
 
 	<-s.sinkEnd
-	close(s.sinkEnd)
+	if !isClosed(s.sinkEnd) {
+		close(s.sinkEnd)
+	}
 	logger.Info("postgres message sink stopped")
 
-	close(s.messageCH)
-	logger.Info("postgres message process stopped")
-
-	_ = s.conn.Close(ctx)
-	logger.Info("postgres connection closed")
+	if !s.conn.IsClosed() {
+		_ = s.conn.Close(ctx)
+		logger.Info("postgres connection closed")
+	}
 }
 
 func (s *stream) GetSystemInfo() *pq.IdentifySystemResult {
@@ -282,4 +291,14 @@ func AppendUint64(buf []byte, n uint64) []byte {
 
 func timeToPgTime(t time.Time) uint64 {
 	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - microSecFromUnixEpochToY2K)
+}
+
+func isClosed[T any](ch <-chan T) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+	}
+
+	return false
 }

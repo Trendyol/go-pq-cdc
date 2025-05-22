@@ -128,7 +128,6 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
-				logger.Error("receive message got timeout, retrying...")
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)

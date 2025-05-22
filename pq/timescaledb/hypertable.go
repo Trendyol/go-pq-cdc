@@ -53,7 +53,7 @@ func (tdb *TimescaleDB) FindHyperTables(ctx context.Context) (map[string]string,
 		if goerrors.As(err, &pgErr) {
 			if pgErr.Code == "42P01" {
 				tdb.ticker.Stop()
-				logger.Warn("timescale db hypertable relation not found", "error", err)
+				logger.Debug("timescale db hypertable relation not found", "error", err)
 				return nil, nil
 			}
 		}

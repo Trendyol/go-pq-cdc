@@ -41,7 +41,7 @@ func TestTransactionalProcess(t *testing.T) {
 		t.FailNow()
 	}
 
-	cfg := config.Config{Host: Config.Host, Username: "postgres", Password: "postgres", Database: Config.Database}
+	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
 	if !assert.NoError(t, err) {
 		t.FailNow()

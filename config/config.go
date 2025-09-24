@@ -20,6 +20,7 @@ type Config struct {
 	Database    string             `json:"database" yaml:"database"`
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
+	Initial     InitialConfig      `json:"initial" yaml:"initial"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
 }
@@ -31,6 +32,15 @@ type MetricConfig struct {
 type LoggerConfig struct {
 	Logger   logger.Logger `json:"-" yaml:"-"`         // custom logger
 	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
+}
+
+const (
+	None            = iota
+	InitialThenSlot = iota
+)
+
+type InitialConfig struct {
+	Strategy int
 }
 
 func (c *Config) DSN() string {

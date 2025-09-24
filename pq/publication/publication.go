@@ -3,6 +3,7 @@ package publication
 import (
 	"context"
 	goerrors "errors"
+	"fmt"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -118,6 +119,74 @@ func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 	}
 
 	return &publicationConfig, nil
+}
+
+func (c *Publication) Tables(ctx context.Context) ([]string, error) {
+	query := fmt.Sprintf(`SELECT pt.schemaname, pt.tablename
+		FROM pg_publication_tables pt
+		WHERE pt.pubname = '%s'
+
+		UNION
+
+		SELECT t.schemaname,
+			   t.tablename
+		FROM pg_tables t,
+			 pg_publication p
+		WHERE p.pubname = '%s'
+		  AND p.puballtables = TRUE
+		  AND t.schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast', '_timescaledb_internal')
+		  AND t.schemaname NOT LIKE 'pg_temp_%%';`, c.cfg.Name, c.cfg.Name)
+	resultReader := c.conn.Exec(ctx, query)
+	results, err := resultReader.ReadAll()
+	if err != nil {
+		return nil, errors.Wrap(err, "publication tables result")
+	}
+
+	if len(results) == 0 || results[0].CommandTag.String() == "SELECT 0" {
+		return nil, nil
+	}
+
+	if err = resultReader.Close(); err != nil {
+		return nil, errors.Wrap(err, "publication tables result reader close")
+	}
+
+	tables, err := decodePublicationTablesResult(results)
+	if err != nil {
+		return nil, errors.Wrap(err, "publication tables result decode")
+	}
+
+	return tables, nil
+}
+
+func decodePublicationTablesResult(results []*pgconn.Result) ([]string, error) {
+	res := make([]string, 0)
+
+	for _, result := range results {
+		for i := range len(result.Rows) {
+			var schemaname, tablename string
+			for j, fd := range result.FieldDescriptions {
+				v, err := decodeTextColumnData(result.Rows[i][j], fd.DataTypeOID)
+				if err != nil {
+					return nil, err
+				}
+
+				if v == nil {
+					continue
+				}
+
+				switch fd.Name {
+				case "schemaname":
+					schemaname = v.(string)
+				case "tablename":
+					tablename = v.(string)
+				}
+			}
+
+			res = append(res, fmt.Sprintf("%s.%s", schemaname, tablename))
+		}
+	}
+
+	return res, nil
 }
 
 func decodeTextColumnData(data []byte, dataType uint32) (interface{}, error) {

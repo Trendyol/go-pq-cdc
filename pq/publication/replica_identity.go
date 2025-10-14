@@ -71,7 +71,6 @@ func (c *Publication) GetReplicaIdentities(ctx context.Context) ([]Table, error)
 		} else {
 			tableNames[i] = "'" + t.Schema + "." + t.Name + "'"
 		}
-
 	}
 
 	query := fmt.Sprintf("SELECT relname AS table_name, n.nspname AS schema_name, relreplident AS replica_identity FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE concat(n.nspname, '.', c.relname) IN (%s)", strings.Join(tableNames, ", "))

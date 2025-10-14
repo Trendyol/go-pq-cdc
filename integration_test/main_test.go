@@ -36,6 +36,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	Config.SetDefault()
 
 	ctx := context.Background()
 	Container, err = SetupTestContainer(ctx, Config)
@@ -118,6 +119,7 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 func newPostgresConn() (pq.Connection, error) {
 	c := config.Config{
 		Host:     Config.Host,
+		Port:     Config.Port,
 		Username: "postgres",
 		Password: "postgres",
 		Database: Config.Database,

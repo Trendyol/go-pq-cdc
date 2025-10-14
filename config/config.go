@@ -20,6 +20,7 @@ type Config struct {
 	Database    string             `json:"database" yaml:"database"`
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
+	Port        int                `json:"port" yaml:"port"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
 }
@@ -34,14 +35,18 @@ type LoggerConfig struct {
 }
 
 func (c *Config) DSN() string {
-	return fmt.Sprintf("postgres://%s:%s@%s/%s?replication=database", c.Username, c.Password, c.Host, c.Database)
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?replication=database", c.Username, c.Password, c.Host, c.Port, c.Database)
 }
 
 func (c *Config) DSNWithoutSSL() string {
-	return fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", c.Username, c.Password, c.Host, c.Database)
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", c.Username, c.Password, c.Host, c.Port, c.Database)
 }
 
 func (c *Config) SetDefault() {
+	if c.Port == 0 {
+		c.Port = 5432
+	}
+
 	if c.Metric.Port == 0 {
 		c.Metric.Port = 8080
 	}

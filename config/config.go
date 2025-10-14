@@ -15,12 +15,12 @@ import (
 type Config struct {
 	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
 	Host        string             `json:"host" yaml:"host"`
-	Port        int                `json:"port" yaml:"port"`
 	Username    string             `json:"username" yaml:"username"`
 	Password    string             `json:"password" yaml:"password"`
 	Database    string             `json:"database" yaml:"database"`
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
+	Port        int                `json:"port" yaml:"port"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
 }

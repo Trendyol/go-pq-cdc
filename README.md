@@ -114,6 +114,7 @@ func Handler(ctx *replication.ListenerContext) {
 
 * [Simple](./example/simple)
 * [Simple File Config](./example/simple-file-config)
+* [Snapshot (Initial Data Capture)](./example/snapshot) - 📸 **NEW!**
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
@@ -154,6 +155,13 @@ This setup ensures continuous data synchronization and minimal downtime in captu
 | `slot.createIfNotExists`                |   bool   |    no    |    -    | Create replication slot if not exists. Otherwise, return `replication slot is not exists` error.      |                                                                                                                                                    |
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive.                                                                                                                  |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
+| `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
+| `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial` or `never`                                                                   | **initial:** Take snapshot only if no previous snapshot exists. <br> **never:** Skip snapshot.                                                     |
+| `snapshot.batchSize`                    |   int    |    no    |  10000  | Number of rows to read per batch during snapshot                                                     | Adjust based on table size and memory. Larger batches = faster but more memory.                                                                   |
+| `snapshot.checkpointInterval`           |   int    |    no    |  10     | Save snapshot state every N batches                                                                   | Lower values = more frequent state saves = better recovery but slower.                                                                            |
+| `snapshot.maxRetries`                   |   int    |    no    |  3      | Maximum retry attempts on snapshot failure                                                            | Number of times to retry before giving up.                                                                                                        |
+| `snapshot.retryDelay`                   | duration |    no    |  5s     | Delay between retry attempts                                                                          | Time to wait before retrying (e.g., `5s`, `1m`).                                                                                                  |
+| `snapshot.timeout`                      | duration |    no    |  30m    | Overall snapshot timeout                                                                              | Maximum time allowed for entire snapshot operation.                                                                                                |
 
 ### API
 
@@ -180,6 +188,11 @@ the `/metrics` endpoint.
 | go_pq_cdc_replication_slot_slot_is_active           | Indicates whether the PostgreSQL replication slot is currently active (1 for active, 0 for inactive). | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_lag                 | The replication lag measured by the difference between the current LSN and the confirmed flush LSN.   | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_retained_wal_size   | The size of Write-Ahead Logging (WAL) files retained for the replication slot in bytes.               | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_in_progress                      | Indicates whether snapshot is currently in progress (1 for active, 0 for inactive).                   | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_total_tables                     | Total number of tables to snapshot.                                                                    | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_completed_tables                 | Number of tables completed in snapshot.                                                                | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_total_rows                       | Total number of rows read during snapshot.                                                             | slot_name, host| Counter    |
+| go_pq_cdc_snapshot_duration_seconds                 | Duration of the last snapshot operation in seconds.                                                    | slot_name, host| Gauge      |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
 ### Grafana Dashboard

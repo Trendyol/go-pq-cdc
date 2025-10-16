@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/snapshot"
+
 	"github.com/Trendyol/go-pq-cdc/pq/timescaledb"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -42,6 +45,8 @@ type connector struct {
 	readyCh            chan struct{}
 	timescaleDB        *timescaledb.TimescaleDB
 	system             pq.IdentifySystemResult
+	snapshotter        *snapshot.Snapshotter
+	listenerFunc       replication.ListenerFunc
 
 	once sync.Once
 }
@@ -97,6 +102,17 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
+	// Create snapshotter with separate state connection only if snapshot is enabled
+	var snapshotter *snapshot.Snapshotter
+	if cfg.Snapshot.Enabled {
+		// Create separate connection for snapshot state (to avoid transaction rollback)
+		snapshotStateConn, err := pq.NewConnection(ctx, cfg.DSN())
+		if err != nil {
+			return nil, errors.Wrap(err, "create state connection")
+		}
+		snapshotter = snapshot.New(cfg.Snapshot, cfg.Publication.Tables, conn, snapshotStateConn, m)
+	}
+
 	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
 
 	sl, err := slot.NewSlot(ctx, cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
@@ -130,6 +146,8 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		server:             http.NewServer(cfg, prometheusRegistry),
 		slot:               sl,
 		timescaleDB:        tdb,
+		snapshotter:        snapshotter,
+		listenerFunc:       listenerFunc,
 
 		cancelCh: make(chan os.Signal, 1),
 		readyCh:  make(chan struct{}, 1),
@@ -140,6 +158,13 @@ func (c *connector) Start(ctx context.Context) {
 	c.once.Do(func() {
 		go c.server.Listen()
 	})
+
+	if c.cfg.Snapshot.Enabled && c.shouldTakeSnapshot(ctx) {
+		if err := c.takeSnapshotWithRetry(ctx); err != nil {
+			logger.Error("snapshot failed after retries", "error", err)
+			return
+		}
+	}
 
 	c.CaptureSlot(ctx)
 
@@ -164,6 +189,104 @@ func (c *connector) Start(ctx context.Context) {
 
 	<-c.cancelCh
 	logger.Debug("cancel channel triggered")
+}
+
+func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
+	if !c.cfg.Snapshot.Enabled {
+		return false
+	}
+
+	switch c.cfg.Snapshot.Mode {
+	case config.SnapshotModeNever:
+		return false
+	case config.SnapshotModeInitial:
+		state, err := c.snapshotter.LoadState(ctx, c.cfg.Slot.Name)
+		if err != nil {
+			logger.Debug("failed to load snapshot state, will take snapshot", "error", err)
+			return true
+		}
+		return state == nil || !state.Completed
+	default:
+		logger.Warn("invalid snapshot mode, skipping snapshot", "mode", c.cfg.Snapshot.Mode)
+		return false
+	}
+}
+
+func (c *connector) takeSnapshotWithRetry(ctx context.Context) error {
+	logger.Info("taking initial snapshot...")
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.cfg.Snapshot.Timeout)
+	defer cancel()
+
+	var lastErr error
+
+	maxRetries := c.cfg.Snapshot.MaxRetries
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		logger.Info("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
+
+		// Execute snapshot
+		err := c.snapshotter.TakeSnapshot(timeoutCtx, c.snapshotHandler, c.cfg.Slot.Name)
+		if err == nil {
+			logger.Info("snapshot completed successfully")
+
+			// Load existing state (from last checkpoint)
+			existingState, loadErr := c.snapshotter.LoadState(ctx, c.cfg.Slot.Name)
+			if loadErr != nil {
+				logger.Warn("failed to load final state", "error", loadErr)
+			}
+
+			// Mark snapshot as completed, preserving existing state
+			finalState := &snapshot.SnapshotState{
+				SlotName:        c.cfg.Slot.Name,
+				LastSnapshotLSN: c.system.LoadXLogPos(),
+				LastSnapshotAt:  time.Now().UTC(),
+				Completed:       true,
+			}
+
+			// Preserve checkpoint data if exists
+			if existingState != nil {
+				finalState.CurrentTable = existingState.CurrentTable
+				finalState.CurrentOffset = existingState.CurrentOffset
+				finalState.TotalRows = existingState.TotalRows
+			}
+
+			if saveErr := c.snapshotter.SaveState(ctx, finalState); saveErr != nil {
+				logger.Warn("failed to mark snapshot as completed", "error", saveErr)
+			}
+
+			return nil
+		}
+
+		lastErr = err
+		logger.Warn("snapshot attempt failed", "attempt", attempt, "error", err)
+
+		// Check if context is done (timeout or cancellation)
+		select {
+		case <-timeoutCtx.Done():
+			logger.Error("snapshot timeout exceeded", "timeout", c.cfg.Snapshot.Timeout)
+			return errors.Wrap(timeoutCtx.Err(), "snapshot timeout")
+		default:
+		}
+
+		// Don't sleep after last attempt
+		if attempt < maxRetries {
+			logger.Info("retrying snapshot", "retryDelay", c.cfg.Snapshot.RetryDelay)
+			time.Sleep(c.cfg.Snapshot.RetryDelay)
+		}
+	}
+
+	return errors.Wrap(lastErr, "snapshot failed after all retries")
+}
+
+func (c *connector) snapshotHandler(event *format.Snapshot) error {
+	c.listenerFunc(&replication.ListenerContext{
+		Message: event,
+		Ack: func() error {
+			return nil // ACK isn't required for snapshot
+		},
+	})
+	return nil
 }
 
 func (c *connector) WaitUntilReady(ctx context.Context) error {

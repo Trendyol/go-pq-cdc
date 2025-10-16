@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
@@ -23,6 +24,7 @@ type Config struct {
 	Port        int                `json:"port" yaml:"port"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
+	Snapshot    SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 }
 
 type MetricConfig struct {
@@ -65,6 +67,28 @@ func (c *Config) SetDefault() {
 			c.Publication.Tables[tableID].Schema = "public"
 		}
 	}
+
+	// Set default snapshot config
+	if c.Snapshot.Enabled {
+		if c.Snapshot.Mode == "" {
+			c.Snapshot.Mode = SnapshotModeNever
+		}
+		if c.Snapshot.Timeout == 0 {
+			c.Snapshot.Timeout = 30 * time.Minute
+		}
+		if c.Snapshot.BatchSize == 0 {
+			c.Snapshot.BatchSize = 10_000
+		}
+		if c.Snapshot.CheckpointInterval == 0 {
+			c.Snapshot.CheckpointInterval = 10
+		}
+		if c.Snapshot.MaxRetries == 0 {
+			c.Snapshot.MaxRetries = 3
+		}
+		if c.Snapshot.RetryDelay == 0 {
+			c.Snapshot.RetryDelay = 5 * time.Second
+		}
+	}
 }
 
 func (c *Config) Validate() error {
@@ -93,6 +117,10 @@ func (c *Config) Validate() error {
 		err = errors.Join(err, cErr)
 	}
 
+	if cErr := c.Snapshot.Validate(); cErr != nil {
+		err = errors.Join(err, cErr)
+	}
+
 	return err
 }
 
@@ -106,3 +134,48 @@ func (c *Config) Print() {
 func isEmpty(s string) bool {
 	return strings.TrimSpace(s) == ""
 }
+
+type SnapshotConfig struct {
+	Enabled            bool          `json:"enabled" yaml:"enabled"`
+	Mode               SnapshotMode  `json:"mode" yaml:"mode"`
+	Timeout            time.Duration `json:"timeout" yaml:"timeout"`
+	BatchSize          int           `json:"batchSize" yaml:"batchSize"`                   // Number of rows per batch
+	CheckpointInterval int           `json:"checkpointInterval" yaml:"checkpointInterval"` // Save state every N batches
+	MaxRetries         int           `json:"maxRetries" yaml:"maxRetries"`                 // Max retry attempts on failure
+	RetryDelay         time.Duration `json:"retryDelay" yaml:"retryDelay"`                 // Delay between retries
+}
+
+func (s *SnapshotConfig) Validate() error {
+	if !s.Enabled {
+		return nil
+	}
+
+	validModes := []SnapshotMode{SnapshotModeInitial, SnapshotModeNever}
+	isValid := false
+	for _, mode := range validModes {
+		if s.Mode == mode {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		return errors.New("snapshot mode must be 'initial' or 'never'")
+	}
+
+	if s.BatchSize <= 0 {
+		return errors.New("snapshot batch size must be greater than 0")
+	}
+
+	if s.CheckpointInterval <= 0 {
+		return errors.New("snapshot checkpoint interval must be greater than 0")
+	}
+
+	return nil
+}
+
+type SnapshotMode string
+
+const (
+	SnapshotModeInitial SnapshotMode = "initial" // İlk çalışmada snapshot al
+	SnapshotModeNever   SnapshotMode = "never"   // Snapshot alma
+)

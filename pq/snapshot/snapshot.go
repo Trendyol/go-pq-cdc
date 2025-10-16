@@ -21,12 +21,12 @@ import (
 type Handler func(event *format.Snapshot) error
 
 type Snapshotter struct {
-	conn      pq.Connection // Connection for snapshot operations (with transaction)
-	stateConn pq.Connection // Separate connection for state operations (without transaction)
-	config    config.SnapshotConfig
-	tables    publication.Tables
-	typeMap   *pgtype.Map
+	conn      pq.Connection
+	stateConn pq.Connection
 	metric    metric.Metric
+	typeMap   *pgtype.Map
+	tables    publication.Tables
+	config    config.SnapshotConfig
 }
 
 func New(snapshotConfig config.SnapshotConfig, tables publication.Tables, conn pq.Connection, stateConn pq.Connection, m metric.Metric) *Snapshotter {

@@ -44,11 +44,10 @@ type connector struct {
 	cancelCh           chan os.Signal
 	readyCh            chan struct{}
 	timescaleDB        *timescaledb.TimescaleDB
-	system             pq.IdentifySystemResult
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
-
-	once sync.Once
+	system             pq.IdentifySystemResult
+	once               sync.Once
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {

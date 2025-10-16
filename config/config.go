@@ -21,10 +21,10 @@ type Config struct {
 	Database    string             `json:"database" yaml:"database"`
 	Publication publication.Config `json:"publication" yaml:"publication"`
 	Slot        slot.Config        `json:"slot" yaml:"slot"`
+	Snapshot    SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Port        int                `json:"port" yaml:"port"`
 	Metric      MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
-	Snapshot    SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 }
 
 type MetricConfig struct {
@@ -136,13 +136,13 @@ func isEmpty(s string) bool {
 }
 
 type SnapshotConfig struct {
-	Enabled            bool          `json:"enabled" yaml:"enabled"`
 	Mode               SnapshotMode  `json:"mode" yaml:"mode"`
 	Timeout            time.Duration `json:"timeout" yaml:"timeout"`
-	BatchSize          int           `json:"batchSize" yaml:"batchSize"`                   // Number of rows per batch
-	CheckpointInterval int           `json:"checkpointInterval" yaml:"checkpointInterval"` // Save state every N batches
-	MaxRetries         int           `json:"maxRetries" yaml:"maxRetries"`                 // Max retry attempts on failure
-	RetryDelay         time.Duration `json:"retryDelay" yaml:"retryDelay"`                 // Delay between retries
+	BatchSize          int           `json:"batchSize" yaml:"batchSize"`
+	CheckpointInterval int           `json:"checkpointInterval" yaml:"checkpointInterval"`
+	MaxRetries         int           `json:"maxRetries" yaml:"maxRetries"`
+	RetryDelay         time.Duration `json:"retryDelay" yaml:"retryDelay"`
+	Enabled            bool          `json:"enabled" yaml:"enabled"`
 }
 
 func (s *SnapshotConfig) Validate() error {

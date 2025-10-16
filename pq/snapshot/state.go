@@ -12,12 +12,12 @@ import (
 
 // SnapshotState represents the state of snapshot operation
 type SnapshotState struct {
-	SlotName        string
-	LastSnapshotLSN pq.LSN
 	LastSnapshotAt  time.Time
-	CurrentTable    string // Currently processing table (for recovery)
-	CurrentOffset   int64  // Current offset in table (for recovery)
-	TotalRows       int64  // Total rows processed
+	SlotName        string
+	CurrentTable    string
+	LastSnapshotLSN pq.LSN
+	CurrentOffset   int64
+	TotalRows       int64
 	Completed       bool
 }
 

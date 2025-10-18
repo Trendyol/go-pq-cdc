@@ -199,12 +199,12 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 	case config.SnapshotModeNever:
 		return false
 	case config.SnapshotModeInitial:
-		state, err := c.snapshotter.LoadState(ctx, c.cfg.Slot.Name)
+		job, err := c.snapshotter.LoadJob(ctx, c.cfg.Slot.Name)
 		if err != nil {
-			logger.Debug("failed to load snapshot state, will take snapshot", "error", err)
+			logger.Debug("failed to load snapshot job state, will take snapshot", "error", err)
 			return true
 		}
-		return state == nil || !state.Completed
+		return job == nil || !job.Completed
 	default:
 		logger.Warn("invalid snapshot mode, skipping snapshot", "mode", c.cfg.Snapshot.Mode)
 		return false
@@ -214,64 +214,25 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 func (c *connector) takeSnapshotWithRetry(ctx context.Context) error {
 	logger.Info("taking initial snapshot...")
 
-	// Create timeout context
-	timeoutCtx, cancel := context.WithTimeout(ctx, c.cfg.Snapshot.Timeout)
-	defer cancel()
-
 	var lastErr error
+	maxRetries := 3
 
-	maxRetries := c.cfg.Snapshot.MaxRetries
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := 1; attempt <= 3; attempt++ {
 		logger.Info("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
 
-		// Execute snapshot
-		err := c.snapshotter.TakeSnapshot(timeoutCtx, c.snapshotHandler, c.cfg.Slot.Name)
+		err := c.snapshotter.TakeSnapshot(ctx, c.snapshotHandler, c.cfg.Slot.Name)
 		if err == nil {
 			logger.Info("snapshot completed successfully")
-
-			// Load existing state (from last checkpoint)
-			existingState, loadErr := c.snapshotter.LoadState(ctx, c.cfg.Slot.Name)
-			if loadErr != nil {
-				logger.Warn("failed to load final state", "error", loadErr)
-			}
-
-			// Mark snapshot as completed, preserving existing state
-			finalState := &snapshot.SnapshotState{
-				SlotName:        c.cfg.Slot.Name,
-				LastSnapshotLSN: c.system.LoadXLogPos(),
-				LastSnapshotAt:  time.Now().UTC(),
-				Completed:       true,
-			}
-
-			// Preserve checkpoint data if exists
-			if existingState != nil {
-				finalState.CurrentTable = existingState.CurrentTable
-				finalState.CurrentOffset = existingState.CurrentOffset
-				finalState.TotalRows = existingState.TotalRows
-			}
-
-			if saveErr := c.snapshotter.SaveState(ctx, finalState); saveErr != nil {
-				logger.Warn("failed to mark snapshot as completed", "error", saveErr)
-			}
-
 			return nil
 		}
 
 		lastErr = err
 		logger.Warn("snapshot attempt failed", "attempt", attempt, "error", err)
 
-		// Check if context is done (timeout or cancellation)
-		select {
-		case <-timeoutCtx.Done():
-			logger.Error("snapshot timeout exceeded", "timeout", c.cfg.Snapshot.Timeout)
-			return errors.Wrap(timeoutCtx.Err(), "snapshot timeout")
-		default:
-		}
-
 		// Don't sleep after last attempt
 		if attempt < maxRetries {
-			logger.Info("retrying snapshot", "retryDelay", c.cfg.Snapshot.RetryDelay)
-			time.Sleep(c.cfg.Snapshot.RetryDelay)
+			logger.Info("retrying snapshot", "retryDelay", "5s")
+			time.Sleep(5 * time.Second)
 		}
 	}
 

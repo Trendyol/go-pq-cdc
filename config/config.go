@@ -73,20 +73,14 @@ func (c *Config) SetDefault() {
 		if c.Snapshot.Mode == "" {
 			c.Snapshot.Mode = SnapshotModeNever
 		}
-		if c.Snapshot.Timeout == 0 {
-			c.Snapshot.Timeout = 30 * time.Minute
+		if c.Snapshot.ChunkSize == 0 {
+			c.Snapshot.ChunkSize = 100_000 // 100k rows per chunk
 		}
-		if c.Snapshot.BatchSize == 0 {
-			c.Snapshot.BatchSize = 10_000
+		if c.Snapshot.ClaimTimeout == 0 {
+			c.Snapshot.ClaimTimeout = 5 * time.Minute
 		}
-		if c.Snapshot.CheckpointInterval == 0 {
-			c.Snapshot.CheckpointInterval = 10
-		}
-		if c.Snapshot.MaxRetries == 0 {
-			c.Snapshot.MaxRetries = 3
-		}
-		if c.Snapshot.RetryDelay == 0 {
-			c.Snapshot.RetryDelay = 5 * time.Second
+		if c.Snapshot.HeartbeatInterval == 0 {
+			c.Snapshot.HeartbeatInterval = 30 * time.Second
 		}
 	}
 }
@@ -136,13 +130,14 @@ func isEmpty(s string) bool {
 }
 
 type SnapshotConfig struct {
-	Mode               SnapshotMode  `json:"mode" yaml:"mode"`
-	Timeout            time.Duration `json:"timeout" yaml:"timeout"`
-	BatchSize          int           `json:"batchSize" yaml:"batchSize"`
-	CheckpointInterval int           `json:"checkpointInterval" yaml:"checkpointInterval"`
-	MaxRetries         int           `json:"maxRetries" yaml:"maxRetries"`
-	RetryDelay         time.Duration `json:"retryDelay" yaml:"retryDelay"`
-	Enabled            bool          `json:"enabled" yaml:"enabled"`
+	Mode    SnapshotMode `json:"mode" yaml:"mode"`
+	Enabled bool         `json:"enabled" yaml:"enabled"`
+
+	// Chunk-based snapshot configuration (works for both single and multiple instances)
+	InstanceID        string        `json:"instanceId" yaml:"instanceId"`               // Optional, defaults to hostname-pid
+	ChunkSize         int64         `json:"chunkSize" yaml:"chunkSize"`                 // Rows per chunk (0 = auto-calculate based on table size)
+	ClaimTimeout      time.Duration `json:"claimTimeout" yaml:"claimTimeout"`           // Reclaim stale chunks after this duration
+	HeartbeatInterval time.Duration `json:"heartbeatInterval" yaml:"heartbeatInterval"` // How often to update heartbeat
 }
 
 func (s *SnapshotConfig) Validate() error {
@@ -162,12 +157,15 @@ func (s *SnapshotConfig) Validate() error {
 		return errors.New("snapshot mode must be 'initial' or 'never'")
 	}
 
-	if s.BatchSize <= 0 {
-		return errors.New("snapshot batch size must be greater than 0")
+	// Validate chunk-based config
+	if s.ChunkSize <= 0 {
+		return errors.New("snapshot chunk size must be greater than 0")
 	}
-
-	if s.CheckpointInterval <= 0 {
-		return errors.New("snapshot checkpoint interval must be greater than 0")
+	if s.ClaimTimeout <= 0 {
+		return errors.New("snapshot claim timeout must be greater than 0")
+	}
+	if s.HeartbeatInterval <= 0 {
+		return errors.New("snapshot heartbeat interval must be greater than 0")
 	}
 
 	return nil
@@ -176,6 +174,6 @@ func (s *SnapshotConfig) Validate() error {
 type SnapshotMode string
 
 const (
-	SnapshotModeInitial SnapshotMode = "initial" // İlk çalışmada snapshot al
-	SnapshotModeNever   SnapshotMode = "never"   // Snapshot alma
+	SnapshotModeInitial SnapshotMode = "initial"
+	SnapshotModeNever   SnapshotMode = "never"
 )

@@ -29,6 +29,11 @@ type Metric interface {
 	SnapshotRowsIncrement(count int64)
 	SetSnapshotDurationSeconds(seconds float64)
 
+	// Distributed snapshot metrics
+	SetSnapshotTotalChunks(total int)
+	SetSnapshotCompletedChunks(completed int)
+	SetSnapshotActiveWorkers(workers int)
+
 	PrometheusCollectors() []prometheus.Collector
 }
 
@@ -51,6 +56,11 @@ type metric struct {
 	snapshotCompletedTables prometheus.Gauge
 	snapshotTotalRows       prometheus.Counter
 	snapshotDurationSeconds prometheus.Gauge
+
+	// Distributed snapshot metrics
+	snapshotTotalChunks     prometheus.Gauge
+	snapshotCompletedChunks prometheus.Gauge
+	snapshotActiveWorkers   prometheus.Gauge
 }
 
 //nolint:funlen
@@ -207,6 +217,36 @@ func NewMetric(slotName string) Metric {
 				"host":      hostname,
 			},
 		}),
+		snapshotTotalChunks: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "snapshot",
+			Name:      "total_chunks",
+			Help:      "total number of chunks in distributed snapshot",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		snapshotCompletedChunks: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "snapshot",
+			Name:      "completed_chunks",
+			Help:      "number of chunks completed in distributed snapshot",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		snapshotActiveWorkers: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "snapshot",
+			Name:      "active_workers",
+			Help:      "number of active worker instances processing distributed snapshot",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
 	}
 }
 
@@ -227,6 +267,9 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.snapshotCompletedTables,
 		m.snapshotTotalRows,
 		m.snapshotDurationSeconds,
+		m.snapshotTotalChunks,
+		m.snapshotCompletedChunks,
+		m.snapshotActiveWorkers,
 	}
 }
 
@@ -297,4 +340,16 @@ func (m *metric) SnapshotRowsIncrement(count int64) {
 
 func (m *metric) SetSnapshotDurationSeconds(seconds float64) {
 	m.snapshotDurationSeconds.Set(seconds)
+}
+
+func (m *metric) SetSnapshotTotalChunks(total int) {
+	m.snapshotTotalChunks.Set(float64(total))
+}
+
+func (m *metric) SetSnapshotCompletedChunks(completed int) {
+	m.snapshotCompletedChunks.Set(float64(completed))
+}
+
+func (m *metric) SetSnapshotActiveWorkers(workers int) {
+	m.snapshotActiveWorkers.Set(float64(workers))
 }

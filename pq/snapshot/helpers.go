@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// beginTransaction starts a REPEATABLE READ transaction
+func (s *Snapshotter) beginTransaction(ctx context.Context) error {
+	return s.execSQL(ctx, s.conn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+}
+
+// commitTransaction commits the current transaction
+func (s *Snapshotter) commitTransaction(ctx context.Context) error {
+	return s.execSQL(ctx, s.conn, "COMMIT")
+}
+
+// rollbackTransaction rolls back the current transaction
+func (s *Snapshotter) rollbackTransaction(ctx context.Context) {
+	_ = s.execSQL(ctx, s.conn, "ROLLBACK")
+	logger.Debug("transaction rolled back")
+}
+
 // execSQL executes a SQL statement without returning results (DDL, DML)
 func (s *Snapshotter) execSQL(ctx context.Context, conn pq.Connection, sql string) error {
 	resultReader := conn.Exec(ctx, sql)

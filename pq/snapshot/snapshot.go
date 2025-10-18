@@ -2,8 +2,7 @@ package snapshot
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
@@ -12,7 +11,6 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/go-playground/errors"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -39,107 +37,62 @@ func New(snapshotConfig config.SnapshotConfig, tables publication.Tables, conn p
 	}
 }
 
-// getCurrentLSN gets the current Write-Ahead Log LSN
-func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
-	results, err := s.execQuery(ctx, s.conn, "SELECT pg_current_wal_lsn()")
+// TODO: genel bi retrylara bak, birden fazla çağrılan yerler vs.
+
+// Take performs a chunk-based snapshot (works for single or multiple instances)
+func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) error {
+	startTime := time.Now()
+	instanceID := generateInstanceID(s.config.InstanceID)
+	logger.Info("chunk-based snapshot starting", "instanceID", instanceID)
+
+	// Phase 1: Setup job (tables, coordinator election)
+	job, err := s.setupJob(ctx, slotName, instanceID)
 	if err != nil {
-		return 0, errors.Wrap(err, "execute pg_current_wal_lsn")
+		return errors.Wrap(err, "setup job")
+	}
+	if job == nil {
+		logger.Info("snapshot already completed")
+		return nil // Already done
 	}
 
-	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
-		return 0, errors.New("no LSN returned")
+	// Phase 2: Execute worker processing
+	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
+		return errors.Wrap(err, "execute worker")
 	}
 
-	lsnStr := string(results[0].Rows[0][0])
-	lsn, err := pq.ParseLSN(lsnStr)
+	// Phase 3: Finalize (check completion, send END marker)
+	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
+		return errors.Wrap(err, "finalize snapshot")
+	}
+
+	logger.Info("snapshot completed", "instanceID", instanceID, "duration", time.Since(startTime))
+	return nil
+}
+
+// finalizeSnapshot checks completion and sends END marker
+func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job *Job, handler Handler) error {
+	allCompleted, err := s.checkJobCompleted(ctx, slotName)
 	if err != nil {
-		return 0, errors.Wrap(err, "parse LSN")
+		return errors.Wrap(err, "check job completed")
 	}
 
-	return lsn, nil
-}
-
-// beginTransaction starts a REPEATABLE READ transaction
-func (s *Snapshotter) beginTransaction(ctx context.Context) error {
-	return s.execSQL(ctx, s.conn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-}
-
-// commitTransaction commits the current transaction
-func (s *Snapshotter) commitTransaction(ctx context.Context) error {
-	return s.execSQL(ctx, s.conn, "COMMIT")
-}
-
-// rollbackTransaction rolls back the current transaction
-func (s *Snapshotter) rollbackTransaction(ctx context.Context) {
-	_ = s.execSQL(ctx, s.conn, "ROLLBACK")
-	logger.Debug("transaction rolled back")
-}
-
-// getOrderByClause returns the ORDER BY clause for a table
-func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Table) (string, error) {
-	// Try to get primary key columns
-	query := fmt.Sprintf(`
-		SELECT a.attname
-		FROM pg_index i
-		JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-		WHERE i.indrelid = '%s.%s'::regclass AND i.indisprimary
-		ORDER BY a.attnum
-	`, table.Schema, table.Name)
-
-	results, err := s.execQuery(ctx, s.conn, query)
-	if err != nil {
-		return "", errors.Wrap(err, "query primary key")
+	if !allCompleted {
+		return nil // Not done yet
 	}
 
-	if len(results) > 0 && len(results[0].Rows) > 0 {
-		// Build ORDER BY from primary key columns
-		var columns []string
-		for _, row := range results[0].Rows {
-			if len(row) > 0 {
-				columns = append(columns, string(row[0]))
-			}
-		}
-		if len(columns) > 0 {
-			orderBy := strings.Join(columns, ", ")
-			logger.Debug("using primary key for ordering", "table", table.Name, "orderBy", orderBy)
-			return orderBy, nil
-		}
+	logger.Info("all chunks completed, marking job as complete")
+
+	// Mark job as completed (idempotent - safe for multiple workers)
+	if err := s.markJobAsCompleted(ctx, slotName); err != nil {
+		logger.Warn("failed to mark job as completed", "error", err)
 	}
 
-	// No primary key, use ctid (PostgreSQL internal row identifier)
-	logger.Debug("no primary key found, using ctid", "table", table.Name)
-	return "ctid", nil
-}
-
-// parseRow converts PostgreSQL row data to map with proper type conversion
-func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) (map[string]any, error) {
-	rowData := make(map[string]any)
-
-	for i, field := range fields {
-		if i >= len(row) {
-			break
-		}
-
-		columnName := string(field.Name)
-		columnValue := row[i]
-
-		if columnValue == nil {
-			rowData[columnName] = nil
-			continue
-		}
-
-		// Convert to appropriate type using pgtype
-		val, err := s.decodeColumnData(columnValue, field.DataTypeOID)
-		if err != nil {
-			logger.Debug("failed to decode column, using string", "column", columnName, "error", err)
-			rowData[columnName] = string(columnValue)
-			continue
-		}
-
-		rowData[columnName] = val
-	}
-
-	return rowData, nil
+	// Send END marker
+	return handler(&format.Snapshot{
+		EventType:  format.SnapshotEventTypeEnd,
+		ServerTime: time.Now().UTC(),
+		LSN:        job.SnapshotLSN,
+	})
 }
 
 // decodeColumnData decodes PostgreSQL column data using pgtype

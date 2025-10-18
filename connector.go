@@ -220,7 +220,7 @@ func (c *connector) takeSnapshotWithRetry(ctx context.Context) error {
 	for attempt := 1; attempt <= 3; attempt++ {
 		logger.Info("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
 
-		err := c.snapshotter.TakeSnapshot(ctx, c.snapshotHandler, c.cfg.Slot.Name)
+		err := c.snapshotter.Take(ctx, c.snapshotHandler, c.cfg.Slot.Name)
 		if err == nil {
 			logger.Info("snapshot completed successfully")
 			return nil

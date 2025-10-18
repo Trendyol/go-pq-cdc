@@ -40,7 +40,8 @@ func New(snapshotConfig config.SnapshotConfig, tables publication.Tables, conn p
 // TODO: genel bi retrylara bak, birden fazla çağrılan yerler vs.
 
 // Take performs a chunk-based snapshot (works for single or multiple instances)
-func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) error {
+// Returns the snapshot LSN for CDC streaming to continue from
+func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) (pq.LSN, error) {
 	startTime := time.Now()
 	instanceID := generateInstanceID(s.config.InstanceID)
 	logger.Info("chunk-based snapshot starting", "instanceID", instanceID)
@@ -48,25 +49,30 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 	// Phase 1: Setup job (tables, coordinator election)
 	job, err := s.setupJob(ctx, slotName, instanceID)
 	if err != nil {
-		return errors.Wrap(err, "setup job")
+		return 0, errors.Wrap(err, "setup job")
 	}
 	if job == nil {
 		logger.Info("snapshot already completed")
-		return nil // Already done
+		// Load existing job to get LSN
+		existingJob, err := s.loadJob(ctx, slotName)
+		if err != nil || existingJob == nil {
+			return 0, errors.New("completed job not found")
+		}
+		return existingJob.SnapshotLSN, nil
 	}
 
 	// Phase 2: Execute worker processing
 	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
-		return errors.Wrap(err, "execute worker")
+		return 0, errors.Wrap(err, "execute worker")
 	}
 
 	// Phase 3: Finalize (check completion, send END marker)
 	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
-		return errors.Wrap(err, "finalize snapshot")
+		return 0, errors.Wrap(err, "finalize snapshot")
 	}
 
-	logger.Info("snapshot completed", "instanceID", instanceID, "duration", time.Since(startTime))
-	return nil
+	logger.Info("snapshot completed", "instanceID", instanceID, "duration", time.Since(startTime), "lsn", job.SnapshotLSN.String())
+	return job.SnapshotLSN, nil
 }
 
 // finalizeSnapshot checks completion and sends END marker

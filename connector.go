@@ -47,6 +47,7 @@ type connector struct {
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
 	system             pq.IdentifySystemResult
+	snapshotLSN        pq.LSN // LSN from snapshot to continue CDC from
 	once               sync.Once
 }
 
@@ -165,6 +166,12 @@ func (c *connector) Start(ctx context.Context) {
 		}
 	}
 
+	// Pass snapshot LSN to CDC stream if available
+	if c.snapshotLSN > 0 {
+		c.stream.SetSnapshotLSN(c.snapshotLSN)
+		logger.Info("CDC will continue from snapshot LSN", "lsn", c.snapshotLSN.String())
+	}
+
 	c.CaptureSlot(ctx)
 
 	err := c.stream.Open(ctx)
@@ -220,9 +227,10 @@ func (c *connector) takeSnapshotWithRetry(ctx context.Context) error {
 	for attempt := 1; attempt <= 3; attempt++ {
 		logger.Info("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
 
-		err := c.snapshotter.Take(ctx, c.snapshotHandler, c.cfg.Slot.Name)
+		snapshotLSN, err := c.snapshotter.Take(ctx, c.snapshotHandler, c.cfg.Slot.Name)
 		if err == nil {
-			logger.Info("snapshot completed successfully")
+			c.snapshotLSN = snapshotLSN
+			logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
 			return nil
 		}
 

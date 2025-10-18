@@ -46,6 +46,7 @@ type Streamer interface {
 	Close(ctx context.Context)
 	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
+	SetSnapshotLSN(lsn pq.LSN)
 }
 
 type stream struct {
@@ -59,6 +60,7 @@ type stream struct {
 	mu           *sync.RWMutex
 	config       config.Config
 	lastXLogPos  pq.LSN
+	snapshotLSN  pq.LSN // LSN from snapshot to start CDC from
 	closed       atomic.Bool
 }
 
@@ -98,7 +100,7 @@ func (s *stream) Open(ctx context.Context) error {
 func (s *stream) setup(ctx context.Context) error {
 	replication := New(s.conn)
 
-	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name); err != nil {
+	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, s.snapshotLSN); err != nil {
 		return err
 	}
 
@@ -300,4 +302,10 @@ func isClosed[T any](ch <-chan T) bool {
 	}
 
 	return false
+}
+
+// SetSnapshotLSN sets the LSN from snapshot to start CDC streaming from
+func (s *stream) SetSnapshotLSN(lsn pq.LSN) {
+	s.snapshotLSN = lsn
+	logger.Info("snapshot LSN set for CDC streaming", "lsn", lsn.String())
 }

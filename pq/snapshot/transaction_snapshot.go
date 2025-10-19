@@ -32,7 +32,7 @@ func (s *Snapshotter) exportSnapshot(ctx context.Context) (string, error) {
 		}
 
 		snapshotID = string(results[0].Rows[0][0])
-		logger.Info("snapshot exported", "snapshotID", snapshotID)
+		logger.Info("[coordinator] snapshot exported", "snapshotID", snapshotID)
 		return nil
 	})
 
@@ -47,7 +47,7 @@ func (s *Snapshotter) setTransactionSnapshot(ctx context.Context, snapshotID str
 			return errors.Wrap(err, "set transaction snapshot")
 		}
 
-		logger.Debug("transaction snapshot set", "snapshotID", snapshotID)
+		logger.Debug("[worker] transaction snapshot set", "snapshotID", snapshotID)
 		return nil
 	})
 }

@@ -15,43 +15,47 @@ import (
 	"github.com/go-playground/errors"
 )
 
-// coordinatorInitialize initializes the snapshot job in two phases
-// Phase 1: Create metadata and chunks (commits transaction)
-// Phase 2: Export snapshot (keeps transaction open for workers)
-func (s *Snapshotter) coordinatorInitialize(ctx context.Context, slotName string) error {
-	logger.Info("coordinator: initializing job", "slotName", slotName)
+// initializeCoordinator sets up the snapshot job as coordinator
+// 1. Cleanup any incomplete job (from previous crash)
+// 2. Create metadata and chunks
+// 3. Export snapshot for workers
+func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string) error {
+	logger.Info("[coordinator] initializing job", "slotName", slotName)
 
 	// Check if job already exists
 	existingJob, err := s.loadJob(ctx, slotName)
 	if err == nil && existingJob != nil && !existingJob.Completed {
-		//TODO: gerek yok sanki?
-		logger.Info("coordinator: job already initialized, resuming")
-		// On resume, export a new snapshot (old transaction is gone after restart)
-		// But keep the original LSN from phase 1
-		logger.Info("coordinator: re-exporting snapshot for resume (keeping original LSN)")
-		if err := s.coordinatorPhase2ExportSnapshotResume(ctx, slotName); err != nil {
-			return errors.Wrap(err, "phase 2: export snapshot on resume")
+		// Incomplete job found - coordinator crashed during snapshot
+		// PROBLEM: Old snapshot transaction is gone, old LSN is stale
+		// SOLUTION: Restart snapshot from scratch to maintain consistency
+		logger.Warn("[coordinator] incomplete job found, restarting from scratch")
+		logger.Info("[coordinator] reason: stale LSN would cause data duplication")
+
+		if err = s.cleanupJob(ctx, slotName); err != nil {
+			return errors.Wrap(err, "cleanup incomplete job")
 		}
-		return nil
+
+		logger.Info("[coordinator] cleanup complete, starting fresh")
+		// Fall through to create fresh metadata
 	}
 
-	// Phase 1: Create metadata and chunks (will be committed)
-	if err := s.coordinatorPhase1CreateMetadata(ctx, slotName); err != nil {
-		return errors.Wrap(err, "phase 1: create metadata")
+	// Create metadata and chunks (committed to DB)
+	if err := s.createMetadata(ctx, slotName); err != nil {
+		return errors.Wrap(err, "create metadata")
 	}
 
-	// Phase 2: Export snapshot (transaction stays open)
-	if err := s.coordinatorPhase2ExportSnapshot(ctx); err != nil {
-		return errors.Wrap(err, "phase 2: export snapshot")
+	// Export snapshot (keeps transaction open for workers)
+	if err := s.exportSnapshotTransaction(ctx); err != nil {
+		return errors.Wrap(err, "export snapshot")
 	}
 
-	logger.Info("coordinator: initialization complete")
+	logger.Info("[coordinator] initialization complete")
 	return nil
 }
 
-// coordinatorPhase1CreateMetadata creates job metadata and chunks, then commits
-func (s *Snapshotter) coordinatorPhase1CreateMetadata(ctx context.Context, slotName string) error {
-	logger.Info("coordinator: phase 1 - creating metadata and chunks")
+// createMetadata captures LSN, creates job and chunks metadata
+func (s *Snapshotter) createMetadata(ctx context.Context, slotName string) error {
+	logger.Info("[coordinator] creating metadata and chunks")
 
 	// Capture LSN before any transaction
 	currentLSN, err := s.getCurrentLSN(ctx)
@@ -62,7 +66,7 @@ func (s *Snapshotter) coordinatorPhase1CreateMetadata(ctx context.Context, slotN
 	// Create job metadata with placeholder snapshot ID
 	job := &Job{
 		SlotName:    slotName,
-		SnapshotID:  "PENDING", // Will be updated in phase 2
+		SnapshotID:  "PENDING", // Will be updated after snapshot export
 		SnapshotLSN: currentLSN,
 		StartedAt:   time.Now().UTC(),
 		Completed:   false,
@@ -84,7 +88,9 @@ func (s *Snapshotter) coordinatorPhase1CreateMetadata(ctx context.Context, slotN
 		}
 
 		totalChunks += len(chunks)
-		logger.Info("coordinator: chunks created", "table", fmt.Sprintf("%s.%s", table.Schema, table.Name), "chunks", len(chunks))
+		logger.Info("[coordinator] chunks created",
+			"table", fmt.Sprintf("%s.%s", table.Schema, table.Name),
+			"chunks", len(chunks))
 	}
 
 	job.TotalChunks = totalChunks
@@ -94,41 +100,14 @@ func (s *Snapshotter) coordinatorPhase1CreateMetadata(ctx context.Context, slotN
 		return errors.Wrap(err, "save job")
 	}
 
-	logger.Info("coordinator: phase 1 complete - metadata committed", "totalChunks", totalChunks, "lsn", currentLSN.String())
+	logger.Info("[coordinator] metadata committed", "totalChunks", totalChunks, "lsn", currentLSN.String())
 	return nil
 }
 
-// coordinatorPhase2ExportSnapshot exports snapshot and keeps transaction open
-func (s *Snapshotter) coordinatorPhase2ExportSnapshot(ctx context.Context) error {
-	logger.Info("coordinator: phase 2 - exporting snapshot")
-
-	// Start transaction on snapshot connection (will stay open)
-	if err := s.execSQL(ctx, s.exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
-		return errors.Wrap(err, "create pg snapshot conn")
-	}
-
-	// Export snapshot
-	snapshotID, err := s.exportSnapshot(ctx)
-	if err != nil {
-		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
-		return errors.Wrap(err, "export snapshot")
-	}
-
-	logger.Info("coordinator: snapshot exported", "snapshotID", snapshotID)
-
-	// Update job with real snapshot ID
-	if err := s.updateJobSnapshotID(ctx, snapshotID); err != nil {
-		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
-		return errors.Wrap(err, "update job snapshot ID")
-	}
-
-	logger.Info("coordinator: phase 2 complete - snapshot transaction open")
-	return nil
-}
-
-// coordinatorPhase2ExportSnapshotResume exports a new snapshot on resume (keeps original LSN)
-func (s *Snapshotter) coordinatorPhase2ExportSnapshotResume(ctx context.Context, slotName string) error {
-	logger.Info("coordinator: phase 2 resume - exporting new snapshot")
+// exportSnapshotTransaction begins a REPEATABLE READ transaction and exports snapshot ID
+// This transaction is kept OPEN for workers to use the same snapshot
+func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
+	logger.Info("[coordinator] exporting snapshot")
 
 	// Start transaction on snapshot connection (will stay open)
 	if err := s.execSQL(ctx, s.exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
@@ -138,20 +117,48 @@ func (s *Snapshotter) coordinatorPhase2ExportSnapshotResume(ctx context.Context,
 	// Export snapshot
 	snapshotID, err := s.exportSnapshot(ctx)
 	if err != nil {
-		s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
+		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "export snapshot")
 	}
 
-	logger.Info("coordinator: snapshot exported on resume", "snapshotID", snapshotID)
+	logger.Info("[coordinator] snapshot exported", "snapshotID", snapshotID)
 
-	// Update job with new snapshot ID (for resume, no WHERE condition on snapshot_id)
-	if err := s.updateJobSnapshotIDForResume(ctx, slotName, snapshotID); err != nil {
-		s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
-		return errors.Wrap(err, "update job snapshot ID on resume")
+	// Update job with real snapshot ID
+	if err := s.updateJobSnapshotID(ctx, snapshotID); err != nil {
+		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
+		return errors.Wrap(err, "update job snapshot ID")
 	}
 
-	logger.Info("coordinator: phase 2 resume complete - snapshot transaction open")
+	logger.Info("[coordinator] snapshot transaction ready for workers")
 	return nil
+}
+
+// cleanupJob removes metadata for an incomplete snapshot job
+func (s *Snapshotter) cleanupJob(ctx context.Context, slotName string) error {
+	return s.retryDBOperation(ctx, func() error {
+		// Delete chunks
+		chunksQuery := fmt.Sprintf(`
+			DELETE FROM %s
+			WHERE slot_name = '%s'
+		`, chunksTableName, slotName)
+
+		if _, err := s.execQuery(ctx, s.metadataConn, chunksQuery); err != nil {
+			return errors.Wrap(err, "delete chunks")
+		}
+
+		// Delete job
+		jobQuery := fmt.Sprintf(`
+			DELETE FROM %s
+			WHERE slot_name = '%s'
+		`, jobTableName, slotName)
+
+		if _, err := s.execQuery(ctx, s.metadataConn, jobQuery); err != nil {
+			return errors.Wrap(err, "delete job")
+		}
+
+		logger.Info("[metadata] job cleaned up", "slotName", slotName)
+		return nil
+	})
 }
 
 // updateJobSnapshotID updates the snapshot ID in the job metadata (for initial creation)
@@ -167,25 +174,7 @@ func (s *Snapshotter) updateJobSnapshotID(ctx context.Context, snapshotID string
 			return errors.Wrap(err, "update snapshot ID")
 		}
 
-		logger.Debug("job snapshot ID updated", "snapshotID", snapshotID)
-		return nil
-	})
-}
-
-// updateJobSnapshotIDForResume updates the snapshot ID for a resumed job
-func (s *Snapshotter) updateJobSnapshotIDForResume(ctx context.Context, slotName, snapshotID string) error {
-	return s.retryDBOperation(ctx, func() error {
-		query := fmt.Sprintf(`
-			UPDATE %s
-			SET snapshot_id = '%s'
-			WHERE slot_name = '%s'
-		`, jobTableName, snapshotID, slotName)
-
-		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
-			return errors.Wrap(err, "update snapshot ID for resume")
-		}
-
-		logger.Debug("job snapshot ID updated for resume", "slotName", slotName, "snapshotID", snapshotID)
+		logger.Debug("[metadata] snapshot ID updated", "snapshotID", snapshotID)
 		return nil
 	})
 }
@@ -201,7 +190,7 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 	// Check if job already exists and is completed
 	existingJob, err := s.loadJob(ctx, slotName)
 	if err != nil {
-		logger.Debug("no existing job found")
+		logger.Debug("[snapshot] no existing job found")
 	}
 	if existingJob != nil && existingJob.Completed {
 		return nil, false, nil // Signal completion
@@ -214,13 +203,13 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 	}
 
 	if isCoordinator {
-		logger.Info("instance elected as coordinator", "instanceID", instanceID)
+		logger.Info("[snapshot] elected as coordinator", "instanceID", instanceID)
 		defer s.releaseCoordinatorLock(ctx, slotName)
-		if err := s.coordinatorInitialize(ctx, slotName); err != nil {
-			return nil, false, errors.Wrap(err, "coordinator initialize")
+		if err := s.initializeCoordinator(ctx, slotName); err != nil {
+			return nil, false, errors.Wrap(err, "initialize coordinator")
 		}
 	} else {
-		logger.Info("instance joining as worker", "instanceID", instanceID)
+		logger.Info("[snapshot] joining as worker", "instanceID", instanceID)
 		if err := s.waitForCoordinator(ctx, slotName); err != nil {
 			return nil, false, errors.Wrap(err, "wait for coordinator")
 		}
@@ -235,7 +224,7 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 		return nil, false, errors.New("job not found after initialization")
 	}
 
-	logger.Info("job loaded", "snapshotID", job.SnapshotID, "lsn", job.SnapshotLSN.String())
+	logger.Info("[snapshot] job loaded", "snapshotID", job.SnapshotID, "lsn", job.SnapshotLSN.String())
 	return job, isCoordinator, nil
 }
 
@@ -293,7 +282,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 		}
 	}
 
-	logger.Debug("snapshot tables initialized")
+	logger.Debug("[metadata] snapshot tables initialized")
 	return nil
 }
 
@@ -346,7 +335,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 		chunk.ChunkStart,
 	)
 
-	logger.Debug("executing chunk query", "query", query)
+	logger.Debug("[chunk] executing query", "query", query)
 
 	results, err := s.execQuery(ctx, s.workerConn, query)
 	if err != nil {
@@ -413,13 +402,13 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Ta
 		}
 		if len(columns) > 0 {
 			orderBy := strings.Join(columns, ", ")
-			logger.Debug("using primary key for ordering", "table", table.Name, "orderBy", orderBy)
+			logger.Debug("[chunk] using primary key for ordering", "table", table.Name, "orderBy", orderBy)
 			return orderBy, nil
 		}
 	}
 
 	// No primary key, use ctid (PostgreSQL internal row identifier)
-	logger.Debug("no primary key found, using ctid", "table", table.Name)
+	logger.Debug("[chunk] no primary key, using ctid", "table", table.Name)
 	return "ctid", nil
 }
 
@@ -427,7 +416,7 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Ta
 func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) ([]*Chunk, error) {
 	rowCount, err := s.estimateTableRowCount(ctx, table.Schema, table.Name)
 	if err != nil {
-		logger.Warn("failed to estimate row count, using single chunk", "table", table.Name, "error", err)
+		logger.Warn("[chunk] failed to estimate row count, using single chunk", "table", table.Name, "error", err)
 		rowCount = 0
 	}
 
@@ -466,7 +455,7 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 		chunks = append(chunks, chunk)
 	}
 
-	logger.Debug("chunks created", "table", table.Name, "rowCount", rowCount, "chunkSize", chunkSize, "numChunks", numChunks)
+	logger.Debug("[chunk] chunks created", "table", table.Name, "rowCount", rowCount, "chunkSize", chunkSize, "numChunks", numChunks)
 	return chunks, nil
 }
 
@@ -490,7 +479,7 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) (
 		// Convert to appropriate type using pgtype
 		val, err := s.decodeColumnData(columnValue, field.DataTypeOID)
 		if err != nil {
-			logger.Debug("failed to decode column, using string", "column", columnName, "error", err)
+			logger.Debug("[chunk] failed to decode column, using string", "column", columnName, "error", err)
 			rowData[columnName] = string(columnValue)
 			continue
 		}
@@ -574,7 +563,7 @@ func (s *Snapshotter) saveJob(ctx context.Context, job *Job) error {
 			return errors.Wrap(err, "create job")
 		}
 
-		logger.Debug("job created", "slotName", job.SlotName, "snapshotID", job.SnapshotID)
+		logger.Debug("[metadata] job created", "slotName", job.SlotName, "snapshotID", job.SnapshotID)
 		return nil
 	})
 }

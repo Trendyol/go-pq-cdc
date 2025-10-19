@@ -45,7 +45,7 @@ func (s *Snapshotter) retryDBOperation(ctx context.Context, operation func() err
 		if attempt > 0 {
 			// Exponential backoff
 			delay := retryDelay * time.Duration(1<<uint(attempt-1))
-			logger.Debug("retrying database operation", "attempt", attempt, "delay", delay)
+			logger.Debug("[retry] database operation", "attempt", attempt, "delay", delay)
 
 			select {
 			case <-ctx.Done():

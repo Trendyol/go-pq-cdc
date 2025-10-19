@@ -23,7 +23,7 @@ func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) e
 
 		job, err := s.loadJob(ctx, slotName)
 		if err == nil && job != nil {
-			logger.Info("job initialized by coordinator", "snapshotID", job.SnapshotID)
+			logger.Info("[worker] coordinator ready", "snapshotID", job.SnapshotID)
 			return nil
 		}
 
@@ -105,11 +105,11 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 
 		if chunk == nil {
 			// No more chunks available
-			logger.Debug("no more chunks available", "instanceID", instanceID)
+			logger.Debug("[worker] no more chunks available", "instanceID", instanceID)
 			break
 		}
 
-		logger.Info("processing chunk",
+		logger.Info("[worker] processing chunk",
 			"instanceID", instanceID,
 			"table", fmt.Sprintf("%s.%s", chunk.TableSchema, chunk.TableName),
 			"chunkIndex", chunk.ChunkIndex,
@@ -125,14 +125,14 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 		// Process the chunk
 		rowsProcessed, err := s.processChunk(ctx, chunk, lsn, handler)
 		if err != nil {
-			logger.Error("chunk processing failed", "chunkID", chunk.ID, "error", err)
+			logger.Error("[worker] chunk processing failed", "chunkID", chunk.ID, "error", err)
 			// Continue with next chunk instead of failing entire snapshot
 			continue
 		}
 
 		// Mark chunk as completed
 		if err := s.markChunkCompleted(ctx, slotName, chunk.ID, rowsProcessed); err != nil {
-			logger.Warn("failed to mark chunk as completed", "error", err)
+			logger.Warn("[worker] failed to mark chunk as completed", "error", err)
 		}
 
 		// Update metrics
@@ -144,7 +144,7 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 			s.metric.SetSnapshotCompletedChunks(job.CompletedChunks)
 		}
 
-		logger.Info("chunk completed",
+		logger.Info("[worker] chunk completed",
 			"instanceID", instanceID,
 			"chunkID", chunk.ID,
 			"rowsProcessed", rowsProcessed)
@@ -168,9 +168,9 @@ func (s *Snapshotter) heartbeatWorker(ctx context.Context, currentChunk <-chan i
 		case <-ticker.C:
 			if activeChunkID > 0 {
 				if err := s.updateChunkHeartbeat(ctx, activeChunkID); err != nil {
-					logger.Warn("failed to update chunk heartbeat", "chunkID", activeChunkID, "error", err)
+					logger.Warn("[heartbeat] failed to update", "chunkID", activeChunkID, "error", err)
 				} else {
-					logger.Debug("heartbeat updated", "chunkID", activeChunkID)
+					logger.Debug("[heartbeat] updated", "chunkID", activeChunkID)
 				}
 			}
 		}
@@ -190,7 +190,7 @@ func (s *Snapshotter) markJobAsCompleted(ctx context.Context, slotName string) e
 			return errors.Wrap(err, "mark job as completed")
 		}
 
-		logger.Info("job marked as completed", "slotName", slotName)
+		logger.Info("[metadata] job marked as completed", "slotName", slotName)
 		return nil
 	})
 }

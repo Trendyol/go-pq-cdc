@@ -72,7 +72,7 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) (pq.LSN, error) {
 	startTime := time.Now()
 	instanceID := generateInstanceID(s.config.InstanceID)
-	logger.Info("chunk-based snapshot starting", "instanceID", instanceID)
+	logger.Info("[snapshot] starting", "instanceID", instanceID)
 
 	// Phase 1: Setup job (tables, coordinator election, metadata creation)
 	job, isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
@@ -80,7 +80,7 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 		return 0, errors.Wrap(err, "setup job")
 	}
 	if job == nil {
-		logger.Info("snapshot already completed")
+		logger.Info("[snapshot] already completed")
 		// Load existing job to get LSN
 		existingJob, err := s.loadJob(ctx, slotName)
 		if err != nil || existingJob == nil {
@@ -93,7 +93,7 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
 		// On error, cleanup snapshot transaction if coordinator
 		if isCoordinator {
-			logger.Warn("error during snapshot, rolling back snapshot transaction")
+			logger.Warn("[coordinator] error during snapshot, rolling back transaction")
 			s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		}
 		return 0, errors.Wrap(err, "execute worker")
@@ -103,7 +103,7 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
 		// On error, cleanup snapshot transaction if coordinator
 		if isCoordinator {
-			logger.Warn("error during finalize, rolling back snapshot transaction")
+			logger.Warn("[coordinator] error during finalize, rolling back transaction")
 			s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		}
 		return 0, errors.Wrap(err, "finalize snapshot")
@@ -111,9 +111,9 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 
 	// NOTE: Snapshot transaction is NOT closed here!
 	// For coordinator, it stays open to maintain snapshot consistency until CDC starts
-	logger.Info("snapshot completed", "instanceID", instanceID, "duration", time.Since(startTime), "lsn", job.SnapshotLSN.String())
+	logger.Info("[snapshot] completed", "instanceID", instanceID, "duration", time.Since(startTime), "lsn", job.SnapshotLSN.String())
 	if isCoordinator {
-		logger.Info("coordinator: snapshot transaction kept OPEN for CDC")
+		logger.Info("[coordinator] snapshot transaction kept OPEN for CDC")
 	}
 	return job.SnapshotLSN, nil
 }
@@ -129,11 +129,11 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 		return nil // Not done yet, keep processing
 	}
 
-	logger.Info("all chunks completed, marking job as complete")
+	logger.Info("[snapshot] all chunks completed, marking job as complete")
 
 	// Mark job as completed (idempotent - safe for multiple workers)
 	if err := s.markJobAsCompleted(ctx, slotName); err != nil {
-		logger.Warn("failed to mark job as completed", "error", err)
+		logger.Warn("[snapshot] failed to mark job as completed", "error", err)
 	}
 
 	// Send END marker
@@ -150,9 +150,9 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 
 // CloseSnapshotTransaction closes the snapshot transaction (called after CDC starts)
 func (s *Snapshotter) CloseSnapshotTransaction(ctx context.Context) {
-	logger.Info("closing snapshot transaction")
+	logger.Info("[coordinator] closing snapshot transaction")
 	if err := s.execSQL(ctx, s.exportSnapshotConn, "COMMIT"); err != nil {
-		logger.Warn("failed to commit snapshot transaction", "error", err)
+		logger.Warn("[coordinator] failed to commit snapshot transaction", "error", err)
 	}
 }
 

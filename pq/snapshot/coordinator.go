@@ -3,9 +3,10 @@ package snapshot
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgconn"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -191,22 +192,28 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 
 // getCurrentLSN gets the current Write-Ahead Log LSN
 func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
-	results, err := s.execQuery(ctx, s.conn, "SELECT pg_current_wal_lsn()")
-	if err != nil {
-		return 0, errors.Wrap(err, "execute pg_current_wal_lsn")
-	}
+	var lsn pq.LSN
 
-	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
-		return 0, errors.New("no LSN returned")
-	}
+	err := s.retryDBOperation(ctx, func() error {
+		results, err := s.execQuery(ctx, s.conn, "SELECT pg_current_wal_lsn()")
+		if err != nil {
+			return errors.Wrap(err, "execute pg_current_wal_lsn")
+		}
 
-	lsnStr := string(results[0].Rows[0][0])
-	lsn, err := pq.ParseLSN(lsnStr)
-	if err != nil {
-		return 0, errors.Wrap(err, "parse LSN")
-	}
+		if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+			return errors.New("no LSN returned")
+		}
 
-	return lsn, nil
+		lsnStr := string(results[0].Rows[0][0])
+		lsn, err = pq.ParseLSN(lsnStr)
+		if err != nil {
+			return errors.Wrap(err, "parse LSN")
+		}
+
+		return nil
+	})
+
+	return lsn, err
 }
 
 // processChunk processes a single chunk
@@ -275,7 +282,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 
 // getOrderByClause returns the ORDER BY clause for a table
 func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Table) (string, error) {
-	// Try to get primary key columns
+	// Try to get primary key columns fallback to ctid
 	query := fmt.Sprintf(`
 		SELECT a.attname
 		FROM pg_index i
@@ -365,7 +372,7 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) (
 			break
 		}
 
-		columnName := string(field.Name)
+		columnName := field.Name
 		columnValue := row[i]
 
 		if columnValue == nil {
@@ -389,23 +396,25 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) (
 
 // saveChunk saves a chunk to the database (only INSERT, coordinator creates once)
 func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
-	query := fmt.Sprintf(`
-		INSERT INTO %s (
-			slot_name, table_schema, table_name, chunk_index, 
-			chunk_start, chunk_size, status
-		) VALUES ('%s', '%s', '%s', %d, %d, %d, '%s')
-	`, chunksTableName,
-		chunk.SlotName,
-		chunk.TableSchema,
-		chunk.TableName,
-		chunk.ChunkIndex,
-		chunk.ChunkStart,
-		chunk.ChunkSize,
-		string(chunk.Status),
-	)
+	return s.retryDBOperation(ctx, func() error {
+		query := fmt.Sprintf(`
+			INSERT INTO %s (
+				slot_name, table_schema, table_name, chunk_index, 
+				chunk_start, chunk_size, status
+			) VALUES ('%s', '%s', '%s', %d, %d, %d, '%s')
+		`, chunksTableName,
+			chunk.SlotName,
+			chunk.TableSchema,
+			chunk.TableName,
+			chunk.ChunkIndex,
+			chunk.ChunkStart,
+			chunk.ChunkSize,
+			string(chunk.Status),
+		)
 
-	_, err := s.execQuery(ctx, s.stateConn, query)
-	return err
+		_, err := s.execQuery(ctx, s.stateConn, query)
+		return err
+	})
 }
 
 // estimateTableRowCount estimates the number of rows in a table
@@ -438,25 +447,27 @@ func (s *Snapshotter) estimateTableRowCount(ctx context.Context, schema, table s
 
 // saveJob creates a new job (coordinator only, protected by advisory lock)
 func (s *Snapshotter) saveJob(ctx context.Context, job *Job) error {
-	query := fmt.Sprintf(`
-		INSERT INTO %s (
-			slot_name, snapshot_id, snapshot_lsn, started_at, 
-			completed, total_chunks, completed_chunks
-		) VALUES ('%s', '%s', '%s', '%s', %t, %d, %d)
-	`, jobTableName,
-		job.SlotName,
-		job.SnapshotID,
-		job.SnapshotLSN.String(),
-		job.StartedAt.Format("2006-01-02 15:04:05"),
-		job.Completed,
-		job.TotalChunks,
-		job.CompletedChunks,
-	)
+	return s.retryDBOperation(ctx, func() error {
+		query := fmt.Sprintf(`
+			INSERT INTO %s (
+				slot_name, snapshot_id, snapshot_lsn, started_at, 
+				completed, total_chunks, completed_chunks
+			) VALUES ('%s', '%s', '%s', '%s', %t, %d, %d)
+		`, jobTableName,
+			job.SlotName,
+			job.SnapshotID,
+			job.SnapshotLSN.String(),
+			job.StartedAt.Format("2006-01-02 15:04:05"),
+			job.Completed,
+			job.TotalChunks,
+			job.CompletedChunks,
+		)
 
-	if _, err := s.execQuery(ctx, s.stateConn, query); err != nil {
-		return errors.Wrap(err, "create job")
-	}
+		if _, err := s.execQuery(ctx, s.stateConn, query); err != nil {
+			return errors.Wrap(err, "create job")
+		}
 
-	logger.Debug("job created", "slotName", job.SlotName, "snapshotID", job.SnapshotID)
-	return nil
+		logger.Debug("job created", "slotName", job.SlotName, "snapshotID", job.SnapshotID)
+		return nil
+	})
 }

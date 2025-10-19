@@ -130,14 +130,12 @@ func isEmpty(s string) bool {
 }
 
 type SnapshotConfig struct {
-	Mode    SnapshotMode `json:"mode" yaml:"mode"`
-	Enabled bool         `json:"enabled" yaml:"enabled"`
-
-	// Chunk-based snapshot configuration (works for both single and multiple instances)
-	InstanceID        string        `json:"instanceId" yaml:"instanceId"`               // Optional, defaults to hostname-pid
-	ChunkSize         int64         `json:"chunkSize" yaml:"chunkSize"`                 // Rows per chunk (0 = auto-calculate based on table size)
-	ClaimTimeout      time.Duration `json:"claimTimeout" yaml:"claimTimeout"`           // Reclaim stale chunks after this duration
-	HeartbeatInterval time.Duration `json:"heartbeatInterval" yaml:"heartbeatInterval"` // How often to update heartbeat
+	Mode              SnapshotMode  `json:"mode" yaml:"mode"`
+	InstanceID        string        `json:"instanceId" yaml:"instanceId"`
+	ChunkSize         int64         `json:"chunkSize" yaml:"chunkSize"`
+	ClaimTimeout      time.Duration `json:"claimTimeout" yaml:"claimTimeout"`
+	HeartbeatInterval time.Duration `json:"heartbeatInterval" yaml:"heartbeatInterval"`
+	Enabled           bool          `json:"enabled" yaml:"enabled"`
 }
 
 func (s *SnapshotConfig) Validate() error {

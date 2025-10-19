@@ -3,11 +3,12 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/go-playground/errors"
-	"time"
 )
 
 // waitForCoordinator waits for the coordinator to initialize the job
@@ -176,99 +177,105 @@ func (s *Snapshotter) heartbeatWorker(ctx context.Context, currentChunk <-chan i
 
 // markJobAsCompleted marks the job as completed (safe to call multiple times)
 func (s *Snapshotter) markJobAsCompleted(ctx context.Context, slotName string) error {
-	query := fmt.Sprintf(`
-		UPDATE %s
-		SET completed = true
-		WHERE slot_name = '%s'
-	`, jobTableName, slotName)
+	return s.retryDBOperation(ctx, func() error {
+		query := fmt.Sprintf(`
+			UPDATE %s
+			SET completed = true
+			WHERE slot_name = '%s'
+		`, jobTableName, slotName)
 
-	if _, err := s.execQuery(ctx, s.stateConn, query); err != nil {
-		return errors.Wrap(err, "mark job as completed")
-	}
+		if _, err := s.execQuery(ctx, s.stateConn, query); err != nil {
+			return errors.Wrap(err, "mark job as completed")
+		}
 
-	logger.Info("job marked as completed", "slotName", slotName)
-	return nil
+		logger.Info("job marked as completed", "slotName", slotName)
+		return nil
+	})
 }
 
 // claimNextChunk attempts to claim a pending chunk using SELECT FOR UPDATE SKIP LOCKED
 func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID string, claimTimeout time.Duration) (*Chunk, error) {
-	now := time.Now().UTC()
-	timeoutThreshold := now.Add(-claimTimeout)
+	var chunk *Chunk
 
-	// Claim a pending chunk OR reclaim a stale in-progress chunk
-	query := fmt.Sprintf(`
-		WITH available_chunk AS (
-			SELECT id FROM %s
-			WHERE slot_name = '%s'
-			  AND (
-				  status = 'pending'
-				  OR (status = 'in_progress' AND heartbeat_at < '%s')
-			  )
-			ORDER BY chunk_index
-			LIMIT 1
-			FOR UPDATE SKIP LOCKED
+	err := s.retryDBOperation(ctx, func() error {
+		now := time.Now().UTC()
+		timeoutThreshold := now.Add(-claimTimeout)
+
+		// Claim a pending chunk OR reclaim a stale in-progress chunk
+		query := fmt.Sprintf(`
+			WITH available_chunk AS (
+				SELECT id FROM %s
+				WHERE slot_name = '%s'
+				  AND (
+					  status = 'pending'
+					  OR (status = 'in_progress' AND heartbeat_at < '%s')
+				  )
+				ORDER BY chunk_index
+				LIMIT 1
+				FOR UPDATE SKIP LOCKED
+			)
+			UPDATE %s c
+			SET status = 'in_progress',
+			    claimed_by = '%s',
+			    claimed_at = '%s',
+			    heartbeat_at = '%s'
+			FROM available_chunk
+			WHERE c.id = available_chunk.id
+			RETURNING c.id, c.table_schema, c.table_name, 
+			          c.chunk_index, c.chunk_start, c.chunk_size, c.rows_processed
+		`, chunksTableName,
+			slotName,
+			timeoutThreshold.Format("2006-01-02 15:04:05"),
+			chunksTableName,
+			instanceID,
+			now.Format("2006-01-02 15:04:05"),
+			now.Format("2006-01-02 15:04:05"),
 		)
-		UPDATE %s c
-		SET status = 'in_progress',
-		    claimed_by = '%s',
-		    claimed_at = '%s',
-		    heartbeat_at = '%s'
-		FROM available_chunk
-		WHERE c.id = available_chunk.id
-		RETURNING c.id, c.table_schema, c.table_name, 
-		          c.chunk_index, c.chunk_start, c.chunk_size, c.rows_processed
-	`, chunksTableName,
-		slotName,
-		timeoutThreshold.Format("2006-01-02 15:04:05"),
-		chunksTableName,
-		instanceID,
-		now.Format("2006-01-02 15:04:05"),
-		now.Format("2006-01-02 15:04:05"),
-	)
 
-	results, err := s.execQuery(ctx, s.stateConn, query)
-	if err != nil {
-		return nil, errors.Wrap(err, "claim chunk")
-	}
+		results, err := s.execQuery(ctx, s.stateConn, query)
+		if err != nil {
+			return errors.Wrap(err, "claim chunk")
+		}
 
-	if len(results) == 0 || len(results[0].Rows) == 0 {
-		return nil, nil // No chunks available
-	}
+		if len(results) == 0 || len(results[0].Rows) == 0 {
+			chunk = nil
+			return nil // No chunks available (not an error)
+		}
 
-	row := results[0].Rows[0]
-	if len(row) < 7 {
-		return nil, errors.New("invalid chunk row")
-	}
+		row := results[0].Rows[0]
+		if len(row) < 7 {
+			return errors.New("invalid chunk row")
+		}
 
-	// Parse chunk data with validation
-	chunk := &Chunk{
-		SlotName:    slotName,
-		Status:      ChunkStatusInProgress,
-		ClaimedBy:   instanceID,
-		ClaimedAt:   &now,
-		HeartbeatAt: &now,
-	}
+		// Parse chunk data with validation
+		chunk = &Chunk{
+			SlotName:    slotName,
+			Status:      ChunkStatusInProgress,
+			ClaimedBy:   instanceID,
+			ClaimedAt:   &now,
+			HeartbeatAt: &now,
+		}
 
-	// Validate and parse each field
-	if _, err := fmt.Sscanf(string(row[0]), "%d", &chunk.ID); err != nil {
-		return nil, errors.Wrap(err, "parse chunk ID")
-	}
-	chunk.TableSchema = string(row[1])
-	chunk.TableName = string(row[2])
-	if _, err := fmt.Sscanf(string(row[3]), "%d", &chunk.ChunkIndex); err != nil {
-		return nil, errors.Wrap(err, "parse chunk index")
-	}
-	if _, err := fmt.Sscanf(string(row[4]), "%d", &chunk.ChunkStart); err != nil {
-		return nil, errors.Wrap(err, "parse chunk start")
-	}
-	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
-		return nil, errors.Wrap(err, "parse chunk size")
-	}
-	if _, err := fmt.Sscanf(string(row[6]), "%d", &chunk.RowsProcessed); err != nil {
-		return nil, errors.Wrap(err, "parse rows processed")
-	}
+		// Validate and parse each field
+		if _, err := fmt.Sscanf(string(row[0]), "%d", &chunk.ID); err != nil {
+			return errors.Wrap(err, "parse chunk ID")
+		}
+		chunk.TableSchema = string(row[1])
+		chunk.TableName = string(row[2])
+		if _, err := fmt.Sscanf(string(row[3]), "%d", &chunk.ChunkIndex); err != nil {
+			return errors.Wrap(err, "parse chunk index")
+		}
+		if _, err := fmt.Sscanf(string(row[4]), "%d", &chunk.ChunkStart); err != nil {
+			return errors.Wrap(err, "parse chunk start")
+		}
+		if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
+			return errors.Wrap(err, "parse chunk size")
+		}
 
-	return chunk, nil
+		return nil
+	})
+
+	return chunk, err
 }
 
 // updateChunkHeartbeat updates the heartbeat timestamp for a chunk with retry
@@ -286,31 +293,33 @@ func (s *Snapshotter) updateChunkHeartbeat(ctx context.Context, chunkID int64) e
 
 // markChunkCompleted marks a chunk as completed and atomically increments completed_chunks
 func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, chunkID, rowsProcessed int64) error {
-	now := time.Now().UTC()
+	return s.retryDBOperation(ctx, func() error {
+		now := time.Now().UTC()
 
-	// Update chunk status
-	chunkQuery := fmt.Sprintf(`
-		UPDATE %s
-		SET status = 'completed',
-		    completed_at = '%s',
-		    rows_processed = %d
-		WHERE id = %d
-	`, chunksTableName, now.Format("2006-01-02 15:04:05"), rowsProcessed, chunkID)
+		// Update chunk status
+		chunkQuery := fmt.Sprintf(`
+			UPDATE %s
+			SET status = 'completed',
+			    completed_at = '%s',
+			    rows_processed = %d
+			WHERE id = %d
+		`, chunksTableName, now.Format("2006-01-02 15:04:05"), rowsProcessed, chunkID)
 
-	if _, err := s.execQuery(ctx, s.stateConn, chunkQuery); err != nil {
-		return errors.Wrap(err, "update chunk status")
-	}
+		if _, err := s.execQuery(ctx, s.stateConn, chunkQuery); err != nil {
+			return errors.Wrap(err, "update chunk status")
+		}
 
-	// Atomically increment completed_chunks counter
-	jobQuery := fmt.Sprintf(`
-		UPDATE %s
-		SET completed_chunks = completed_chunks + 1
-		WHERE slot_name = '%s'
-	`, jobTableName, slotName)
+		// Atomically increment completed_chunks counter
+		jobQuery := fmt.Sprintf(`
+			UPDATE %s
+			SET completed_chunks = completed_chunks + 1
+			WHERE slot_name = '%s'
+		`, jobTableName, slotName)
 
-	if _, err := s.execQuery(ctx, s.stateConn, jobQuery); err != nil {
-		return errors.Wrap(err, "increment completed chunks")
-	}
+		if _, err := s.execQuery(ctx, s.stateConn, jobQuery); err != nil {
+			return errors.Wrap(err, "increment completed chunks")
+		}
 
-	return nil
+		return nil
+	})
 }

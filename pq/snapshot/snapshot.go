@@ -37,8 +37,6 @@ func New(snapshotConfig config.SnapshotConfig, tables publication.Tables, conn p
 	}
 }
 
-// TODO: genel bi retrylara bak, birden fazla çağrılan yerler vs.
-
 // Take performs a chunk-based snapshot (works for single or multiple instances)
 // Returns the snapshot LSN for CDC streaming to continue from
 func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) (pq.LSN, error) {

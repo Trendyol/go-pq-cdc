@@ -102,7 +102,6 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	// Create snapshotter with separate state connection only if snapshot is enabled
 	var snapshotter *snapshot.Snapshotter
 	if cfg.Snapshot.Enabled {
 		// Create separate connection for snapshot state (to avoid transaction rollback)

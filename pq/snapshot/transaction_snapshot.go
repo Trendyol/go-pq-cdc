@@ -16,7 +16,7 @@ func (s *Snapshotter) exportSnapshot(ctx context.Context) (string, error) {
 	var snapshotID string
 
 	err := s.retryDBOperation(ctx, func() error {
-		results, err := s.execQuery(ctx, s.snapshotTxConn, "SELECT pg_export_snapshot()")
+		results, err := s.execQuery(ctx, s.exportSnapshotConn, "SELECT pg_export_snapshot()")
 		if err != nil {
 			if strings.Contains(err.Error(), "permission denied") {
 				return errors.New("pg_export_snapshot requires REPLICATION privilege. Run: ALTER USER your_user WITH REPLICATION")
@@ -43,7 +43,7 @@ func (s *Snapshotter) exportSnapshot(ctx context.Context) (string, error) {
 func (s *Snapshotter) setTransactionSnapshot(ctx context.Context, snapshotID string) error {
 	return s.retryDBOperation(ctx, func() error {
 		query := fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotID)
-		if err := s.execSQL(ctx, s.chunkDataConn, query); err != nil {
+		if err := s.execSQL(ctx, s.workerConn, query); err != nil {
 			return errors.Wrap(err, "set transaction snapshot")
 		}
 

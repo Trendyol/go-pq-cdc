@@ -61,7 +61,7 @@ func (s *Snapshotter) loadJob(ctx context.Context, slotName string) (*Job, error
 			FROM %s WHERE slot_name = '%s'
 		`, jobTableName, slotName)
 
-		results, err := s.execQuery(ctx, s.jobMetadataConn, query)
+		results, err := s.execQuery(ctx, s.metadataConn, query)
 		if err != nil {
 			return errors.Wrap(err, "load job")
 		}
@@ -121,7 +121,7 @@ func (s *Snapshotter) checkJobCompleted(ctx context.Context, slotName string) (b
 			WHERE slot_name = '%s'
 		`, chunksTableName, slotName)
 
-		results, err := s.execQuery(ctx, s.jobMetadataConn, query)
+		results, err := s.execQuery(ctx, s.metadataConn, query)
 		if err != nil {
 			return errors.Wrap(err, "check job completed")
 		}

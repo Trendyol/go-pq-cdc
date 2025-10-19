@@ -57,10 +57,12 @@ func (s *Snapshotter) executeWorker(ctx context.Context, slotName, instanceID st
 	}
 
 	// Start transaction
-	if err := s.beginTransaction(ctx); err != nil {
+	if err := s.execSQL(ctx, s.workerConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
 		return errors.Wrap(err, "begin transaction")
 	}
-	defer s.rollbackTransaction(ctx)
+	defer func() {
+		_ = s.execSQL(ctx, s.workerConn, "ROLLBACK")
+	}()
 
 	if err := s.setTransactionSnapshot(ctx, job.SnapshotID); err != nil {
 		return errors.Wrap(err, "set transaction snapshot")
@@ -72,7 +74,7 @@ func (s *Snapshotter) executeWorker(ctx context.Context, slotName, instanceID st
 	}
 
 	// Commit transaction
-	return s.commitTransaction(ctx)
+	return s.execSQL(ctx, s.workerConn, "COMMIT")
 }
 
 // workerProcess processes chunks as a worker
@@ -184,7 +186,7 @@ func (s *Snapshotter) markJobAsCompleted(ctx context.Context, slotName string) e
 			WHERE slot_name = '%s'
 		`, jobTableName, slotName)
 
-		if _, err := s.execQuery(ctx, s.chunkDataConn, query); err != nil {
+		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
 			return errors.Wrap(err, "mark job as completed")
 		}
 
@@ -232,7 +234,7 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 			now.Format("2006-01-02 15:04:05"),
 		)
 
-		results, err := s.execQuery(ctx, s.chunkDataConn, query)
+		results, err := s.execQuery(ctx, s.workerConn, query)
 		if err != nil {
 			return errors.Wrap(err, "claim chunk")
 		}
@@ -286,7 +288,7 @@ func (s *Snapshotter) updateChunkHeartbeat(ctx context.Context, chunkID int64) e
 			UPDATE %s SET heartbeat_at = '%s' WHERE id = %d
 		`, chunksTableName, now.Format("2006-01-02 15:04:05"), chunkID)
 
-		_, err := s.execQuery(ctx, s.chunkDataConn, query)
+		_, err := s.execQuery(ctx, s.healthcheckConn, query)
 		return err
 	})
 }
@@ -305,7 +307,7 @@ func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, c
 			WHERE id = %d
 		`, chunksTableName, now.Format("2006-01-02 15:04:05"), rowsProcessed, chunkID)
 
-		if _, err := s.execQuery(ctx, s.chunkDataConn, chunkQuery); err != nil {
+		if _, err := s.execQuery(ctx, s.workerConn, chunkQuery); err != nil {
 			return errors.Wrap(err, "update chunk status")
 		}
 
@@ -316,7 +318,7 @@ func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, c
 			WHERE slot_name = '%s'
 		`, jobTableName, slotName)
 
-		if _, err := s.execQuery(ctx, s.chunkDataConn, jobQuery); err != nil {
+		if _, err := s.execQuery(ctx, s.workerConn, jobQuery); err != nil {
 			return errors.Wrap(err, "increment completed chunks")
 		}
 

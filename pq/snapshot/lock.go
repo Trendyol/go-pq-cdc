@@ -15,7 +15,7 @@ func (s *Snapshotter) tryAcquireCoordinatorLock(ctx context.Context, slotName st
 	lockID := hashString(slotName)
 
 	query := fmt.Sprintf("SELECT pg_try_advisory_lock(%d)", lockID)
-	results, err := s.execQuery(ctx, s.jobMetadataConn, query)
+	results, err := s.execQuery(ctx, s.metadataConn, query)
 	if err != nil {
 		return false, errors.Wrap(err, "acquire coordinator lock")
 	}
@@ -34,7 +34,7 @@ func (s *Snapshotter) releaseCoordinatorLock(ctx context.Context, slotName strin
 	lockID := hashString(slotName)
 	query := fmt.Sprintf("SELECT pg_advisory_unlock(%d)", lockID)
 
-	if err := s.execSQL(ctx, s.jobMetadataConn, query); err != nil {
+	if err := s.execSQL(ctx, s.metadataConn, query); err != nil {
 		return errors.Wrap(err, "release coordinator lock")
 	}
 

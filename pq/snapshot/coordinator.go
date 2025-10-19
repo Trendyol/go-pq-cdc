@@ -24,6 +24,7 @@ func (s *Snapshotter) coordinatorInitialize(ctx context.Context, slotName string
 	// Check if job already exists
 	existingJob, err := s.loadJob(ctx, slotName)
 	if err == nil && existingJob != nil && !existingJob.Completed {
+		//TODO: gerek yok sanki?
 		logger.Info("coordinator: job already initialized, resuming")
 		// On resume, export a new snapshot (old transaction is gone after restart)
 		// But keep the original LSN from phase 1
@@ -102,14 +103,14 @@ func (s *Snapshotter) coordinatorPhase2ExportSnapshot(ctx context.Context) error
 	logger.Info("coordinator: phase 2 - exporting snapshot")
 
 	// Start transaction on snapshot connection (will stay open)
-	if err := s.beginSnapshotTransaction(ctx); err != nil {
-		return errors.Wrap(err, "begin snapshot transaction")
+	if err := s.execSQL(ctx, s.exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		return errors.Wrap(err, "create pg snapshot conn")
 	}
 
 	// Export snapshot
 	snapshotID, err := s.exportSnapshot(ctx)
 	if err != nil {
-		s.rollbackSnapshotTransaction(ctx)
+		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "export snapshot")
 	}
 
@@ -117,7 +118,7 @@ func (s *Snapshotter) coordinatorPhase2ExportSnapshot(ctx context.Context) error
 
 	// Update job with real snapshot ID
 	if err := s.updateJobSnapshotID(ctx, snapshotID); err != nil {
-		s.rollbackSnapshotTransaction(ctx)
+		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "update job snapshot ID")
 	}
 
@@ -130,14 +131,14 @@ func (s *Snapshotter) coordinatorPhase2ExportSnapshotResume(ctx context.Context,
 	logger.Info("coordinator: phase 2 resume - exporting new snapshot")
 
 	// Start transaction on snapshot connection (will stay open)
-	if err := s.beginSnapshotTransaction(ctx); err != nil {
+	if err := s.execSQL(ctx, s.exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
 		return errors.Wrap(err, "begin snapshot transaction")
 	}
 
 	// Export snapshot
 	snapshotID, err := s.exportSnapshot(ctx)
 	if err != nil {
-		s.rollbackSnapshotTransaction(ctx)
+		s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "export snapshot")
 	}
 
@@ -145,7 +146,7 @@ func (s *Snapshotter) coordinatorPhase2ExportSnapshotResume(ctx context.Context,
 
 	// Update job with new snapshot ID (for resume, no WHERE condition on snapshot_id)
 	if err := s.updateJobSnapshotIDForResume(ctx, slotName, snapshotID); err != nil {
-		s.rollbackSnapshotTransaction(ctx)
+		s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "update job snapshot ID on resume")
 	}
 
@@ -162,7 +163,7 @@ func (s *Snapshotter) updateJobSnapshotID(ctx context.Context, snapshotID string
 			WHERE snapshot_id = 'PENDING'
 		`, jobTableName, snapshotID)
 
-		if _, err := s.execQuery(ctx, s.jobMetadataConn, query); err != nil {
+		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
 			return errors.Wrap(err, "update snapshot ID")
 		}
 
@@ -180,7 +181,7 @@ func (s *Snapshotter) updateJobSnapshotIDForResume(ctx context.Context, slotName
 			WHERE slot_name = '%s'
 		`, jobTableName, snapshotID, slotName)
 
-		if _, err := s.execQuery(ctx, s.jobMetadataConn, query); err != nil {
+		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
 			return errors.Wrap(err, "update snapshot ID for resume")
 		}
 
@@ -252,7 +253,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 		)
 	`, jobTableName)
 
-	if err := s.execSQL(ctx, s.jobMetadataConn, jobTableSQL); err != nil {
+	if err := s.execSQL(ctx, s.metadataConn, jobTableSQL); err != nil {
 		return errors.Wrap(err, "create job table")
 	}
 
@@ -276,7 +277,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 		)
 	`, chunksTableName)
 
-	if err := s.execSQL(ctx, s.jobMetadataConn, chunksTableSQL); err != nil {
+	if err := s.execSQL(ctx, s.metadataConn, chunksTableSQL); err != nil {
 		return errors.Wrap(err, "create chunks table")
 	}
 
@@ -287,7 +288,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 	}
 
 	for _, indexSQL := range indexes {
-		if err := s.execSQL(ctx, s.jobMetadataConn, indexSQL); err != nil {
+		if err := s.execSQL(ctx, s.metadataConn, indexSQL); err != nil {
 			return errors.Wrap(err, "create index")
 		}
 	}
@@ -301,7 +302,7 @@ func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
 	var lsn pq.LSN
 
 	err := s.retryDBOperation(ctx, func() error {
-		results, err := s.execQuery(ctx, s.chunkDataConn, "SELECT pg_current_wal_lsn()")
+		results, err := s.execQuery(ctx, s.metadataConn, "SELECT pg_current_wal_lsn()")
 		if err != nil {
 			return errors.Wrap(err, "execute pg_current_wal_lsn")
 		}
@@ -347,7 +348,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 
 	logger.Debug("executing chunk query", "query", query)
 
-	results, err := s.execQuery(ctx, s.chunkDataConn, query)
+	results, err := s.execQuery(ctx, s.workerConn, query)
 	if err != nil {
 		return 0, errors.Wrap(err, "execute chunk query")
 	}
@@ -397,7 +398,7 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Ta
 		ORDER BY a.attnum
 	`, table.Schema, table.Name)
 
-	results, err := s.execQuery(ctx, s.chunkDataConn, query)
+	results, err := s.execQuery(ctx, s.workerConn, query)
 	if err != nil {
 		return "", errors.Wrap(err, "query primary key")
 	}
@@ -518,7 +519,7 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			string(chunk.Status),
 		)
 
-		_, err := s.execQuery(ctx, s.jobMetadataConn, query)
+		_, err := s.execQuery(ctx, s.metadataConn, query)
 		return err
 	})
 }
@@ -529,7 +530,7 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 func (s *Snapshotter) estimateTableRowCount(ctx context.Context, schema, table string) (int64, error) {
 	query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
 
-	results, err := s.execQuery(ctx, s.chunkDataConn, query)
+	results, err := s.execQuery(ctx, s.metadataConn, query)
 	if err != nil {
 		return 0, errors.Wrap(err, "estimate table row count")
 	}
@@ -569,7 +570,7 @@ func (s *Snapshotter) saveJob(ctx context.Context, job *Job) error {
 			job.CompletedChunks,
 		)
 
-		if _, err := s.execQuery(ctx, s.jobMetadataConn, query); err != nil {
+		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
 			return errors.Wrap(err, "create job")
 		}
 

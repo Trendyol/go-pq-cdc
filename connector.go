@@ -104,19 +104,10 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	var snapshotter *snapshot.Snapshotter
 	if cfg.Snapshot.Enabled {
-		// Create separate connection for snapshot state (to avoid transaction rollback)
-		snapshotStateConn, err := pq.NewConnection(ctx, cfg.DSN())
+		snapshotter, err = snapshot.New(ctx, cfg.Snapshot, cfg.Publication.Tables, cfg.DSN(), m)
 		if err != nil {
-			return nil, errors.Wrap(err, "create state connection")
+			return nil, err
 		}
-
-		// Create separate connection for snapshot export (keeps transaction open)
-		snapshotExportConn, err := pq.NewConnection(ctx, cfg.DSN())
-		if err != nil {
-			return nil, errors.Wrap(err, "create snapshot export connection")
-		}
-
-		snapshotter = snapshot.New(cfg.Snapshot, cfg.Publication.Tables, conn, snapshotStateConn, snapshotExportConn, m)
 	}
 
 	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)

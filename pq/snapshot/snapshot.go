@@ -18,27 +18,51 @@ import (
 type Handler func(event *format.Snapshot) error
 
 type Snapshotter struct {
-	chunkDataConn   pq.Connection // Reads chunk data from source tables (SELECT * FROM users...)
-	jobMetadataConn pq.Connection // Manages job/chunk state (cdc_snapshot_job, cdc_snapshot_chunks tables)
-	heartbeatConn   pq.Connection // Dedicated for heartbeat updates (concurrent goroutine)
-	snapshotTxConn  pq.Connection // Holds snapshot transaction open (pg_export_snapshot)
-	metric          metric.Metric
-	typeMap         *pgtype.Map
-	tables          publication.Tables
-	config          config.SnapshotConfig
+	ctx context.Context
+
+	workerConn         pq.Connection
+	metadataConn       pq.Connection
+	exportSnapshotConn pq.Connection
+	healthcheckConn    pq.Connection
+
+	dsn     string
+	metric  metric.Metric
+	typeMap *pgtype.Map
+	tables  publication.Tables
+	config  config.SnapshotConfig
 }
 
-func New(snapshotConfig config.SnapshotConfig, tables publication.Tables, chunkDataConn pq.Connection, jobMetadataConn pq.Connection, heartbeatConn pq.Connection, snapshotTxConn pq.Connection, m metric.Metric) *Snapshotter {
-	return &Snapshotter{
-		chunkDataConn:   chunkDataConn,
-		jobMetadataConn: jobMetadataConn,
-		heartbeatConn:   heartbeatConn,
-		snapshotTxConn:  snapshotTxConn,
-		config:          snapshotConfig,
-		tables:          tables,
-		typeMap:         pgtype.NewMap(),
-		metric:          m,
+func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publication.Tables, dsn string, m metric.Metric) (*Snapshotter, error) {
+	metadataConn, err := pq.NewConnection(ctx, dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "create metadata connection")
 	}
+
+	workerConn, err := pq.NewConnection(ctx, dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "create worker connection")
+	}
+
+	exportSnapshotConn, err := pq.NewConnection(ctx, dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "create pg export snapshot connection")
+	}
+
+	healthcheckConn, err := pq.NewConnection(ctx, dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "create pg export snapshot connection")
+	}
+
+	return &Snapshotter{
+		workerConn:         workerConn,
+		metadataConn:       metadataConn,
+		exportSnapshotConn: exportSnapshotConn,
+		healthcheckConn:    healthcheckConn,
+		config:             snapshotConfig,
+		tables:             tables,
+		typeMap:            pgtype.NewMap(),
+		metric:             m,
+	}, nil
 }
 
 // Take performs a chunk-based snapshot (works for single or multiple instances)
@@ -70,7 +94,7 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 		// On error, cleanup snapshot transaction if coordinator
 		if isCoordinator {
 			logger.Warn("error during snapshot, rolling back snapshot transaction")
-			s.rollbackSnapshotTransaction(ctx)
+			s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		}
 		return 0, errors.Wrap(err, "execute worker")
 	}
@@ -80,7 +104,7 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 		// On error, cleanup snapshot transaction if coordinator
 		if isCoordinator {
 			logger.Warn("error during finalize, rolling back snapshot transaction")
-			s.rollbackSnapshotTransaction(ctx)
+			s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
 		}
 		return 0, errors.Wrap(err, "finalize snapshot")
 	}
@@ -127,7 +151,7 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 // CloseSnapshotTransaction closes the snapshot transaction (called after CDC starts)
 func (s *Snapshotter) CloseSnapshotTransaction(ctx context.Context) {
 	logger.Info("closing snapshot transaction")
-	if err := s.commitSnapshotTransaction(ctx); err != nil {
+	if err := s.execSQL(ctx, s.exportSnapshotConn, "COMMIT"); err != nil {
 		logger.Warn("failed to commit snapshot transaction", "error", err)
 	}
 }

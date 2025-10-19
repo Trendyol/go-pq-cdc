@@ -11,20 +11,36 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// beginTransaction starts a REPEATABLE READ transaction
+// beginTransaction starts a REPEATABLE READ transaction on chunk data connection
 func (s *Snapshotter) beginTransaction(ctx context.Context) error {
-	return s.execSQL(ctx, s.conn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+	return s.execSQL(ctx, s.chunkDataConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 }
 
-// commitTransaction commits the current transaction
+// commitTransaction commits the chunk data transaction
 func (s *Snapshotter) commitTransaction(ctx context.Context) error {
-	return s.execSQL(ctx, s.conn, "COMMIT")
+	return s.execSQL(ctx, s.chunkDataConn, "COMMIT")
 }
 
-// rollbackTransaction rolls back the current transaction
+// rollbackTransaction rolls back the chunk data transaction
 func (s *Snapshotter) rollbackTransaction(ctx context.Context) {
-	_ = s.execSQL(ctx, s.conn, "ROLLBACK")
-	logger.Debug("transaction rolled back")
+	_ = s.execSQL(ctx, s.chunkDataConn, "ROLLBACK")
+	logger.Debug("chunk data transaction rolled back")
+}
+
+// beginSnapshotTransaction starts a REPEATABLE READ transaction on snapshot connection
+func (s *Snapshotter) beginSnapshotTransaction(ctx context.Context) error {
+	return s.execSQL(ctx, s.snapshotTxConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+}
+
+// commitSnapshotTransaction commits the snapshot transaction
+func (s *Snapshotter) commitSnapshotTransaction(ctx context.Context) error {
+	return s.execSQL(ctx, s.snapshotTxConn, "COMMIT")
+}
+
+// rollbackSnapshotTransaction rolls back the snapshot transaction
+func (s *Snapshotter) rollbackSnapshotTransaction(ctx context.Context) {
+	_ = s.execSQL(ctx, s.snapshotTxConn, "ROLLBACK")
+	logger.Debug("snapshot transaction rolled back")
 }
 
 // execSQL executes a SQL statement without returning results (DDL, DML)

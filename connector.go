@@ -109,7 +109,14 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		if err != nil {
 			return nil, errors.Wrap(err, "create state connection")
 		}
-		snapshotter = snapshot.New(cfg.Snapshot, cfg.Publication.Tables, conn, snapshotStateConn, m)
+
+		// Create separate connection for snapshot export (keeps transaction open)
+		snapshotExportConn, err := pq.NewConnection(ctx, cfg.DSN())
+		if err != nil {
+			return nil, errors.Wrap(err, "create snapshot export connection")
+		}
+
+		snapshotter = snapshot.New(cfg.Snapshot, cfg.Publication.Tables, conn, snapshotStateConn, snapshotExportConn, m)
 	}
 
 	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
@@ -169,6 +176,7 @@ func (c *connector) Start(ctx context.Context) {
 	if c.snapshotLSN > 0 {
 		c.stream.SetSnapshotLSN(c.snapshotLSN)
 		logger.Info("CDC will continue from snapshot LSN", "lsn", c.snapshotLSN.String())
+		c.snapshotter.CloseSnapshotTransaction(ctx)
 	}
 
 	c.CaptureSlot(ctx)
@@ -271,6 +279,12 @@ func (c *connector) Close() {
 	}
 	if !isClosed(c.readyCh) {
 		close(c.readyCh)
+	}
+
+	// Close snapshot transaction if still open
+	if c.cfg.Snapshot.Enabled && c.snapshotter != nil {
+		logger.Info("connector closing, cleaning up snapshot transaction")
+		c.snapshotter.CloseSnapshotTransaction(context.Background())
 	}
 
 	c.slot.Close()

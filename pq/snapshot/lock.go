@@ -3,8 +3,9 @@ package snapshot
 import (
 	"context"
 	"fmt"
-	"github.com/go-playground/errors"
 	"os"
+
+	"github.com/go-playground/errors"
 )
 
 // tryAcquireCoordinatorLock attempts to acquire the PostgreSQL advisory lock for coordinator role
@@ -14,7 +15,7 @@ func (s *Snapshotter) tryAcquireCoordinatorLock(ctx context.Context, slotName st
 	lockID := hashString(slotName)
 
 	query := fmt.Sprintf("SELECT pg_try_advisory_lock(%d)", lockID)
-	results, err := s.execQuery(ctx, s.stateConn, query)
+	results, err := s.execQuery(ctx, s.jobMetadataConn, query)
 	if err != nil {
 		return false, errors.Wrap(err, "acquire coordinator lock")
 	}
@@ -33,7 +34,7 @@ func (s *Snapshotter) releaseCoordinatorLock(ctx context.Context, slotName strin
 	lockID := hashString(slotName)
 	query := fmt.Sprintf("SELECT pg_advisory_unlock(%d)", lockID)
 
-	if err := s.execSQL(ctx, s.stateConn, query); err != nil {
+	if err := s.execSQL(ctx, s.jobMetadataConn, query); err != nil {
 		return errors.Wrap(err, "release coordinator lock")
 	}
 

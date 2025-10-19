@@ -17,7 +17,7 @@ publication:
       schema: public
 
 slot:
-  name: cdc_slot_v2
+  name: cdc_slot_v5
   createIfNotExists: true
   slotActivityCheckerInterval: 3000
 

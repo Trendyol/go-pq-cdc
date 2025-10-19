@@ -234,7 +234,7 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 			now.Format("2006-01-02 15:04:05"),
 		)
 
-		results, err := s.execQuery(ctx, s.workerConn, query)
+		results, err := s.execQuery(ctx, s.metadataConn, query)
 		if err != nil {
 			return errors.Wrap(err, "claim chunk")
 		}
@@ -294,11 +294,13 @@ func (s *Snapshotter) updateChunkHeartbeat(ctx context.Context, chunkID int64) e
 }
 
 // markChunkCompleted marks a chunk as completed and atomically increments completed_chunks
+// NOTE: Uses metadataConn (not workerConn) to avoid serialization conflicts
+// workerConn is in REPEATABLE READ snapshot transaction, metadata updates should be separate
 func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, chunkID, rowsProcessed int64) error {
 	return s.retryDBOperation(ctx, func() error {
 		now := time.Now().UTC()
 
-		// Update chunk status
+		// Update chunk status - use metadataConn for metadata updates
 		chunkQuery := fmt.Sprintf(`
 			UPDATE %s
 			SET status = 'completed',
@@ -307,18 +309,19 @@ func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, c
 			WHERE id = %d
 		`, chunksTableName, now.Format("2006-01-02 15:04:05"), rowsProcessed, chunkID)
 
-		if _, err := s.execQuery(ctx, s.workerConn, chunkQuery); err != nil {
+		if _, err := s.execQuery(ctx, s.metadataConn, chunkQuery); err != nil {
 			return errors.Wrap(err, "update chunk status")
 		}
 
 		// Atomically increment completed_chunks counter
+		// Using metadataConn allows multiple workers to safely increment without serialization conflicts
 		jobQuery := fmt.Sprintf(`
 			UPDATE %s
 			SET completed_chunks = completed_chunks + 1
 			WHERE slot_name = '%s'
 		`, jobTableName, slotName)
 
-		if _, err := s.execQuery(ctx, s.workerConn, jobQuery); err != nil {
+		if _, err := s.execQuery(ctx, s.metadataConn, jobQuery); err != nil {
 			return errors.Wrap(err, "increment completed chunks")
 		}
 

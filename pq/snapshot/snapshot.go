@@ -20,10 +20,9 @@ type Handler func(event *format.Snapshot) error
 type Snapshotter struct {
 	ctx context.Context
 
-	workerConn         pq.Connection
-	metadataConn       pq.Connection
-	exportSnapshotConn pq.Connection
-	healthcheckConn    pq.Connection
+	workerConn      pq.Connection
+	metadataConn    pq.Connection
+	healthcheckConn pq.Connection
 
 	dsn     string
 	metric  metric.Metric
@@ -43,25 +42,20 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 		return nil, errors.Wrap(err, "create worker connection")
 	}
 
-	exportSnapshotConn, err := pq.NewConnection(ctx, dsn)
-	if err != nil {
-		return nil, errors.Wrap(err, "create pg export snapshot connection")
-	}
-
 	healthcheckConn, err := pq.NewConnection(ctx, dsn)
 	if err != nil {
 		return nil, errors.Wrap(err, "create pg export snapshot connection")
 	}
 
 	return &Snapshotter{
-		workerConn:         workerConn,
-		metadataConn:       metadataConn,
-		exportSnapshotConn: exportSnapshotConn,
-		healthcheckConn:    healthcheckConn,
-		config:             snapshotConfig,
-		tables:             tables,
-		typeMap:            pgtype.NewMap(),
-		metric:             m,
+		dsn:             dsn,
+		workerConn:      workerConn,
+		metadataConn:    metadataConn,
+		healthcheckConn: healthcheckConn,
+		config:          snapshotConfig,
+		tables:          tables,
+		typeMap:         pgtype.NewMap(),
+		metric:          m,
 	}, nil
 }
 
@@ -91,21 +85,11 @@ func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string
 
 	// Phase 2: Execute worker processing (ALL instances work, including coordinator)
 	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
-		// On error, cleanup snapshot transaction if coordinator
-		if isCoordinator {
-			logger.Warn("[coordinator] error during snapshot, rolling back transaction")
-			s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
-		}
 		return 0, errors.Wrap(err, "execute worker")
 	}
 
 	// Phase 3: Finalize (check completion, send END marker)
 	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
-		// On error, cleanup snapshot transaction if coordinator
-		if isCoordinator {
-			logger.Warn("[coordinator] error during finalize, rolling back transaction")
-			s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
-		}
 		return 0, errors.Wrap(err, "finalize snapshot")
 	}
 
@@ -146,14 +130,6 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 	}
 
 	return nil
-}
-
-// CloseSnapshotTransaction closes the snapshot transaction (called after CDC starts)
-func (s *Snapshotter) CloseSnapshotTransaction(ctx context.Context) {
-	logger.Info("[coordinator] closing snapshot transaction")
-	if err := s.execSQL(ctx, s.exportSnapshotConn, "COMMIT"); err != nil {
-		logger.Warn("[coordinator] failed to commit snapshot transaction", "error", err)
-	}
 }
 
 // decodeColumnData decodes PostgreSQL column data using pgtype

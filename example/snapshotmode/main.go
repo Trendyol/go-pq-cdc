@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	cdc "github.com/Trendyol/go-pq-cdc"
@@ -28,11 +26,15 @@ var (
 )
 
 func main() {
+	// Parse command-line flags
+	configPath := flag.String("config", "./config.yml", "Path to configuration file")
+	flag.Parse()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Load config
-	cfg, err := config.ReadConfigYAML("./config.yml")
+	cfg, err := config.ReadConfigYAML(*configPath)
 	if err != nil {
 		log.Fatalf("Config error: %v", err)
 	}
@@ -46,12 +48,14 @@ func main() {
 	// Start metrics printer
 	go printMetrics(ctx)
 
-	// Handle signals
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// Create done channel to know when Start() exits
+	done := make(chan struct{})
 
 	// Start connector
-	go connector.Start(ctx)
+	go func() {
+		connector.Start(ctx)
+		close(done)
+	}()
 
 	if err := connector.WaitUntilReady(context.TODO()); err != nil {
 		log.Fatalf("Timeout waiting for connector ready: %v", err)
@@ -59,8 +63,17 @@ func main() {
 	log.Println("✅ CDC connector is ready!")
 
 	// Wait for signal
-	<-sigChan
+	<-done
 	log.Println("\n🛑 Shutting down...")
+
+	// Cancel context to stop all goroutines
+	cancel()
+
+	// Close connector properly
+	connector.Close()
+
+	// Give goroutines time to cleanup
+	time.Sleep(500 * time.Millisecond)
 
 	printFinalStats()
 }
@@ -102,7 +115,7 @@ func handleSnapshot(s *format.Snapshot) {
 	case format.SnapshotEventTypeData:
 		count := atomic.AddInt64(&snapshotDataCount, 1)
 		if count%100 == 0 || count <= 5 {
-			printSnapshotData(s, count)
+			//printSnapshotData(s, count)
 		}
 
 	case format.SnapshotEventTypeEnd:

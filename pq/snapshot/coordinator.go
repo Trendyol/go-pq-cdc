@@ -107,17 +107,22 @@ func (s *Snapshotter) createMetadata(ctx context.Context, slotName string) error
 // exportSnapshotTransaction begins a REPEATABLE READ transaction and exports snapshot ID
 // This transaction is kept OPEN for workers to use the same snapshot
 func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
+	exportSnapshotConn, err := pq.NewConnection(ctx, s.dsn)
+	if err != nil {
+		return errors.Wrap(err, "create pg export snapshot connection")
+	}
+
 	logger.Info("[coordinator] exporting snapshot")
 
 	// Start transaction on snapshot connection (will stay open)
-	if err := s.execSQL(ctx, s.exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+	if err := s.execSQL(ctx, exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
 		return errors.Wrap(err, "begin snapshot transaction")
 	}
 
 	// Export snapshot
-	snapshotID, err := s.exportSnapshot(ctx)
+	snapshotID, err := s.exportSnapshot(ctx, exportSnapshotConn)
 	if err != nil {
-		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
+		_ = s.execSQL(ctx, exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "export snapshot")
 	}
 
@@ -125,7 +130,7 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 
 	// Update job with real snapshot ID
 	if err := s.updateJobSnapshotID(ctx, snapshotID); err != nil {
-		_ = s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK")
+		_ = s.execSQL(ctx, exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "update job snapshot ID")
 	}
 

@@ -3,6 +3,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"strings"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
@@ -12,11 +13,11 @@ import (
 // exportSnapshot exports the current transaction snapshot for use by other connections
 // Uses snapshotTxConn which keeps transaction open until all chunks are processed
 // Requires: REPLICATION privilege, wal_level=logical, max_replication_slots>0
-func (s *Snapshotter) exportSnapshot(ctx context.Context) (string, error) {
+func (s *Snapshotter) exportSnapshot(ctx context.Context, exportSnapshotConn pq.Connection) (string, error) {
 	var snapshotID string
 
 	err := s.retryDBOperation(ctx, func() error {
-		results, err := s.execQuery(ctx, s.exportSnapshotConn, "SELECT pg_export_snapshot()")
+		results, err := s.execQuery(ctx, exportSnapshotConn, "SELECT pg_export_snapshot()")
 		if err != nil {
 			if strings.Contains(err.Error(), "permission denied") {
 				return errors.New("pg_export_snapshot requires REPLICATION privilege. Run: ALTER USER your_user WITH REPLICATION")

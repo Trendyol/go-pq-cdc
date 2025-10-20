@@ -5,19 +5,19 @@ username: testuser
 password: testpass
 
 publication:
-  name: cdc_publication_testm3
+  name: cdc_publication_distributed
   createIfNotExists: true
   operations:
     - INSERT
     - UPDATE
     - DELETE
   tables:
-    - name: crash_test
+    - name: distributed_test
       replicaIdentity: FULL
       schema: public
 
 slot:
-  name: cdc_slot_testm3
+  name: cdc_slot_distributed
   createIfNotExists: true
   slotActivityCheckerInterval: 3000
 
@@ -25,12 +25,12 @@ snapshot:
   mode: initial
   enabled: true
   chunkSize: 100
-  claimTimeout: 30s
-  heartbeatInterval: 10s
-
+  claimTimeout: 60s
+  heartbeatInterval: 5s
+  instanceId: instance2
 logger:
-  logLevel: info
+  level: warn
 
 metric:
-  port: 8081
+  port: 8082
 

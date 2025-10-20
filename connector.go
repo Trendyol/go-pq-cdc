@@ -167,7 +167,6 @@ func (c *connector) Start(ctx context.Context) {
 	if c.snapshotLSN > 0 {
 		c.stream.SetSnapshotLSN(c.snapshotLSN)
 		logger.Info("CDC will continue from snapshot LSN", "lsn", c.snapshotLSN.String())
-		c.snapshotter.CloseSnapshotTransaction(ctx)
 	}
 
 	c.CaptureSlot(ctx)
@@ -270,12 +269,6 @@ func (c *connector) Close() {
 	}
 	if !isClosed(c.readyCh) {
 		close(c.readyCh)
-	}
-
-	// Close snapshot transaction if still open
-	if c.cfg.Snapshot.Enabled && c.snapshotter != nil {
-		logger.Info("connector closing, cleaning up snapshot transaction")
-		c.snapshotter.CloseSnapshotTransaction(context.Background())
 	}
 
 	c.slot.Close()

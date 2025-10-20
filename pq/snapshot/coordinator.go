@@ -111,6 +111,7 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "create pg export snapshot connection")
 	}
+	s.exportSnapshotConn = exportSnapshotConn
 
 	logger.Info("[coordinator] exporting snapshot")
 
@@ -209,7 +210,6 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 
 	if isCoordinator {
 		logger.Info("[snapshot] elected as coordinator", "instanceID", instanceID)
-		defer s.releaseCoordinatorLock(ctx, slotName)
 		if err := s.initializeCoordinator(ctx, slotName); err != nil {
 			return nil, false, errors.Wrap(err, "initialize coordinator")
 		}

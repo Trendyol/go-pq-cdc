@@ -20,9 +20,10 @@ type Handler func(event *format.Snapshot) error
 type Snapshotter struct {
 	ctx context.Context
 
-	workerConn      pq.Connection
-	metadataConn    pq.Connection
-	healthcheckConn pq.Connection
+	workerConn         pq.Connection
+	metadataConn       pq.Connection
+	healthcheckConn    pq.Connection
+	exportSnapshotConn pq.Connection
 
 	dsn     string
 	metric  metric.Metric

@@ -74,13 +74,13 @@ func (c *Config) SetDefault() {
 			c.Snapshot.Mode = SnapshotModeNever
 		}
 		if c.Snapshot.ChunkSize == 0 {
-			c.Snapshot.ChunkSize = 100_000 // 100k rows per chunk
+			c.Snapshot.ChunkSize = 8_000
 		}
 		if c.Snapshot.ClaimTimeout == 0 {
-			c.Snapshot.ClaimTimeout = 5 * time.Minute
+			c.Snapshot.ClaimTimeout = 30 * time.Second
 		}
 		if c.Snapshot.HeartbeatInterval == 0 {
-			c.Snapshot.HeartbeatInterval = 30 * time.Second
+			c.Snapshot.HeartbeatInterval = 5 * time.Second
 		}
 	}
 }
@@ -135,7 +135,8 @@ type SnapshotConfig struct {
 	ChunkSize         int64         `json:"chunkSize" yaml:"chunkSize"`
 	ClaimTimeout      time.Duration `json:"claimTimeout" yaml:"claimTimeout"`
 	HeartbeatInterval time.Duration `json:"heartbeatInterval" yaml:"heartbeatInterval"`
-	Enabled           bool          `json:"enabled" yaml:"enabled"`
+	// TODO: enabled gerçekten ihtiyaç var mı?
+	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
 func (s *SnapshotConfig) Validate() error {

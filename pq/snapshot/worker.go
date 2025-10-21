@@ -56,29 +56,16 @@ func (s *Snapshotter) executeWorker(ctx context.Context, slotName, instanceID st
 		return errors.Wrap(err, "send begin marker")
 	}
 
-	// Start transaction
-	if err := s.execSQL(ctx, s.workerConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
-		return errors.Wrap(err, "begin transaction")
-	}
-	defer func() {
-		_ = s.execSQL(ctx, s.workerConn, "ROLLBACK")
-	}()
-
-	if err := s.setTransactionSnapshot(ctx, job.SnapshotID); err != nil {
-		return errors.Wrap(err, "set transaction snapshot")
-	}
-
-	// Process chunks
-	if err := s.workerProcess(ctx, slotName, instanceID, job.SnapshotLSN, handler); err != nil {
+	// Process chunks (each chunk will have its own transaction)
+	if err := s.workerProcess(ctx, slotName, instanceID, job, handler); err != nil {
 		return errors.Wrap(err, "worker process")
 	}
 
-	// Commit transaction
-	return s.execSQL(ctx, s.workerConn, "COMMIT")
+	return nil
 }
 
 // workerProcess processes chunks as a worker
-func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID string, lsn pq.LSN, handler Handler) error {
+func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID string, job *Job, handler Handler) error {
 	heartbeatInterval := s.config.HeartbeatInterval
 	claimTimeout := s.config.ClaimTimeout
 
@@ -122,8 +109,8 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 		default:
 		}
 
-		// Process the chunk
-		rowsProcessed, err := s.processChunk(ctx, chunk, lsn, handler)
+		// Process the chunk with its own transaction and retry logic
+		rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
 		if err != nil {
 			logger.Error("[worker] chunk processing failed", "chunkID", chunk.ID, "error", err)
 			// Continue with next chunk instead of failing entire snapshot
@@ -139,9 +126,9 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 		s.metric.SnapshotRowsIncrement(rowsProcessed)
 
 		// Update completed chunks metric
-		job, _ := s.loadJob(ctx, slotName)
-		if job != nil {
-			s.metric.SetSnapshotCompletedChunks(job.CompletedChunks)
+		currentJob, _ := s.loadJob(ctx, slotName)
+		if currentJob != nil {
+			s.metric.SetSnapshotCompletedChunks(currentJob.CompletedChunks)
 		}
 
 		logger.Info("[worker] chunk completed",
@@ -151,6 +138,54 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 	}
 
 	return nil
+}
+
+// processChunkWithTransaction processes a single chunk within its own transaction
+// This allows each chunk to have an independent transaction lifecycle with retry support
+func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Chunk, snapshotID string, lsn pq.LSN, handler Handler) (int64, error) {
+	var rowsProcessed int64
+
+	// Retry logic for the entire chunk processing (transaction + data processing)
+	err := s.retryDBOperation(ctx, func() error {
+		// Start transaction for this chunk
+		if err := s.execSQL(ctx, s.workerConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+			return errors.Wrap(err, "begin transaction")
+		}
+
+		// Ensure rollback on error
+		committed := false
+		defer func() {
+			if !committed {
+				_ = s.execSQL(ctx, s.workerConn, "ROLLBACK")
+			}
+		}()
+
+		// Set transaction snapshot to ensure consistent read across all chunks
+		if err := s.setTransactionSnapshot(ctx, snapshotID); err != nil {
+			return errors.Wrap(err, "set transaction snapshot")
+		}
+
+		// Process the chunk data
+		rows, err := s.processChunk(ctx, chunk, lsn, handler)
+		if err != nil {
+			return errors.Wrap(err, "process chunk data")
+		}
+		rowsProcessed = rows
+
+		// Commit transaction
+		if err := s.execSQL(ctx, s.workerConn, "COMMIT"); err != nil {
+			return errors.Wrap(err, "commit transaction")
+		}
+		committed = true
+
+		return nil
+	})
+
+	if err != nil {
+		return 0, errors.Wrap(err, "process chunk with transaction")
+	}
+
+	return rowsProcessed, nil
 }
 
 // heartbeatWorker periodically updates the heartbeat for the current chunk

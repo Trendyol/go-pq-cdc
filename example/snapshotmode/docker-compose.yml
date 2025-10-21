@@ -17,7 +17,7 @@ services:
       - -c
       - max_replication_slots=20
       - -c
-      - max_wal_senders=20
+      - max_wal_senders=25
       - -c
       - max_connections=100
     healthcheck:

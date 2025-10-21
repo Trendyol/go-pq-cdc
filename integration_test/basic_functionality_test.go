@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+func TestBasicFunctionalityx(t *testing.T) {
+	fmt.Println("köfte")
+}
+
 func TestBasicFunctionality(t *testing.T) {
 	ctx := context.Background()
 

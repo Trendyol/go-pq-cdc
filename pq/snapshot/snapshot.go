@@ -60,47 +60,107 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 	}, nil
 }
 
-// Take performs a chunk-based snapshot (works for single or multiple instances)
-// Returns the snapshot LSN for CDC streaming to continue from
-// NOTE: If coordinator, snapshot transaction is kept OPEN after Take() completes
-// The transaction stays alive until CDC starts or connector closes
-func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) (pq.LSN, error) {
-	startTime := time.Now()
+// Prepare sets up snapshot metadata and exports snapshot transaction
+// This must be called BEFORE creating the replication slot to avoid data loss
+// Returns the snapshot LSN that should be used for replication slot creation
+//
+// Flow:
+//  1. Coordinator election
+//  2. Capture current LSN
+//  3. Create metadata (job, chunks)
+//  4. Export snapshot transaction (keeps transaction OPEN)
+//  5. Return LSN for slot creation
+//
+// IMPORTANT: Replication slot MUST be created immediately after this returns
+// to ensure no WAL changes are lost during snapshot execution
+func (s *Snapshotter) Prepare(ctx context.Context, slotName string) (pq.LSN, error) {
 	instanceID := generateInstanceID(s.config.InstanceID)
-	logger.Info("[snapshot] starting", "instanceID", instanceID)
+	logger.Info("[snapshot] preparing", "instanceID", instanceID)
 
-	// Phase 1: Setup job (tables, coordinator election, metadata creation)
+	// Check if snapshot already completed
+	existingJob, err := s.loadJob(ctx, slotName)
+	if err == nil && existingJob != nil && existingJob.Completed {
+		logger.Info("[snapshot] already completed, returning existing LSN")
+		return existingJob.SnapshotLSN, nil
+	}
+
+	// Setup job (coordinator election, metadata creation, snapshot export)
 	job, isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
 	if err != nil {
 		return 0, errors.Wrap(err, "setup job")
 	}
+
 	if job == nil {
-		logger.Info("[snapshot] already completed")
-		// Load existing job to get LSN
-		existingJob, err := s.loadJob(ctx, slotName)
-		if err != nil || existingJob == nil {
-			return 0, errors.New("completed job not found")
+		// Job already exists (another instance is coordinator)
+		// Wait for coordinator to finish setup
+		if err := s.waitForCoordinator(ctx, slotName); err != nil {
+			return 0, errors.Wrap(err, "wait for coordinator")
 		}
-		return existingJob.SnapshotLSN, nil
+
+		// Load job to get LSN
+		job, err = s.loadJob(ctx, slotName)
+		if err != nil || job == nil {
+			return 0, errors.New("job not found after coordinator setup")
+		}
 	}
 
-	// Phase 2: Execute worker processing (ALL instances work, including coordinator)
-	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
-		return 0, errors.Wrap(err, "execute worker")
-	}
-
-	// Phase 3: Finalize (check completion, send END marker)
-	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
-		return 0, errors.Wrap(err, "finalize snapshot")
-	}
-
-	// NOTE: Snapshot transaction is NOT closed here!
-	// For coordinator, it stays open to maintain snapshot consistency until CDC starts
-	logger.Info("[snapshot] completed", "instanceID", instanceID, "duration", time.Since(startTime), "lsn", job.SnapshotLSN.String())
+	logger.Info("[snapshot] prepared", "instanceID", instanceID, "lsn", job.SnapshotLSN.String(), "isCoordinator", isCoordinator)
 	if isCoordinator {
-		logger.Info("[coordinator] snapshot transaction kept OPEN for CDC")
+		logger.Info("[coordinator] snapshot transaction kept OPEN - replication slot must be created NOW")
 	}
+
 	return job.SnapshotLSN, nil
+}
+
+// Execute performs the actual snapshot data collection
+// This should be called AFTER the replication slot is created with the LSN from Prepare()
+// Returns when snapshot is complete
+func (s *Snapshotter) Execute(ctx context.Context, handler Handler, slotName string) error {
+	startTime := time.Now()
+	instanceID := generateInstanceID(s.config.InstanceID)
+	logger.Info("[snapshot] executing", "instanceID", instanceID)
+
+	// Load job
+	job, err := s.loadJob(ctx, slotName)
+	if err != nil || job == nil {
+		return errors.New("job not found - Prepare() must be called first")
+	}
+
+	if job.Completed {
+		logger.Info("[snapshot] already completed")
+		return nil
+	}
+
+	// Execute worker processing (ALL instances work, including coordinator)
+	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
+		return errors.Wrap(err, "execute worker")
+	}
+
+	// Finalize (check completion, send END marker)
+	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
+		return errors.Wrap(err, "finalize snapshot")
+	}
+
+	logger.Info("[snapshot] execution completed", "instanceID", instanceID, "duration", time.Since(startTime))
+	return nil
+}
+
+// Take performs a complete chunk-based snapshot (Prepare + Execute)
+// Deprecated: Use Prepare() and Execute() separately with slot creation in between
+// to avoid data loss during snapshot execution
+func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) (pq.LSN, error) {
+	logger.Warn("[snapshot] Take() should be replaced with Prepare() + CreateSlot() + Execute() pattern")
+
+	lsn, err := s.Prepare(ctx, slotName)
+	if err != nil {
+		return 0, errors.Wrap(err, "prepare snapshot")
+	}
+
+	if err := s.Execute(ctx, handler, slotName); err != nil {
+		return 0, errors.Wrap(err, "execute snapshot")
+	}
+
+	return lsn, nil
 }
 
 // finalizeSnapshot checks completion and sends END marker

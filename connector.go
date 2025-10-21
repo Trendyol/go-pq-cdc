@@ -117,12 +117,6 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
-	slotInfo, err := sl.Create(ctx)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("slot info", "info", slotInfo)
-
 	prometheusRegistry := metric.NewRegistry(m)
 
 	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
@@ -156,19 +150,25 @@ func (c *connector) Start(ctx context.Context) {
 		go c.server.Listen()
 	})
 
+	// Snapshot Pre-phase (optional): Prepare → CreateSlot → Execute
+	// This happens BEFORE the normal CDC flow to avoid data loss
 	if c.cfg.Snapshot.Enabled && c.shouldTakeSnapshot(ctx) {
-		if err := c.takeSnapshotWithRetry(ctx); err != nil {
-			logger.Error("snapshot failed after retries", "error", err)
+		if err := c.prepareSnapshotAndSlot(ctx); err != nil {
+			logger.Error("snapshot preparation failed", "error", err)
 			return
 		}
+	} else {
+		// No snapshot: Create slot normally before starting CDC
+		logger.Info("creating replication slot for CDC")
+		slotInfo, err := c.slot.Create(ctx)
+		if err != nil {
+			logger.Error("slot creation failed", "error", err)
+			return
+		}
+		logger.Info("slot info", "info", slotInfo)
 	}
 
-	// Pass snapshot LSN to CDC stream if available
-	if c.snapshotLSN > 0 {
-		c.stream.SetSnapshotLSN(c.snapshotLSN)
-		logger.Info("CDC will continue from snapshot LSN", "lsn", c.snapshotLSN.String())
-	}
-
+	// Normal CDC flow (unchanged for backward compatibility)
 	c.CaptureSlot(ctx)
 
 	err := c.stream.Open(ctx)
@@ -215,30 +215,69 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 	}
 }
 
-func (c *connector) takeSnapshotWithRetry(ctx context.Context) error {
-	logger.Info("taking initial snapshot...")
+// prepareSnapshotAndSlot handles the snapshot preparation with two-phase approach:
+// 1. Prepare: Capture LSN and create metadata
+// 2. Create replication slot immediately (to preserve WAL)
+// 3. Execute: Collect snapshot data
+// This ensures no WAL changes are lost during snapshot execution
+func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
+	logger.Info("preparing snapshot and creating slot...")
 
 	var lastErr error
 	maxRetries := 3
 
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
 		logger.Info("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
 
-		snapshotLSN, err := c.snapshotter.Take(ctx, c.snapshotHandler, c.cfg.Slot.Name)
-		if err == nil {
-			c.snapshotLSN = snapshotLSN
-			logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
-			return nil
+		// Phase 1: Prepare snapshot (capture LSN, create metadata, export snapshot)
+		snapshotLSN, err := c.snapshotter.Prepare(ctx, c.cfg.Slot.Name)
+		if err != nil {
+			lastErr = err
+			logger.Warn("snapshot prepare failed", "attempt", attempt, "error", err)
+
+			if attempt < maxRetries {
+				logger.Info("retrying snapshot", "retryDelay", "5s")
+				time.Sleep(5 * time.Second)
+			}
+			continue
 		}
 
-		lastErr = err
-		logger.Warn("snapshot attempt failed", "attempt", attempt, "error", err)
+		c.snapshotLSN = snapshotLSN
+		c.stream.SetSnapshotLSN(snapshotLSN)
+		logger.Info("snapshot prepared, LSN captured", "snapshotLSN", snapshotLSN.String())
 
-		// Don't sleep after last attempt
-		if attempt < maxRetries {
-			logger.Info("retrying snapshot", "retryDelay", "5s")
-			time.Sleep(5 * time.Second)
+		// CRITICAL: Create replication slot immediately after Prepare()
+		// This ensures no WAL changes are lost during snapshot execution
+		// Note: slot.Create() is idempotent - if slot exists, it returns existing slot
+		logger.Info("creating replication slot to preserve WAL from snapshot LSN")
+		slotInfo, err := c.slot.Create(ctx)
+		if err != nil {
+			lastErr = err
+			logger.Warn("slot creation failed", "attempt", attempt, "error", err)
+
+			if attempt < maxRetries {
+				logger.Info("retrying snapshot", "retryDelay", "5s")
+				time.Sleep(5 * time.Second)
+			}
+			continue
 		}
+
+		logger.Info("replication slot created, WAL preserved", "slotName", slotInfo.Name, "restartLSN", slotInfo.RestartLSN.String())
+
+		// Phase 2: Execute snapshot (collect data from all chunks)
+		if err := c.snapshotter.Execute(ctx, c.snapshotHandler, c.cfg.Slot.Name); err != nil {
+			lastErr = err
+			logger.Warn("snapshot execute failed", "attempt", attempt, "error", err)
+
+			if attempt < maxRetries {
+				logger.Info("retrying snapshot", "retryDelay", "5s")
+				time.Sleep(5 * time.Second)
+			}
+			continue
+		}
+
+		logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
+		return nil
 	}
 
 	return errors.Wrap(lastErr, "snapshot failed after all retries")

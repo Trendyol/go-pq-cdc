@@ -64,78 +64,109 @@ func (s *Snapshotter) executeWorker(ctx context.Context, slotName, instanceID st
 
 // workerProcess processes chunks as a worker
 func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID string, job *Job, handler Handler) error {
-	heartbeatInterval := s.config.HeartbeatInterval
-	claimTimeout := s.config.ClaimTimeout
-
-	// Start heartbeat goroutine
-	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-	defer cancelHeartbeat()
-
-	currentChunk := make(chan int64, 1)
-	go s.heartbeatWorker(heartbeatCtx, currentChunk, heartbeatInterval)
+	heartbeatCtx, currentChunk := s.startHeartbeat(ctx)
+	defer heartbeatCtx()
 
 	for {
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Try to claim a chunk
-		chunk, err := s.claimNextChunk(ctx, slotName, instanceID, claimTimeout)
+		hasMore, err := s.processNextChunk(ctx, slotName, instanceID, job, handler, currentChunk)
 		if err != nil {
-			return errors.Wrap(err, "claim next chunk")
+			return err
 		}
-
-		if chunk == nil {
-			// No more chunks available
+		if !hasMore {
 			logger.Debug("[worker] no more chunks available", "instanceID", instanceID)
-			break
+			return nil
 		}
+	}
+}
 
-		logger.Info("[worker] processing chunk",
-			"instanceID", instanceID,
-			"table", fmt.Sprintf("%s.%s", chunk.TableSchema, chunk.TableName),
-			"chunkIndex", chunk.ChunkIndex,
-			"chunkStart", chunk.ChunkStart,
-			"chunkSize", chunk.ChunkSize)
+// startHeartbeat initializes and starts the heartbeat goroutine
+func (s *Snapshotter) startHeartbeat(ctx context.Context) (cancel context.CancelFunc, chunkChan chan<- int64) {
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	currentChunk := make(chan int64, 1)
+	go s.heartbeatWorker(heartbeatCtx, currentChunk, s.config.HeartbeatInterval)
+	return cancelHeartbeat, currentChunk
+}
 
-		// Notify heartbeat worker
-		select {
-		case currentChunk <- chunk.ID:
-		default:
-		}
-
-		// Process the chunk with its own transaction and retry logic
-		rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
-		if err != nil {
-			logger.Error("[worker] chunk processing failed", "chunkID", chunk.ID, "error", err)
-			// Continue with next chunk instead of failing entire snapshot
-			continue
-		}
-
-		// Mark chunk as completed
-		if err := s.markChunkCompleted(ctx, slotName, chunk.ID, rowsProcessed); err != nil {
-			logger.Warn("[worker] failed to mark chunk as completed", "error", err)
-		}
-
-		// Update metrics
-		s.metric.SnapshotRowsIncrement(rowsProcessed)
-
-		// Update completed chunks metric
-		currentJob, _ := s.loadJob(ctx, slotName)
-		if currentJob != nil {
-			s.metric.SetSnapshotCompletedChunks(currentJob.CompletedChunks)
-		}
-
-		logger.Info("[worker] chunk completed",
-			"instanceID", instanceID,
-			"chunkID", chunk.ID,
-			"rowsProcessed", rowsProcessed)
+// processNextChunk claims and processes a single chunk
+// Returns (hasMore, error) where hasMore indicates if there are more chunks to process
+func (s *Snapshotter) processNextChunk(ctx context.Context, slotName, instanceID string, job *Job, handler Handler, chunkChan chan<- int64) (bool, error) {
+	// Check context cancellation
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
 	}
 
-	return nil
+	// Claim next chunk
+	chunk, err := s.claimNextChunk(ctx, slotName, instanceID, s.config.ClaimTimeout)
+	if err != nil {
+		return false, errors.Wrap(err, "claim next chunk")
+	}
+	if chunk == nil {
+		return false, nil // No more chunks
+	}
+
+	// Log chunk start
+	s.logChunkStart(instanceID, chunk)
+
+	// Notify heartbeat
+	s.notifyHeartbeat(chunkChan, chunk.ID)
+
+	// Process chunk
+	rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
+	if err != nil {
+		logger.Error("[worker] chunk processing failed", "chunkID", chunk.ID, "error", err)
+		return true, nil // Continue with next chunk
+	}
+
+	// Post-process: mark complete and update metrics
+	s.completeChunk(ctx, slotName, instanceID, chunk, rowsProcessed)
+
+	return true, nil // More chunks may be available
+}
+
+// logChunkStart logs the start of chunk processing
+func (s *Snapshotter) logChunkStart(instanceID string, chunk *Chunk) {
+	logger.Debug("[worker] processing chunk",
+		"instanceID", instanceID,
+		"table", fmt.Sprintf("%s.%s", chunk.TableSchema, chunk.TableName),
+		"chunkIndex", chunk.ChunkIndex,
+		"chunkStart", chunk.ChunkStart,
+		"chunkSize", chunk.ChunkSize)
+}
+
+// notifyHeartbeat sends chunk ID to heartbeat worker
+func (s *Snapshotter) notifyHeartbeat(chunkChan chan<- int64, chunkID int64) {
+	select {
+	case chunkChan <- chunkID:
+	default:
+	}
+}
+
+// completeChunk marks chunk as completed and updates metrics
+func (s *Snapshotter) completeChunk(ctx context.Context, slotName, instanceID string, chunk *Chunk, rowsProcessed int64) {
+	// Mark chunk as completed
+	if err := s.markChunkCompleted(ctx, slotName, chunk.ID, rowsProcessed); err != nil {
+		logger.Warn("[worker] failed to mark chunk as completed", "error", err)
+		return
+	}
+
+	// Update metrics
+	s.metric.SnapshotRowsIncrement(rowsProcessed)
+	s.updateCompletedChunksMetric(ctx, slotName)
+
+	// Log completion
+	logger.Debug("[worker] chunk completed",
+		"instanceID", instanceID,
+		"chunkID", chunk.ID,
+		"rowsProcessed", rowsProcessed)
+}
+
+// updateCompletedChunksMetric updates the completed chunks metric
+func (s *Snapshotter) updateCompletedChunksMetric(ctx context.Context, slotName string) {
+	if job, _ := s.loadJob(ctx, slotName); job != nil {
+		s.metric.SetSnapshotCompletedChunks(job.CompletedChunks)
+	}
 }
 
 // processChunkWithTransaction processes a single chunk within its own transaction
@@ -143,39 +174,14 @@ func (s *Snapshotter) workerProcess(ctx context.Context, slotName, instanceID st
 func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Chunk, snapshotID string, lsn pq.LSN, handler Handler) (int64, error) {
 	var rowsProcessed int64
 
-	// Retry logic for the entire chunk processing (transaction + data processing)
 	err := s.retryDBOperation(ctx, func() error {
-		// Start transaction for this chunk
-		if err := s.execSQL(ctx, s.workerConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
-			return errors.Wrap(err, "begin transaction")
-		}
-
-		// Ensure rollback on error
-		committed := false
-		defer func() {
-			if !committed {
-				_ = s.execSQL(ctx, s.workerConn, "ROLLBACK")
-			}
-		}()
-
-		// Set transaction snapshot to ensure consistent read across all chunks
-		if err := s.setTransactionSnapshot(ctx, snapshotID); err != nil {
-			return errors.Wrap(err, "set transaction snapshot")
-		}
-
-		// Process the chunk data
-		rows, err := s.processChunk(ctx, chunk, lsn, handler)
+		rows, err := s.executeInTransaction(ctx, snapshotID, func() (int64, error) {
+			return s.processChunk(ctx, chunk, lsn, handler)
+		})
 		if err != nil {
-			return errors.Wrap(err, "process chunk data")
+			return err
 		}
 		rowsProcessed = rows
-
-		// Commit transaction
-		if err := s.execSQL(ctx, s.workerConn, "COMMIT"); err != nil {
-			return errors.Wrap(err, "commit transaction")
-		}
-		committed = true
-
 		return nil
 	})
 
@@ -184,6 +190,68 @@ func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Ch
 	}
 
 	return rowsProcessed, nil
+}
+
+// executeInTransaction executes a function within a snapshot transaction
+func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID string, fn func() (int64, error)) (int64, error) {
+	tx := &snapshotTransaction{
+		snapshotter: s,
+		ctx:         ctx,
+		snapshotID:  snapshotID,
+	}
+
+	if err := tx.begin(); err != nil {
+		return 0, err
+	}
+	defer tx.rollbackIfNeeded()
+
+	rows, err := fn()
+	if err != nil {
+		return 0, errors.Wrap(err, "execute function")
+	}
+
+	if err := tx.commit(); err != nil {
+		return 0, err
+	}
+
+	return rows, nil
+}
+
+// snapshotTransaction manages a single snapshot transaction lifecycle
+type snapshotTransaction struct {
+	snapshotter *Snapshotter
+	ctx         context.Context
+	snapshotID  string
+	committed   bool
+}
+
+// begin starts the transaction and sets the snapshot
+func (tx *snapshotTransaction) begin() error {
+	if err := tx.snapshotter.execSQL(tx.ctx, tx.snapshotter.workerConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		return errors.Wrap(err, "begin transaction")
+	}
+
+	if err := tx.snapshotter.setTransactionSnapshot(tx.ctx, tx.snapshotID); err != nil {
+		return errors.Wrap(err, "set transaction snapshot")
+	}
+
+	return nil
+}
+
+// commit commits the transaction
+func (tx *snapshotTransaction) commit() error {
+	if err := tx.snapshotter.execSQL(tx.ctx, tx.snapshotter.workerConn, "COMMIT"); err != nil {
+		return errors.Wrap(err, "commit transaction")
+	}
+	tx.committed = true
+	return nil
+}
+
+// rollbackIfNeeded rolls back the transaction if not committed
+func (tx *snapshotTransaction) rollbackIfNeeded() {
+	if !tx.committed {
+		_ = tx.snapshotter.execSQL(tx.ctx, tx.snapshotter.workerConn, "ROLLBACK")
+	}
 }
 
 // heartbeatWorker periodically updates the heartbeat for the current chunk

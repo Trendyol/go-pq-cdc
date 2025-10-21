@@ -82,11 +82,12 @@ func (s *Snapshotter) Prepare(ctx context.Context, slotName string) (pq.LSN, err
 		return 0, errors.Wrap(err, "setup job")
 	}
 
-	logger.Debug("[snapshot] prepared", "instanceID", instanceID, "lsn", snapshotLSN.String(), "isCoordinator", isCoordinator)
 	if isCoordinator {
 		logger.Debug("[coordinator] snapshot transaction kept OPEN - replication slot must be created NOW")
 	}
-
+	if snapshotLSN == nil {
+		return 0, nil
+	}
 	return *snapshotLSN, nil
 }
 

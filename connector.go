@@ -221,66 +221,59 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 // 3. Execute: Collect snapshot data
 // This ensures no WAL changes are lost during snapshot execution
 func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
-	logger.Debug("preparing snapshot and creating slot...")
-
-	var lastErr error
-	maxRetries := 3
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		logger.Debug("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
-
+	return c.retryOperation("snapshot", 3, func(attempt int) error {
 		// Phase 1: Prepare snapshot (capture LSN, create metadata, export snapshot)
 		snapshotLSN, err := c.snapshotter.Prepare(ctx, c.cfg.Slot.Name)
 		if err != nil {
-			lastErr = err
-			logger.Warn("snapshot prepare failed", "attempt", attempt, "error", err)
-
-			if attempt < maxRetries {
-				logger.Info("retrying snapshot", "retryDelay", "5s")
-				time.Sleep(5 * time.Second)
-			}
-			continue
+			return errors.Wrap(err, "prepare snapshot")
 		}
 
 		c.snapshotLSN = snapshotLSN
 		c.stream.SetSnapshotLSN(snapshotLSN)
-		logger.Info("snapshot prepared, LSN captured", "snapshotLSN", snapshotLSN.String())
+		logger.Debug("snapshot prepared, LSN captured", "snapshotLSN", snapshotLSN.String())
 
-		// CRITICAL: Create replication slot immediately after Prepare()
-		// This ensures no WAL changes are lost during snapshot execution
-		// Note: slot.Create() is idempotent - if slot exists, it returns existing slot
-		logger.Info("creating replication slot to preserve WAL from snapshot LSN")
+		// Phase 2: Create replication slot immediately (CRITICAL - preserves WAL)
 		slotInfo, err := c.slot.Create(ctx)
 		if err != nil {
-			lastErr = err
-			logger.Warn("slot creation failed", "attempt", attempt, "error", err)
-
-			if attempt < maxRetries {
-				logger.Info("retrying snapshot", "retryDelay", "5s")
-				time.Sleep(5 * time.Second)
-			}
-			continue
+			return errors.Wrap(err, "create slot")
 		}
+		logger.Debug("replication slot created, WAL preserved", "slotName", slotInfo.Name, "restartLSN", slotInfo.RestartLSN.String())
 
-		logger.Info("replication slot created, WAL preserved", "slotName", slotInfo.Name, "restartLSN", slotInfo.RestartLSN.String())
-
-		// Phase 2: Execute snapshot (collect data from all chunks)
+		// Phase 3: Execute snapshot (collect data from all chunks)
 		if err := c.snapshotter.Execute(ctx, c.snapshotHandler, c.cfg.Slot.Name); err != nil {
-			lastErr = err
-			logger.Warn("snapshot execute failed", "attempt", attempt, "error", err)
-
-			if attempt < maxRetries {
-				logger.Info("retrying snapshot", "retryDelay", "5s")
-				time.Sleep(5 * time.Second)
-			}
-			continue
+			return errors.Wrap(err, "execute snapshot")
 		}
 
 		logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
 		return nil
+	})
+}
+
+// retryOperation executes an operation with retry logic
+func (c *connector) retryOperation(operationName string, maxRetries int, operation func(attempt int) error) error {
+	var lastErr error
+	retryDelay := 5 * time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			logger.Info("retrying operation", "operation", operationName, "attempt", attempt, "maxRetries", maxRetries)
+		}
+
+		if err := operation(attempt); err != nil {
+			lastErr = err
+			logger.Warn("operation failed", "operation", operationName, "attempt", attempt, "error", err)
+
+			if attempt < maxRetries {
+				logger.Info("waiting before retry", "retryDelay", retryDelay.String())
+				time.Sleep(retryDelay)
+			}
+			continue
+		}
+
+		return nil
 	}
 
-	return errors.Wrap(lastErr, "snapshot failed after all retries")
+	return errors.Wrapf(lastErr, "%s failed after %d retries", operationName, maxRetries)
 }
 
 func (c *connector) snapshotHandler(event *format.Snapshot) error {

@@ -115,7 +115,7 @@ func handleSnapshot(s *format.Snapshot) {
 	case format.SnapshotEventTypeData:
 		count := atomic.AddInt64(&snapshotDataCount, 1)
 		if count%100 == 0 || count <= 5 {
-			//printSnapshotData(s, count)
+			printSnapshotData(s, count)
 		}
 
 	case format.SnapshotEventTypeEnd:

@@ -48,13 +48,11 @@ func (s *Snapshotter) executeWorker(ctx context.Context, slotName, instanceID st
 	}()
 
 	// Send BEGIN marker
-	if err := handler(&format.Snapshot{
+	_ = handler(&format.Snapshot{
 		EventType:  format.SnapshotEventTypeBegin,
 		ServerTime: time.Now().UTC(),
 		LSN:        job.SnapshotLSN,
-	}); err != nil {
-		return errors.Wrap(err, "send begin marker")
-	}
+	})
 
 	// Process chunks (each chunk will have its own transaction)
 	if err := s.workerProcess(ctx, slotName, instanceID, job, handler); err != nil {

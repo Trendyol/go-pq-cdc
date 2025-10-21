@@ -221,13 +221,13 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 // 3. Execute: Collect snapshot data
 // This ensures no WAL changes are lost during snapshot execution
 func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
-	logger.Info("preparing snapshot and creating slot...")
+	logger.Debug("preparing snapshot and creating slot...")
 
 	var lastErr error
 	maxRetries := 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		logger.Info("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
+		logger.Debug("snapshot attempt", "attempt", attempt, "maxRetries", maxRetries)
 
 		// Phase 1: Prepare snapshot (capture LSN, create metadata, export snapshot)
 		snapshotLSN, err := c.snapshotter.Prepare(ctx, c.cfg.Slot.Name)

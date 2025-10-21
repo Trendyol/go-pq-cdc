@@ -75,41 +75,19 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 // to ensure no WAL changes are lost during snapshot execution
 func (s *Snapshotter) Prepare(ctx context.Context, slotName string) (pq.LSN, error) {
 	instanceID := generateInstanceID(s.config.InstanceID)
-	logger.Info("[snapshot] preparing", "instanceID", instanceID)
+	logger.Debug("[snapshot] preparing", "instanceID", instanceID)
 
-	// Check if snapshot already completed
-	existingJob, err := s.loadJob(ctx, slotName)
-	if err == nil && existingJob != nil && existingJob.Completed {
-		logger.Info("[snapshot] already completed, returning existing LSN")
-		return existingJob.SnapshotLSN, nil
-	}
-
-	// Setup job (coordinator election, metadata creation, snapshot export)
-	job, isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
+	snapshotLSN, isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
 	if err != nil {
 		return 0, errors.Wrap(err, "setup job")
 	}
 
-	if job == nil {
-		// Job already exists (another instance is coordinator)
-		// Wait for coordinator to finish setup
-		if err := s.waitForCoordinator(ctx, slotName); err != nil {
-			return 0, errors.Wrap(err, "wait for coordinator")
-		}
-
-		// Load job to get LSN
-		job, err = s.loadJob(ctx, slotName)
-		if err != nil || job == nil {
-			return 0, errors.New("job not found after coordinator setup")
-		}
-	}
-
-	logger.Info("[snapshot] prepared", "instanceID", instanceID, "lsn", job.SnapshotLSN.String(), "isCoordinator", isCoordinator)
+	logger.Debug("[snapshot] prepared", "instanceID", instanceID, "lsn", snapshotLSN.String(), "isCoordinator", isCoordinator)
 	if isCoordinator {
-		logger.Info("[coordinator] snapshot transaction kept OPEN - replication slot must be created NOW")
+		logger.Debug("[coordinator] snapshot transaction kept OPEN - replication slot must be created NOW")
 	}
 
-	return job.SnapshotLSN, nil
+	return *snapshotLSN, nil
 }
 
 // Execute performs the actual snapshot data collection
@@ -118,17 +96,12 @@ func (s *Snapshotter) Prepare(ctx context.Context, slotName string) (pq.LSN, err
 func (s *Snapshotter) Execute(ctx context.Context, handler Handler, slotName string) error {
 	startTime := time.Now()
 	instanceID := generateInstanceID(s.config.InstanceID)
-	logger.Info("[snapshot] executing", "instanceID", instanceID)
+	logger.Debug("[snapshot] executing", "instanceID", instanceID)
 
 	// Load job
 	job, err := s.loadJob(ctx, slotName)
 	if err != nil || job == nil {
 		return errors.New("job not found - Prepare() must be called first")
-	}
-
-	if job.Completed {
-		logger.Info("[snapshot] already completed")
-		return nil
 	}
 
 	// Execute worker processing (ALL instances work, including coordinator)
@@ -174,23 +147,20 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 		return nil // Not done yet, keep processing
 	}
 
-	logger.Info("[snapshot] all chunks completed, marking job as complete")
+	logger.Debug("[snapshot] all chunks completed, marking job as complete")
 
 	// Mark job as completed (idempotent - safe for multiple workers)
-	if err := s.markJobAsCompleted(ctx, slotName); err != nil {
+	if err = s.markJobAsCompleted(ctx, slotName); err != nil {
 		logger.Warn("[snapshot] failed to mark job as completed", "error", err)
-	}
-
-	// Send END marker
-	if err := handler(&format.Snapshot{
-		EventType:  format.SnapshotEventTypeEnd,
-		ServerTime: time.Now().UTC(),
-		LSN:        job.SnapshotLSN,
-	}); err != nil {
 		return err
 	}
 
-	return nil
+	// Send END marker
+	return handler(&format.Snapshot{
+		EventType:  format.SnapshotEventTypeEnd,
+		ServerTime: time.Now().UTC(),
+		LSN:        job.SnapshotLSN,
+	})
 }
 
 // decodeColumnData decodes PostgreSQL column data using pgtype

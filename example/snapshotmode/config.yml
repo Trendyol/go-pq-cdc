@@ -24,7 +24,7 @@ slot:
 snapshot:
   mode: initial
   enabled: true
-  chunkSize: 100
+  chunkSize: 8000
   claimTimeout: 30s
   heartbeatInterval: 10s
 

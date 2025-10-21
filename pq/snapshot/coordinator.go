@@ -19,8 +19,8 @@ import (
 // 1. Cleanup any incomplete job (from previous crash)
 // 2. Create metadata and chunks
 // 3. Export snapshot for workers
-func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string) error {
-	logger.Info("[coordinator] initializing job", "slotName", slotName)
+func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string, currentLSN pq.LSN) error {
+	logger.Debug("[coordinator] initializing job", "slotName", slotName)
 
 	// Check if job already exists
 	existingJob, err := s.loadJob(ctx, slotName)
@@ -40,7 +40,7 @@ func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string
 	}
 
 	// Create metadata and chunks (committed to DB)
-	if err := s.createMetadata(ctx, slotName); err != nil {
+	if err := s.createMetadata(ctx, slotName, currentLSN); err != nil {
 		return errors.Wrap(err, "create metadata")
 	}
 
@@ -49,19 +49,13 @@ func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string
 		return errors.Wrap(err, "export snapshot")
 	}
 
-	logger.Info("[coordinator] initialization complete")
+	logger.Debug("[coordinator] initialization complete")
 	return nil
 }
 
 // createMetadata captures LSN, creates job and chunks metadata
-func (s *Snapshotter) createMetadata(ctx context.Context, slotName string) error {
+func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, currentLSN pq.LSN) error {
 	logger.Info("[coordinator] creating metadata and chunks")
-
-	// Capture LSN before any transaction
-	currentLSN, err := s.getCurrentLSN(ctx)
-	if err != nil {
-		return errors.Wrap(err, "get current LSN")
-	}
 
 	// Create job metadata with placeholder snapshot ID
 	job := &Job{
@@ -187,50 +181,35 @@ func (s *Snapshotter) updateJobSnapshotID(ctx context.Context, snapshotID string
 
 // setupJob initializes tables, handles coordinator election, and returns the job
 // Returns: job, isCoordinator flag, error
-func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string) (*Job, bool, error) {
-	// Initialize tables
+func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string) (*pq.LSN, bool, error) {
 	if err := s.initTables(ctx); err != nil {
 		return nil, false, errors.Wrap(err, "initialize tables")
 	}
 
-	// Check if job already exists and is completed
-	existingJob, err := s.loadJob(ctx, slotName)
-	if err != nil {
-		logger.Debug("[snapshot] no existing job found")
-	}
-	if existingJob != nil && existingJob.Completed {
-		return nil, false, nil // Signal completion
-	}
-
-	// Try to become coordinator
-	isCoordinator, err := s.tryAcquireCoordinatorLock(ctx, slotName)
+	lockAcquired, err := s.tryAcquireCoordinatorLock(ctx, slotName)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "acquire coordinator lock")
 	}
 
-	if isCoordinator {
-		logger.Info("[snapshot] elected as coordinator", "instanceID", instanceID)
-		if err := s.initializeCoordinator(ctx, slotName); err != nil {
+	if lockAcquired {
+		currentLSN, err := s.getCurrentLSN(ctx)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "get current LSN")
+		}
+
+		logger.Debug("[snapshot] elected as coordinator", "instanceID", instanceID)
+		if err := s.initializeCoordinator(ctx, slotName, currentLSN); err != nil {
 			return nil, false, errors.Wrap(err, "initialize coordinator")
 		}
-	} else {
-		logger.Info("[snapshot] joining as worker", "instanceID", instanceID)
-		if err := s.waitForCoordinator(ctx, slotName); err != nil {
-			return nil, false, errors.Wrap(err, "wait for coordinator")
-		}
+		return &currentLSN, true, nil
 	}
 
-	// Load the job
-	job, err := s.loadJob(ctx, slotName)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "load job")
-	}
-	if job == nil {
-		return nil, false, errors.New("job not found after initialization")
+	logger.Debug("[snapshot] joining as worker", "instanceID", instanceID)
+	if err = s.waitForCoordinator(ctx, slotName); err != nil {
+		return nil, false, errors.Wrap(err, "wait for coordinator")
 	}
 
-	logger.Info("[snapshot] job loaded", "snapshotID", job.SnapshotID, "lsn", job.SnapshotLSN.String())
-	return job, isCoordinator, nil
+	return nil, false, nil
 }
 
 func (s *Snapshotter) initTables(ctx context.Context) error {
@@ -365,7 +344,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 		isLast := (i == len(result.Rows)-1) && (rowCount < chunk.ChunkSize)
 
 		// Send data event
-		if err := handler(&format.Snapshot{
+		_ = handler(&format.Snapshot{
 			EventType:  format.SnapshotEventTypeData,
 			Table:      chunk.TableName,
 			Schema:     chunk.TableSchema,
@@ -373,9 +352,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 			ServerTime: time.Now().UTC(),
 			LSN:        lsn,
 			IsLast:     isLast,
-		}); err != nil {
-			return rowCount, errors.Wrap(err, "handle snapshot row")
-		}
+		})
 	}
 
 	return rowCount, nil

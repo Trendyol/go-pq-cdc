@@ -11,20 +11,26 @@ import (
 	"github.com/go-playground/errors"
 )
 
-// waitForCoordinator waits for the coordinator to initialize the job
+// waitForCoordinator waits for the coordinator to initialize job and create chunks
+// Workers need both job metadata and chunks to be ready before they can start processing
 func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) error {
 	timeout := 30 * time.Second
 	deadline := time.Now().Add(timeout)
 
 	for {
 		if time.Now().After(deadline) {
-			return errors.New("timeout waiting for coordinator to initialize job")
+			return errors.New("timeout waiting for coordinator to initialize")
 		}
 
-		job, err := s.loadJob(ctx, slotName)
-		if err == nil && job != nil {
-			logger.Info("[worker] coordinator ready", "snapshotID", job.SnapshotID)
+		// Check if both job and chunks are ready
+		yes, status, err := s.isCoordinatorDidItsJob(ctx, slotName)
+		if err != nil {
+			logger.Debug("[worker] waiting for coordinator", "status", status, "error", err)
+		} else if yes {
+			logger.Debug("[worker] coordinator ready, starting work", "status", status)
 			return nil
+		} else {
+			logger.Debug("[worker] waiting for coordinator", "status", status)
 		}
 
 		select {
@@ -34,6 +40,58 @@ func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) e
 			// Continue waiting
 		}
 	}
+}
+
+// isCoordinatorDidItsJob checks if both job and chunks are ready for processing
+// Returns (ready, status_message, error)
+func (s *Snapshotter) isCoordinatorDidItsJob(ctx context.Context, slotName string) (bool, string, error) {
+	// Step 1: Check if job exists
+	job, err := s.loadJob(ctx, slotName)
+	if err != nil {
+		return false, "job not found", err
+	}
+	if job == nil {
+		return false, "job not created yet", nil
+	}
+
+	// Step 2: Check if snapshot ID is set (coordinator has exported snapshot)
+	if job.SnapshotID == "" || job.SnapshotID == "PENDING" {
+		return false, "snapshot not exported yet", nil
+	}
+
+	// Step 3: Check if chunks are available
+	hasChunks, err := s.hasChunksReady(ctx, slotName)
+	if err != nil {
+		return false, "error checking chunks", err
+	}
+	if !hasChunks {
+		return false, "chunks not created yet", nil
+	}
+
+	// Everything is ready!
+	return true, fmt.Sprintf("ready (job=%s, chunks=available)", job.SnapshotID), nil
+}
+
+// hasChunksReady checks if there are chunks available for processing
+func (s *Snapshotter) hasChunksReady(ctx context.Context, slotName string) (bool, error) {
+	query := fmt.Sprintf(`
+		SELECT COUNT(*) > 0 
+		FROM %s 
+		WHERE slot_name = '%s'
+	`, chunksTableName, slotName)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return false, errors.Wrap(err, "check chunks ready")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return false, nil
+	}
+
+	// Parse boolean result
+	hasChunks := string(results[0].Rows[0][0]) == "t"
+	return hasChunks, nil
 }
 
 // executeWorker sets up metrics, transactions, and processes chunks
@@ -175,8 +233,8 @@ func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Ch
 	var rowsProcessed int64
 
 	err := s.retryDBOperation(ctx, func() error {
-		rows, err := s.executeInTransaction(ctx, snapshotID, func() (int64, error) {
-			return s.processChunk(ctx, chunk, lsn, handler)
+		rows, err := s.executeInTransaction(ctx, snapshotID, func(conn pq.Connection) (int64, error) {
+			return s.processChunk(ctx, conn, chunk, lsn, handler)
 		})
 		if err != nil {
 			return err
@@ -193,11 +251,20 @@ func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Ch
 }
 
 // executeInTransaction executes a function within a snapshot transaction
-func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID string, fn func() (int64, error)) (int64, error) {
+// Uses a fresh connection for each chunk to avoid dirty connection state
+func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID string, fn func(pq.Connection) (int64, error)) (int64, error) {
+	// Create a fresh connection for this chunk
+	chunkConn, err := pq.NewConnection(ctx, s.dsn)
+	if err != nil {
+		return 0, errors.Wrap(err, "create chunk connection")
+	}
+	defer chunkConn.Close(ctx)
+
 	tx := &snapshotTransaction{
 		snapshotter: s,
 		ctx:         ctx,
 		snapshotID:  snapshotID,
+		conn:        chunkConn, // Use dedicated connection for this transaction
 	}
 
 	if err := tx.begin(); err != nil {
@@ -205,7 +272,7 @@ func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID strin
 	}
 	defer tx.rollbackIfNeeded()
 
-	rows, err := fn()
+	rows, err := fn(chunkConn)
 	if err != nil {
 		return 0, errors.Wrap(err, "execute function")
 	}
@@ -222,16 +289,19 @@ type snapshotTransaction struct {
 	snapshotter *Snapshotter
 	ctx         context.Context
 	snapshotID  string
+	conn        pq.Connection // Dedicated connection for this transaction
 	committed   bool
 }
 
 // begin starts the transaction and sets the snapshot
 func (tx *snapshotTransaction) begin() error {
-	if err := tx.snapshotter.execSQL(tx.ctx, tx.snapshotter.workerConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+	if err := tx.snapshotter.execSQL(tx.ctx, tx.conn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
 		return errors.Wrap(err, "begin transaction")
 	}
 
-	if err := tx.snapshotter.setTransactionSnapshot(tx.ctx, tx.snapshotID); err != nil {
+	if err := tx.snapshotter.setTransactionSnapshot(tx.ctx, tx.conn, tx.snapshotID); err != nil {
+		// BEGIN succeeded but snapshot failed - must rollback
+		_ = tx.snapshotter.execSQL(tx.ctx, tx.conn, "ROLLBACK")
 		return errors.Wrap(err, "set transaction snapshot")
 	}
 
@@ -240,7 +310,7 @@ func (tx *snapshotTransaction) begin() error {
 
 // commit commits the transaction
 func (tx *snapshotTransaction) commit() error {
-	if err := tx.snapshotter.execSQL(tx.ctx, tx.snapshotter.workerConn, "COMMIT"); err != nil {
+	if err := tx.snapshotter.execSQL(tx.ctx, tx.conn, "COMMIT"); err != nil {
 		return errors.Wrap(err, "commit transaction")
 	}
 	tx.committed = true
@@ -250,7 +320,7 @@ func (tx *snapshotTransaction) commit() error {
 // rollbackIfNeeded rolls back the transaction if not committed
 func (tx *snapshotTransaction) rollbackIfNeeded() {
 	if !tx.committed {
-		_ = tx.snapshotter.execSQL(tx.ctx, tx.snapshotter.workerConn, "ROLLBACK")
+		_ = tx.snapshotter.execSQL(tx.ctx, tx.conn, "ROLLBACK")
 	}
 }
 

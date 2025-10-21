@@ -297,14 +297,14 @@ func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
 }
 
 // processChunk processes a single chunk
-func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN, handler Handler) (int64, error) {
+func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chunk *Chunk, lsn pq.LSN, handler Handler) (int64, error) {
 	// Get ORDER BY clause for the table
 	table := publication.Table{
 		Schema: chunk.TableSchema,
 		Name:   chunk.TableName,
 	}
 
-	orderByClause, err := s.getOrderByClause(ctx, table)
+	orderByClause, err := s.getOrderByClause(ctx, conn, table)
 	if err != nil {
 		return 0, errors.Wrap(err, "get order by clause")
 	}
@@ -321,7 +321,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 
 	logger.Debug("[chunk] executing query", "query", query)
 
-	results, err := s.execQuery(ctx, s.workerConn, query)
+	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
 		return 0, errors.Wrap(err, "execute chunk query")
 	}
@@ -359,7 +359,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, chunk *Chunk, lsn pq.LSN
 }
 
 // getOrderByClause returns the ORDER BY clause for a table
-func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Table) (string, error) {
+func (s *Snapshotter) getOrderByClause(ctx context.Context, conn pq.Connection, table publication.Table) (string, error) {
 	// Try to get primary key columns fallback to ctid
 	query := fmt.Sprintf(`
 		SELECT a.attname
@@ -369,7 +369,7 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, table publication.Ta
 		ORDER BY a.attnum
 	`, table.Schema, table.Name)
 
-	results, err := s.execQuery(ctx, s.workerConn, query)
+	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
 		return "", errors.Wrap(err, "query primary key")
 	}

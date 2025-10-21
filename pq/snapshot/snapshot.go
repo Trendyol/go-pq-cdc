@@ -18,9 +18,6 @@ import (
 type Handler func(event *format.Snapshot) error
 
 type Snapshotter struct {
-	ctx context.Context
-
-	workerConn         pq.Connection
 	metadataConn       pq.Connection
 	healthcheckConn    pq.Connection
 	exportSnapshotConn pq.Connection
@@ -38,19 +35,13 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 		return nil, errors.Wrap(err, "create metadata connection")
 	}
 
-	workerConn, err := pq.NewConnection(ctx, dsn)
-	if err != nil {
-		return nil, errors.Wrap(err, "create worker connection")
-	}
-
 	healthcheckConn, err := pq.NewConnection(ctx, dsn)
 	if err != nil {
-		return nil, errors.Wrap(err, "create pg export snapshot connection")
+		return nil, errors.Wrap(err, "create healthcheck connection")
 	}
 
 	return &Snapshotter{
 		dsn:             dsn,
-		workerConn:      workerConn,
 		metadataConn:    metadataConn,
 		healthcheckConn: healthcheckConn,
 		config:          snapshotConfig,
@@ -117,24 +108,6 @@ func (s *Snapshotter) Execute(ctx context.Context, handler Handler, slotName str
 
 	logger.Info("[snapshot] execution completed", "instanceID", instanceID, "duration", time.Since(startTime))
 	return nil
-}
-
-// Take performs a complete chunk-based snapshot (Prepare + Execute)
-// Deprecated: Use Prepare() and Execute() separately with slot creation in between
-// to avoid data loss during snapshot execution
-func (s *Snapshotter) Take(ctx context.Context, handler Handler, slotName string) (pq.LSN, error) {
-	logger.Warn("[snapshot] Take() should be replaced with Prepare() + CreateSlot() + Execute() pattern")
-
-	lsn, err := s.Prepare(ctx, slotName)
-	if err != nil {
-		return 0, errors.Wrap(err, "prepare snapshot")
-	}
-
-	if err := s.Execute(ctx, handler, slotName); err != nil {
-		return 0, errors.Wrap(err, "execute snapshot")
-	}
-
-	return lsn, nil
 }
 
 // finalizeSnapshot checks completion and sends END marker

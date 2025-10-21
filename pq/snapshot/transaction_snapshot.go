@@ -3,8 +3,9 @@ package snapshot
 import (
 	"context"
 	"fmt"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"strings"
+
+	"github.com/Trendyol/go-pq-cdc/pq"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/go-playground/errors"
@@ -41,10 +42,10 @@ func (s *Snapshotter) exportSnapshot(ctx context.Context, exportSnapshotConn pq.
 }
 
 // setTransactionSnapshot sets the current transaction to use an exported snapshot
-func (s *Snapshotter) setTransactionSnapshot(ctx context.Context, snapshotID string) error {
+func (s *Snapshotter) setTransactionSnapshot(ctx context.Context, conn pq.Connection, snapshotID string) error {
 	return s.retryDBOperation(ctx, func() error {
 		query := fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotID)
-		if err := s.execSQL(ctx, s.workerConn, query); err != nil {
+		if err := s.execSQL(ctx, conn, query); err != nil {
 			return errors.Wrap(err, "set transaction snapshot")
 		}
 

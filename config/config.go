@@ -135,8 +135,7 @@ type SnapshotConfig struct {
 	ChunkSize         int64         `json:"chunkSize" yaml:"chunkSize"`
 	ClaimTimeout      time.Duration `json:"claimTimeout" yaml:"claimTimeout"`
 	HeartbeatInterval time.Duration `json:"heartbeatInterval" yaml:"heartbeatInterval"`
-	// TODO: enabled gerçekten ihtiyaç var mı?
-	Enabled bool `json:"enabled" yaml:"enabled"`
+	Enabled           bool          `json:"enabled" yaml:"enabled"`
 }
 
 func (s *SnapshotConfig) Validate() error {

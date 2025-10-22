@@ -84,11 +84,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
-	pub := publication.New(cfg.Publication, conn)
-	if err = pub.SetReplicaIdentities(ctx); err != nil {
-		return nil, err
-	}
-	publicationInfo, err := pub.Create(ctx)
+	publicationInfo, err := initializePublication(ctx, cfg, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +98,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	var snapshotter *snapshot.Snapshotter
-	if cfg.Snapshot.Enabled {
-		snapshotter, err = snapshot.New(ctx, cfg.Snapshot, cfg.Publication.Tables, cfg.DSN(), m)
-		if err != nil {
-			return nil, err
-		}
+	snapshotter, err := initializeSnapshot(ctx, cfg, m)
+	if err != nil {
+		return nil, err
 	}
 
 	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
@@ -119,12 +112,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	prometheusRegistry := metric.NewRegistry(m)
 
-	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = tdb.FindHyperTables(ctx)
+	tdb, err := initializeTimescaleDB(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +131,36 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		cancelCh: make(chan os.Signal, 1),
 		readyCh:  make(chan struct{}, 1),
 	}, nil
+}
+
+// initializePublication sets up and creates the publication
+func initializePublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*publication.Config, error) {
+	pub := publication.New(cfg.Publication, conn)
+	if err := pub.SetReplicaIdentities(ctx); err != nil {
+		return nil, err
+	}
+	return pub.Create(ctx)
+}
+
+// initializeSnapshot creates snapshot if enabled
+func initializeSnapshot(ctx context.Context, cfg config.Config, m metric.Metric) (*snapshot.Snapshotter, error) {
+	if !cfg.Snapshot.Enabled {
+		return nil, nil
+	}
+	return snapshot.New(ctx, cfg.Snapshot, cfg.Publication.Tables, cfg.DSN(), m)
+}
+
+// initializeTimescaleDB sets up TimescaleDB connection
+func initializeTimescaleDB(ctx context.Context, cfg config.Config) (*timescaledb.TimescaleDB, error) {
+	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
+	if err != nil {
+		return nil, err
+	}
+	_, err = tdb.FindHyperTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return tdb, nil
 }
 
 func (c *connector) Start(ctx context.Context) {
@@ -221,7 +239,7 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 // 3. Execute: Collect snapshot data
 // This ensures no WAL changes are lost during snapshot execution
 func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
-	return c.retryOperation("snapshot", 3, func(attempt int) error {
+	return c.retryOperation("snapshot", 3, func(_ int) error {
 		// Phase 1: Create replication slot immediately (CRITICAL - preserves WAL)
 		slotInfo, err := c.slot.Create(ctx)
 		if err != nil {

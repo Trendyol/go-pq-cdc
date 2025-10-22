@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -143,4 +145,19 @@ func (s *Snapshotter) decodeColumnData(data []byte, dataTypeOID uint32) (interfa
 		return dt.Codec.DecodeValue(s.typeMap, dataTypeOID, pgtype.TextFormatCode, data)
 	}
 	return string(data), nil
+}
+
+// generateInstanceID generates a unique instance identifier
+func generateInstanceID(configuredID string) string {
+	if configuredID != "" {
+		return configuredID
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
+	pid := os.Getpid()
+	return fmt.Sprintf("%s-%d", hostname, pid)
 }

@@ -69,10 +69,7 @@ func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, curre
 	// Create chunks for each table
 	totalChunks := 0
 	for _, table := range s.tables {
-		chunks, err := s.createTableChunks(ctx, slotName, table)
-		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("create chunks for table %s.%s", table.Schema, table.Name))
-		}
+		chunks := s.createTableChunks(ctx, slotName, table)
 
 		// Save chunks
 		for _, chunk := range chunks {
@@ -336,10 +333,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 
 	// Process each row
 	for i, row := range result.Rows {
-		rowData, err := s.parseRow(result.FieldDescriptions, row)
-		if err != nil {
-			return rowCount, errors.Wrap(err, "parse row")
-		}
+		rowData := s.parseRow(result.FieldDescriptions, row)
 
 		isLast := (i == len(result.Rows)-1) && (rowCount < chunk.ChunkSize)
 
@@ -395,7 +389,7 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, conn pq.Connection, 
 }
 
 // createTableChunks divides a table into chunks
-func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) ([]*Chunk, error) {
+func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
 	rowCount, err := s.getTableRawCount(ctx, table.Schema, table.Name)
 	if err != nil {
 		logger.Warn("[chunk] failed to estimate row count, using single chunk", "table", table.Name, "error", err)
@@ -416,7 +410,7 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 				ChunkSize:   chunkSize,
 				Status:      ChunkStatusPending,
 			},
-		}, nil
+		}
 	}
 
 	// Calculate number of chunks (ceiling division)
@@ -438,11 +432,11 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 	}
 
 	logger.Debug("[chunk] chunks created", "table", table.Name, "rowCount", rowCount, "chunkSize", chunkSize, "numChunks", numChunks)
-	return chunks, nil
+	return chunks
 }
 
 // parseRow converts PostgreSQL row data to map with proper type conversion
-func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) (map[string]any, error) {
+func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) map[string]any {
 	rowData := make(map[string]any)
 
 	for i, field := range fields {
@@ -469,7 +463,7 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) (
 		rowData[columnName] = val
 	}
 
-	return rowData, nil
+	return rowData
 }
 
 // saveChunk saves a chunk to the database (only INSERT, coordinator creates once)
@@ -496,7 +490,7 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 }
 
 func (s *Snapshotter) getTableRawCount(ctx context.Context, schema, table string) (int64, error) {
-	//query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
+	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
 
 	results, err := s.execQuery(ctx, s.metadataConn, query)
@@ -546,4 +540,38 @@ func (s *Snapshotter) saveJob(ctx context.Context, job *Job) error {
 		logger.Debug("[metadata] job created", "slotName", job.SlotName, "snapshotID", job.SnapshotID)
 		return nil
 	})
+}
+
+// tryAcquireCoordinatorLock attempts to acquire the PostgreSQL advisory lock for coordinator role
+func (s *Snapshotter) tryAcquireCoordinatorLock(ctx context.Context, slotName string) (bool, error) {
+	// Use PostgreSQL advisory lock
+	// Hash the slot name to create a consistent lock ID
+	lockID := hashString(slotName)
+
+	query := fmt.Sprintf("SELECT pg_try_advisory_lock(%d)", lockID)
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return false, errors.Wrap(err, "acquire coordinator lock")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return false, errors.New("no lock result returned")
+	}
+
+	// PostgreSQL returns 't' for true, 'f' for false
+	acquired := string(results[0].Rows[0][0]) == "t"
+	return acquired, nil
+}
+
+// hashString creates a numeric hash for PostgreSQL advisory lock
+func hashString(s string) int64 {
+	var hash int64
+	for i := 0; i < len(s); i++ {
+		hash = hash*31 + int64(s[i])
+	}
+	// Keep positive
+	if hash < 0 {
+		hash = -hash
+	}
+	return hash
 }

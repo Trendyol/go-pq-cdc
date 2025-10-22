@@ -94,8 +94,12 @@ func (s *Snapshotter) loadJob(ctx context.Context, slotName string) (*Job, error
 		}
 
 		job.Completed = string(row[4]) == "t" || string(row[4]) == "true"
-		fmt.Sscanf(string(row[5]), "%d", &job.TotalChunks)
-		fmt.Sscanf(string(row[6]), "%d", &job.CompletedChunks)
+		if _, err := fmt.Sscanf(string(row[5]), "%d", &job.TotalChunks); err != nil {
+			return errors.Wrap(err, "parse total chunks")
+		}
+		if _, err := fmt.Sscanf(string(row[6]), "%d", &job.CompletedChunks); err != nil {
+			return errors.Wrap(err, "parse completed chunks")
+		}
 
 		return nil
 	})
@@ -133,8 +137,12 @@ func (s *Snapshotter) checkJobCompleted(ctx context.Context, slotName string) (b
 
 		row := results[0].Rows[0]
 		var total, completed int
-		fmt.Sscanf(string(row[0]), "%d", &total)
-		fmt.Sscanf(string(row[1]), "%d", &completed)
+		if _, err := fmt.Sscanf(string(row[0]), "%d", &total); err != nil {
+			return errors.Wrap(err, "parse total count")
+		}
+		if _, err := fmt.Sscanf(string(row[1]), "%d", &completed); err != nil {
+			return errors.Wrap(err, "parse completed count")
+		}
 
 		isCompleted = total > 0 && total == completed
 		return nil
@@ -145,7 +153,6 @@ func (s *Snapshotter) checkJobCompleted(ctx context.Context, slotName string) (b
 
 // Helper functions
 
-// TODO: buraya bakalım.
 func parseTimestamp(s string) (time.Time, error) {
 	formats := []string{
 		"2006-01-02 15:04:05.999999",

@@ -24,12 +24,13 @@ func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) e
 
 		// Check if both job and chunks are ready
 		yes, status, err := s.isCoordinatorDidItsJob(ctx, slotName)
-		if err != nil {
+		switch {
+		case err != nil:
 			logger.Debug("[worker] waiting for coordinator", "status", status, "error", err)
-		} else if yes {
+		case yes:
 			logger.Debug("[worker] coordinator ready, starting work", "status", status)
 			return nil
-		} else {
+		default:
 			logger.Debug("[worker] waiting for coordinator", "status", status)
 		}
 
@@ -372,38 +373,7 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 
 	err := s.retryDBOperation(ctx, func() error {
 		now := time.Now().UTC()
-		timeoutThreshold := now.Add(-claimTimeout)
-
-		// Claim a pending chunk OR reclaim a stale in-progress chunk
-		query := fmt.Sprintf(`
-			WITH available_chunk AS (
-				SELECT id FROM %s
-				WHERE slot_name = '%s'
-				  AND (
-					  status = 'pending'
-					  OR (status = 'in_progress' AND heartbeat_at < '%s')
-				  )
-				ORDER BY chunk_index
-				LIMIT 1
-				FOR UPDATE SKIP LOCKED
-			)
-			UPDATE %s c
-			SET status = 'in_progress',
-			    claimed_by = '%s',
-			    claimed_at = '%s',
-			    heartbeat_at = '%s'
-			FROM available_chunk
-			WHERE c.id = available_chunk.id
-			RETURNING c.id, c.table_schema, c.table_name, 
-			          c.chunk_index, c.chunk_start, c.chunk_size, c.rows_processed
-		`, chunksTableName,
-			slotName,
-			timeoutThreshold.Format("2006-01-02 15:04:05"),
-			chunksTableName,
-			instanceID,
-			now.Format("2006-01-02 15:04:05"),
-			now.Format("2006-01-02 15:04:05"),
-		)
+		query := s.buildClaimChunkQuery(slotName, instanceID, now, claimTimeout)
 
 		results, err := s.execQuery(ctx, s.metadataConn, query)
 		if err != nil {
@@ -420,35 +390,74 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 			return errors.New("invalid chunk row")
 		}
 
-		// Parse chunk data with validation
-		chunk = &Chunk{
-			SlotName:    slotName,
-			Status:      ChunkStatusInProgress,
-			ClaimedBy:   instanceID,
-			ClaimedAt:   &now,
-			HeartbeatAt: &now,
-		}
-
-		// Validate and parse each field
-		if _, err := fmt.Sscanf(string(row[0]), "%d", &chunk.ID); err != nil {
-			return errors.Wrap(err, "parse chunk ID")
-		}
-		chunk.TableSchema = string(row[1])
-		chunk.TableName = string(row[2])
-		if _, err := fmt.Sscanf(string(row[3]), "%d", &chunk.ChunkIndex); err != nil {
-			return errors.Wrap(err, "parse chunk index")
-		}
-		if _, err := fmt.Sscanf(string(row[4]), "%d", &chunk.ChunkStart); err != nil {
-			return errors.Wrap(err, "parse chunk start")
-		}
-		if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
-			return errors.Wrap(err, "parse chunk size")
-		}
-
-		return nil
+		chunk, err = s.parseClaimedChunk(row, slotName, instanceID, now)
+		return err
 	})
 
 	return chunk, err
+}
+
+// buildClaimChunkQuery builds the SQL query for claiming a chunk
+func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time.Time, claimTimeout time.Duration) string {
+	timeoutThreshold := now.Add(-claimTimeout)
+	return fmt.Sprintf(`
+		WITH available_chunk AS (
+			SELECT id FROM %s
+			WHERE slot_name = '%s'
+			  AND (
+				  status = 'pending'
+				  OR (status = 'in_progress' AND heartbeat_at < '%s')
+			  )
+			ORDER BY chunk_index
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE %s c
+		SET status = 'in_progress',
+		    claimed_by = '%s',
+		    claimed_at = '%s',
+		    heartbeat_at = '%s'
+		FROM available_chunk
+		WHERE c.id = available_chunk.id
+		RETURNING c.id, c.table_schema, c.table_name, 
+		          c.chunk_index, c.chunk_start, c.chunk_size, c.rows_processed
+	`, chunksTableName,
+		slotName,
+		timeoutThreshold.Format("2006-01-02 15:04:05"),
+		chunksTableName,
+		instanceID,
+		now.Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"),
+	)
+}
+
+// parseClaimedChunk parses the chunk row data
+func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID string, now time.Time) (*Chunk, error) {
+	chunk := &Chunk{
+		SlotName:    slotName,
+		Status:      ChunkStatusInProgress,
+		ClaimedBy:   instanceID,
+		ClaimedAt:   &now,
+		HeartbeatAt: &now,
+	}
+
+	// Parse each field with validation
+	if _, err := fmt.Sscanf(string(row[0]), "%d", &chunk.ID); err != nil {
+		return nil, errors.Wrap(err, "parse chunk ID")
+	}
+	chunk.TableSchema = string(row[1])
+	chunk.TableName = string(row[2])
+	if _, err := fmt.Sscanf(string(row[3]), "%d", &chunk.ChunkIndex); err != nil {
+		return nil, errors.Wrap(err, "parse chunk index")
+	}
+	if _, err := fmt.Sscanf(string(row[4]), "%d", &chunk.ChunkStart); err != nil {
+		return nil, errors.Wrap(err, "parse chunk start")
+	}
+	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
+		return nil, errors.Wrap(err, "parse chunk size")
+	}
+
+	return chunk, nil
 }
 
 // updateChunkHeartbeat updates the heartbeat timestamp for a chunk with retry

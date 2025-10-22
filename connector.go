@@ -222,7 +222,14 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 // This ensures no WAL changes are lost during snapshot execution
 func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
 	return c.retryOperation("snapshot", 3, func(attempt int) error {
-		// Phase 1: Prepare snapshot (capture LSN, create metadata, export snapshot)
+		// Phase 1: Create replication slot immediately (CRITICAL - preserves WAL)
+		slotInfo, err := c.slot.Create(ctx)
+		if err != nil {
+			return errors.Wrap(err, "create slot")
+		}
+		logger.Debug("replication slot created, WAL preserved", "slotName", slotInfo.Name, "restartLSN", slotInfo.RestartLSN.String())
+
+		// Phase 2: Prepare snapshot (capture LSN, create metadata, export snapshot)
 		snapshotLSN, err := c.snapshotter.Prepare(ctx, c.cfg.Slot.Name)
 		if err != nil {
 			return errors.Wrap(err, "prepare snapshot")
@@ -231,13 +238,6 @@ func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
 		c.snapshotLSN = snapshotLSN
 		c.stream.SetSnapshotLSN(snapshotLSN)
 		logger.Debug("snapshot prepared, LSN captured", "snapshotLSN", snapshotLSN.String())
-
-		// Phase 2: Create replication slot immediately (CRITICAL - preserves WAL)
-		slotInfo, err := c.slot.Create(ctx)
-		if err != nil {
-			return errors.Wrap(err, "create slot")
-		}
-		logger.Debug("replication slot created, WAL preserved", "slotName", slotInfo.Name, "restartLSN", slotInfo.RestartLSN.String())
 
 		// Phase 3: Execute snapshot (collect data from all chunks)
 		if err := c.snapshotter.Execute(ctx, c.snapshotHandler, c.cfg.Slot.Name); err != nil {

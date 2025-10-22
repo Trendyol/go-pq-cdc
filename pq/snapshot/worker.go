@@ -14,7 +14,7 @@ import (
 // waitForCoordinator waits for the coordinator to initialize job and create chunks
 // Workers need both job metadata and chunks to be ready before they can start processing
 func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) error {
-	timeout := 30 * time.Second
+	timeout := 5 * time.Minute
 	deadline := time.Now().Add(timeout)
 
 	for {
@@ -286,10 +286,10 @@ func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID strin
 
 // snapshotTransaction manages a single snapshot transaction lifecycle
 type snapshotTransaction struct {
-	snapshotter *Snapshotter
 	ctx         context.Context
+	conn        pq.Connection
+	snapshotter *Snapshotter
 	snapshotID  string
-	conn        pq.Connection // Dedicated connection for this transaction
 	committed   bool
 }
 

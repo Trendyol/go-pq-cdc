@@ -396,7 +396,7 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, conn pq.Connection, 
 
 // createTableChunks divides a table into chunks
 func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) ([]*Chunk, error) {
-	rowCount, err := s.estimateTableRowCount(ctx, table.Schema, table.Name)
+	rowCount, err := s.getTableRawCount(ctx, table.Schema, table.Name)
 	if err != nil {
 		logger.Warn("[chunk] failed to estimate row count, using single chunk", "table", table.Name, "error", err)
 		rowCount = 0
@@ -495,11 +495,9 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 	})
 }
 
-// estimateTableRowCount estimates the number of rows in a table
-// Note: This is an estimate from pg_class.reltuples, actual count may differ
-// Last chunk will handle any difference (may have fewer rows than chunkSize)
-func (s *Snapshotter) estimateTableRowCount(ctx context.Context, schema, table string) (int64, error) {
-	query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
+func (s *Snapshotter) getTableRawCount(ctx context.Context, schema, table string) (int64, error) {
+	//query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
 
 	results, err := s.execQuery(ctx, s.metadataConn, query)
 	if err != nil {

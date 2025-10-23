@@ -2,7 +2,7 @@ package snapshot
 
 import (
 	"context"
-	"errors"
+	goerrors "errors"
 	"net"
 	"strings"
 	"syscall"
@@ -82,21 +82,21 @@ func isTransientError(err error) bool {
 	}
 
 	// 1. Check for context errors (deadline exceeded, canceled)
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	if goerrors.Is(err, context.DeadlineExceeded) || goerrors.Is(err, context.Canceled) {
 		return true
 	}
 
 	// 2. Check for pgconn connection errors
 	// These occur during initial connection or when connection is lost
 	var connectErr *pgconn.ConnectError
-	if errors.As(err, &connectErr) {
+	if goerrors.As(err, &connectErr) {
 		return true
 	}
 
 	// 3. Check for PostgreSQL-specific transient errors
 	// Reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if goerrors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "40001": // serialization_failure
 			return true
@@ -117,23 +117,23 @@ func isTransientError(err error) bool {
 
 	// 4. Check for Go's standard network timeout errors
 	var timeoutErr interface{ Timeout() bool }
-	if errors.As(err, &timeoutErr) && timeoutErr.Timeout() {
+	if goerrors.As(err, &timeoutErr) && timeoutErr.Timeout() {
 		return true
 	}
 
 	// 5. Check for Go's standard temporary network errors
 	var tempErr interface{ Temporary() bool }
-	if errors.As(err, &tempErr) && tempErr.Temporary() {
+	if goerrors.As(err, &tempErr) && tempErr.Temporary() {
 		return true
 	}
 
 	// 6. Check for specific syscall errors (low-level network errors)
 	var netErr *net.OpError
-	if errors.As(err, &netErr) {
+	if goerrors.As(err, &netErr) {
 		// ECONNREFUSED, ECONNRESET, EPIPE are transient
-		if errors.Is(netErr.Err, syscall.ECONNREFUSED) ||
-			errors.Is(netErr.Err, syscall.ECONNRESET) ||
-			errors.Is(netErr.Err, syscall.EPIPE) {
+		if goerrors.Is(netErr.Err, syscall.ECONNREFUSED) ||
+			goerrors.Is(netErr.Err, syscall.ECONNRESET) ||
+			goerrors.Is(netErr.Err, syscall.EPIPE) {
 			return true
 		}
 	}

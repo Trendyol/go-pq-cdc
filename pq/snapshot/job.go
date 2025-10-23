@@ -155,8 +155,8 @@ func (s *Snapshotter) checkJobCompleted(ctx context.Context, slotName string) (b
 
 func parseTimestamp(s string) (time.Time, error) {
 	formats := []string{
-		"2006-01-02 15:04:05.999999",
-		"2006-01-02 15:04:05",
+		postgresTimestampFormatMicros,
+		postgresTimestampFormat,
 	}
 
 	for _, format := range formats {

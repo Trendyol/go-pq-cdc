@@ -14,6 +14,12 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// Time format constants for PostgreSQL timestamp formatting
+const (
+	postgresTimestampFormat       = "2006-01-02 15:04:05"
+	postgresTimestampFormatMicros = "2006-01-02 15:04:05.999999"
+)
+
 // execSQL executes a SQL statement without returning results (DDL, DML)
 func (s *Snapshotter) execSQL(ctx context.Context, conn pq.Connection, sql string) error {
 	resultReader := conn.Exec(ctx, sql)

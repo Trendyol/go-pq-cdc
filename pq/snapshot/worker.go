@@ -423,11 +423,11 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 		          c.chunk_index, c.chunk_start, c.chunk_size, c.rows_processed
 	`, chunksTableName,
 		slotName,
-		timeoutThreshold.Format("2006-01-02 15:04:05"),
+		timeoutThreshold.Format(postgresTimestampFormat),
 		chunksTableName,
 		instanceID,
-		now.Format("2006-01-02 15:04:05"),
-		now.Format("2006-01-02 15:04:05"),
+		now.Format(postgresTimestampFormat),
+		now.Format(postgresTimestampFormat),
 	)
 }
 
@@ -466,7 +466,7 @@ func (s *Snapshotter) updateChunkHeartbeat(ctx context.Context, chunkID int64) e
 		now := time.Now().UTC()
 		query := fmt.Sprintf(`
 			UPDATE %s SET heartbeat_at = '%s' WHERE id = %d
-		`, chunksTableName, now.Format("2006-01-02 15:04:05"), chunkID)
+		`, chunksTableName, now.Format(postgresTimestampFormat), chunkID)
 
 		_, err := s.execQuery(ctx, s.healthcheckConn, query)
 		return err
@@ -487,7 +487,7 @@ func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, c
 			    completed_at = '%s',
 			    rows_processed = %d
 			WHERE id = %d
-		`, chunksTableName, now.Format("2006-01-02 15:04:05"), rowsProcessed, chunkID)
+		`, chunksTableName, now.Format(postgresTimestampFormat), rowsProcessed, chunkID)
 
 		if _, err := s.execQuery(ctx, s.metadataConn, chunkQuery); err != nil {
 			return errors.Wrap(err, "update chunk status")

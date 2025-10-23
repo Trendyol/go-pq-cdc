@@ -106,6 +106,15 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 
 	logger.Info("[coordinator] exporting snapshot")
 
+	// Disable timeouts for snapshot transaction
+	if err := s.execSQL(ctx, exportSnapshotConn, "SET idle_in_transaction_session_timeout = 0"); err != nil {
+		return errors.Wrap(err, "set idle timeout")
+	}
+
+	if err := s.execSQL(ctx, exportSnapshotConn, "SET statement_timeout = 0"); err != nil {
+		return errors.Wrap(err, "set statement timeout")
+	}
+
 	// Start transaction on snapshot connection (will stay open)
 	if err := s.execSQL(ctx, exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
 		return errors.Wrap(err, "begin snapshot transaction")

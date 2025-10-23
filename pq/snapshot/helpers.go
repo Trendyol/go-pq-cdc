@@ -2,12 +2,15 @@ package snapshot
 
 import (
 	"context"
+	"errors"
+	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
-	"github.com/go-playground/errors"
+	errors2 "github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -69,7 +72,7 @@ func (s *Snapshotter) retryDBOperation(ctx context.Context, operation func() err
 		return err
 	}
 
-	return errors.Wrap(lastErr, "database operation failed after retries")
+	return errors2.Wrap(lastErr, "database operation failed after retries")
 }
 
 // isTransientError checks if an error is transient and should be retried
@@ -78,22 +81,69 @@ func isTransientError(err error) bool {
 		return false
 	}
 
-	errStr := err.Error()
-	transientPatterns := []string{
-		"connection reset",
-		"connection refused",
-		"i/o timeout",
-		"deadline exceeded",
-		"broken pipe",
-		"connection closed",
-		"connection lost",
-		"temporary failure",
+	// 1. Check for context errors (deadline exceeded, canceled)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
 	}
 
-	for _, pattern := range transientPatterns {
-		if strings.Contains(strings.ToLower(errStr), pattern) {
+	// 2. Check for pgconn connection errors
+	// These occur during initial connection or when connection is lost
+	var connectErr *pgconn.ConnectError
+	if errors.As(err, &connectErr) {
+		return true
+	}
+
+	// 3. Check for PostgreSQL-specific transient errors
+	// Reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "40001": // serialization_failure
+			return true
+		case "40P01": // deadlock_detected
+			return true
+		case "55006": // object_in_use
+			return true
+		case "55P03": // lock_not_available
+			return true
+		case "57P03": // cannot_connect_now
+			return true
+		case "58000": // system_error
+			return true
+		case "58030": // io_error
 			return true
 		}
+	}
+
+	// 4. Check for Go's standard network timeout errors
+	var timeoutErr interface{ Timeout() bool }
+	if errors.As(err, &timeoutErr) && timeoutErr.Timeout() {
+		return true
+	}
+
+	// 5. Check for Go's standard temporary network errors
+	var tempErr interface{ Temporary() bool }
+	if errors.As(err, &tempErr) && tempErr.Temporary() {
+		return true
+	}
+
+	// 6. Check for specific syscall errors (low-level network errors)
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		// ECONNREFUSED, ECONNRESET, EPIPE are transient
+		if errors.Is(netErr.Err, syscall.ECONNREFUSED) ||
+			errors.Is(netErr.Err, syscall.ECONNRESET) ||
+			errors.Is(netErr.Err, syscall.EPIPE) {
+			return true
+		}
+	}
+
+	// 7. Fallback to string matching for edge cases not covered above
+	// This is kept minimal as a safety net
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "connection closed") ||
+		strings.Contains(errStr, "connection lost") {
+		return true
 	}
 
 	return false

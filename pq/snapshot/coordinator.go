@@ -120,6 +120,8 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 		return errors.Wrap(err, "begin snapshot transaction")
 	}
 
+	go s.snapshotTransactionKeepalive(ctx, exportSnapshotConn)
+
 	// Export snapshot
 	snapshotID, err := s.exportSnapshot(ctx, exportSnapshotConn)
 	if err != nil {
@@ -137,6 +139,21 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 
 	logger.Info("[coordinator] snapshot transaction ready for workers")
 	return nil
+}
+
+func (s *Snapshotter) snapshotTransactionKeepalive(ctx context.Context, conn pq.Connection) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Keepalive: SELECT 1
+			_ = s.execSQL(context.Background(), conn, "SELECT 1")
+		}
+	}
 }
 
 // cleanupJob removes metadata for an incomplete snapshot job

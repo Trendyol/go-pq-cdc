@@ -10,7 +10,7 @@ import (
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
-	errors2 "github.com/go-playground/errors"
+	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -72,7 +72,7 @@ func (s *Snapshotter) retryDBOperation(ctx context.Context, operation func() err
 		return err
 	}
 
-	return errors2.Wrap(lastErr, "database operation failed after retries")
+	return errors.Wrap(lastErr, "database operation failed after retries")
 }
 
 // isTransientError checks if an error is transient and should be retried

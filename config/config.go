@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
@@ -35,11 +36,17 @@ type LoggerConfig struct {
 }
 
 func (c *Config) DSN() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?replication=database", c.Username, c.Password, c.Host, c.Port, c.Database)
+	// URL-encode username and password to handle special characters
+	encodedUsername := url.QueryEscape(c.Username)
+	encodedPassword := url.QueryEscape(c.Password)
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?replication=database", encodedUsername, encodedPassword, c.Host, c.Port, c.Database)
 }
 
 func (c *Config) DSNWithoutSSL() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", c.Username, c.Password, c.Host, c.Port, c.Database)
+	// URL-encode username and password to handle special characters
+	encodedUsername := url.QueryEscape(c.Username)
+	encodedPassword := url.QueryEscape(c.Password)
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", encodedUsername, encodedPassword, c.Host, c.Port, c.Database)
 }
 
 func (c *Config) SetDefault() {

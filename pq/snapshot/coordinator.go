@@ -235,6 +235,7 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 	return nil, false, nil
 }
 
+//nolint:funlen
 func (s *Snapshotter) initTables(ctx context.Context) error {
 	// Check if job table exists
 	jobTableExists, err := s.tableExists(ctx, jobTableName)

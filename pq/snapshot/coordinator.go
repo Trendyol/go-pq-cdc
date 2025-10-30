@@ -236,56 +236,86 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 }
 
 func (s *Snapshotter) initTables(ctx context.Context) error {
-	// Create job metadata table
-	jobTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			slot_name TEXT PRIMARY KEY,
-			snapshot_id TEXT NOT NULL,
-			snapshot_lsn TEXT NOT NULL,
-			started_at TIMESTAMP NOT NULL,
-			completed BOOLEAN DEFAULT FALSE,
-			total_chunks INT NOT NULL DEFAULT 0,
-			completed_chunks INT NOT NULL DEFAULT 0
-		)
-	`, jobTableName)
-
-	if err := s.execSQL(ctx, s.metadataConn, jobTableSQL); err != nil {
-		return errors.Wrap(err, "create job table")
+	// Check if job table exists
+	jobTableExists, err := s.tableExists(ctx, jobTableName)
+	if err != nil {
+		return errors.Wrap(err, "check job table existence")
 	}
 
-	// Create chunks work queue table
-	chunksTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			id SERIAL PRIMARY KEY,
-			slot_name TEXT NOT NULL,
-			table_schema TEXT NOT NULL,
-			table_name TEXT NOT NULL,
-			chunk_index INT NOT NULL,
-			chunk_start BIGINT NOT NULL,
-			chunk_size BIGINT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'pending',
-			claimed_by TEXT,
-			claimed_at TIMESTAMP,
-			heartbeat_at TIMESTAMP,
-			completed_at TIMESTAMP,
-			rows_processed BIGINT DEFAULT 0,
-			UNIQUE(slot_name, table_schema, table_name, chunk_index)
-		)
-	`, chunksTableName)
+	if !jobTableExists {
+		jobTableSQL := fmt.Sprintf(`
+			CREATE TABLE %s (
+				slot_name TEXT PRIMARY KEY,
+				snapshot_id TEXT NOT NULL,
+				snapshot_lsn TEXT NOT NULL,
+				started_at TIMESTAMP NOT NULL,
+				completed BOOLEAN DEFAULT FALSE,
+				total_chunks INT NOT NULL DEFAULT 0,
+				completed_chunks INT NOT NULL DEFAULT 0
+			)
+		`, jobTableName)
 
-	if err := s.execSQL(ctx, s.metadataConn, chunksTableSQL); err != nil {
-		return errors.Wrap(err, "create chunks table")
+		if err := s.execSQL(ctx, s.metadataConn, jobTableSQL); err != nil {
+			return errors.Wrap(err, "create job table")
+		}
+		logger.Debug("[metadata] job table created")
+	} else {
+		logger.Debug("[metadata] job table already exists, skipping creation")
+	}
+
+	// Check if chunks table exists
+	chunksTableExists, err := s.tableExists(ctx, chunksTableName)
+	if err != nil {
+		return errors.Wrap(err, "check chunks table existence")
+	}
+
+	if !chunksTableExists {
+		chunksTableSQL := fmt.Sprintf(`
+			CREATE TABLE %s (
+				id SERIAL PRIMARY KEY,
+				slot_name TEXT NOT NULL,
+				table_schema TEXT NOT NULL,
+				table_name TEXT NOT NULL,
+				chunk_index INT NOT NULL,
+				chunk_start BIGINT NOT NULL,
+				chunk_size BIGINT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'pending',
+				claimed_by TEXT,
+				claimed_at TIMESTAMP,
+				heartbeat_at TIMESTAMP,
+				completed_at TIMESTAMP,
+				rows_processed BIGINT DEFAULT 0,
+				UNIQUE(slot_name, table_schema, table_name, chunk_index)
+			)
+		`, chunksTableName)
+
+		if err := s.execSQL(ctx, s.metadataConn, chunksTableSQL); err != nil {
+			return errors.Wrap(err, "create chunks table")
+		}
+		logger.Debug("[metadata] chunks table created")
+	} else {
+		logger.Debug("[metadata] chunks table already exists, skipping creation")
 	}
 
 	// Create indexes for efficient queries
-	indexes := []string{
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_chunks_claim ON %s(slot_name, status, claimed_at) WHERE status IN ('pending', 'in_progress')", chunksTableName),
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_chunks_status ON %s(slot_name, status)", chunksTableName),
+	indexes := map[string]string{
+		"idx_chunks_claim":  fmt.Sprintf("CREATE INDEX idx_chunks_claim ON %s(slot_name, status, claimed_at) WHERE status IN ('pending', 'in_progress')", chunksTableName),
+		"idx_chunks_status": fmt.Sprintf("CREATE INDEX idx_chunks_status ON %s(slot_name, status)", chunksTableName),
 	}
 
-	for _, indexSQL := range indexes {
-		if err := s.execSQL(ctx, s.metadataConn, indexSQL); err != nil {
-			return errors.Wrap(err, "create index")
+	for indexName, indexSQL := range indexes {
+		indexExists, err := s.indexExists(ctx, indexName)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("check index %s existence", indexName))
+		}
+
+		if !indexExists {
+			if err := s.execSQL(ctx, s.metadataConn, indexSQL); err != nil {
+				return errors.Wrap(err, fmt.Sprintf("create index %s", indexName))
+			}
+			logger.Debug("[metadata] index created", "index", indexName)
+		} else {
+			logger.Debug("[metadata] index already exists, skipping creation", "index", indexName)
 		}
 	}
 
@@ -600,4 +630,56 @@ func hashString(s string) int64 {
 		hash = -hash
 	}
 	return hash
+}
+
+// tableExists checks if a table exists using information_schema
+// This approach only requires SELECT permission on information_schema
+func (s *Snapshotter) tableExists(ctx context.Context, tableName string) (bool, error) {
+	query := fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT 1 
+			FROM information_schema.tables 
+			WHERE table_schema = 'public' 
+			AND table_name = '%s'
+		)
+	`, tableName)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return false, errors.Wrap(err, "query table existence")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return false, errors.New("no result returned from table existence check")
+	}
+
+	// PostgreSQL returns 't' for true, 'f' for false
+	exists := string(results[0].Rows[0][0]) == "t"
+	return exists, nil
+}
+
+// indexExists checks if an index exists using pg_indexes
+// This approach only requires SELECT permission on pg_indexes
+func (s *Snapshotter) indexExists(ctx context.Context, indexName string) (bool, error) {
+	query := fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT 1 
+			FROM pg_indexes 
+			WHERE schemaname = 'public' 
+			AND indexname = '%s'
+		)
+	`, indexName)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return false, errors.Wrap(err, "query index existence")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return false, errors.New("no result returned from index existence check")
+	}
+
+	// PostgreSQL returns 't' for true, 'f' for false
+	exists := string(results[0].Rows[0][0]) == "t"
+	return exists, nil
 }

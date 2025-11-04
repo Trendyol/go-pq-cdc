@@ -34,7 +34,6 @@ func (s *Snapshotter) exportSnapshot(ctx context.Context, exportSnapshotConn pq.
 		}
 
 		snapshotID = string(results[0].Rows[0][0])
-		logger.Info("[coordinator] snapshot exported", "snapshotID", snapshotID)
 		return nil
 	})
 

@@ -98,7 +98,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	snapshotter, err := initializeSnapshot(ctx, cfg, m)
+	snapshotter, err := initializeSnapshot(ctx, cfg, publicationInfo.Tables, m)
 	if err != nil {
 		return nil, err
 	}
@@ -143,11 +143,14 @@ func initializePublication(ctx context.Context, cfg config.Config, conn pq.Conne
 }
 
 // initializeSnapshot creates snapshot if enabled
-func initializeSnapshot(ctx context.Context, cfg config.Config, m metric.Metric) (*snapshot.Snapshotter, error) {
+// tables parameter should come from publicationInfo (not from config) to support both scenarios:
+// 1. When user provides tables in config (createIfNotExists: true)
+// 2. When user uses existing publication without specifying tables (createIfNotExists: false)
+func initializeSnapshot(ctx context.Context, cfg config.Config, tables publication.Tables, m metric.Metric) (*snapshot.Snapshotter, error) {
 	if !cfg.Snapshot.Enabled {
 		return nil, nil
 	}
-	return snapshot.New(ctx, cfg.Snapshot, cfg.Publication.Tables, cfg.DSN(), m)
+	return snapshot.New(ctx, cfg.Snapshot, tables, cfg.DSN(), m)
 }
 
 // initializeTimescaleDB sets up TimescaleDB connection

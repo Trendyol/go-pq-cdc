@@ -81,6 +81,9 @@ func (c *Publication) Info(ctx context.Context) (*Config, error) {
 
 func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 	var publicationConfig Config
+	var tableNames []string
+	var schemaNames []string
+
 	for i, fd := range result.FieldDescriptions {
 		v, err := decodeTextColumnData(result.Rows[0][i], fd.DataTypeOID)
 		if err != nil {
@@ -112,9 +115,25 @@ func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 			}
 		case "included_tables":
 			for _, val := range v.([]any) {
-				publicationConfig.Tables = append(publicationConfig.Tables, Table{Name: val.(string)})
+				tableNames = append(tableNames, val.(string))
+			}
+		case "included_schemas":
+			for _, val := range v.([]any) {
+				schemaNames = append(schemaNames, val.(string))
 			}
 		}
+	}
+
+	// Combine table names and schemas
+	for i, tableName := range tableNames {
+		schema := "public" // default schema
+		if i < len(schemaNames) && schemaNames[i] != "" {
+			schema = schemaNames[i]
+		}
+		publicationConfig.Tables = append(publicationConfig.Tables, Table{
+			Name:   tableName,
+			Schema: schema,
+		})
 	}
 
 	return &publicationConfig, nil

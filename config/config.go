@@ -36,7 +36,15 @@ type LoggerConfig struct {
 	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
 }
 
+// DSN returns a normal PostgreSQL connection string for regular database operations
+// (publication, metadata, snapshot chunks, etc.)
 func (c *Config) DSN() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s", c.Username, c.Password, c.Host, c.Port, c.Database)
+}
+
+// ReplicationDSN returns a replication connection string for CDC streaming
+// This connection counts against max_wal_senders limit
+func (c *Config) ReplicationDSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?replication=database", c.Username, c.Password, c.Host, c.Port, c.Database)
 }
 

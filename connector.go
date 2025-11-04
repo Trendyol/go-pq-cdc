@@ -79,6 +79,8 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	logger.InitLogger(cfg.Logger.Logger)
 
+	// Normal connection for publication setup
+	// This uses regular DSN (no replication parameter) to avoid consuming max_wal_senders limit
 	conn, err := pq.NewConnection(ctx, cfg.DSN())
 	if err != nil {
 		return nil, err
@@ -90,11 +92,8 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	}
 	logger.Info("publication", "info", publicationInfo)
 
-	system, err := pq.IdentifySystem(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
+	// Close the setup connection - we don't need it anymore
+	conn.Close(ctx)
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
@@ -103,9 +102,24 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
-	stream := replication.NewStream(conn, cfg, m, &system, listenerFunc)
+	// Create dedicated replication connection for CDC streaming
+	// This is the ONLY connection that should use ReplicationDSN()
+	// IMPORTANT: IDENTIFY_SYSTEM command requires replication connection
+	replConn, err := pq.NewConnection(ctx, cfg.ReplicationDSN())
+	if err != nil {
+		return nil, errors.Wrap(err, "create replication connection")
+	}
 
-	sl, err := slot.NewSlot(ctx, cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
+	system, err := pq.IdentifySystem(ctx, replConn)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
+
+	stream := replication.NewStream(replConn, cfg, m, &system, listenerFunc)
+
+	// Slot needs replication connection for CREATE_REPLICATION_SLOT command
+	sl, err := slot.NewSlot(ctx, cfg.ReplicationDSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
 	if err != nil {
 		return nil, err
 	}

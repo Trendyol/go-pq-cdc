@@ -11,6 +11,14 @@ import (
 	"github.com/go-playground/errors"
 )
 
+const (
+	// Retry configuration for snapshot execution
+	snapshotRetryMaxAttempts       = 5
+	snapshotRetryInitialDelay      = 10 * time.Second
+	snapshotRetryMaxDelay          = 60 * time.Second
+	snapshotRetryBackoffMultiplier = 2
+)
+
 // waitForCoordinator waits for the coordinator to initialize job and create chunks
 // Workers need both job metadata and chunks to be ready before they can start processing
 func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) error {
@@ -150,10 +158,8 @@ func (s *Snapshotter) startHeartbeat(ctx context.Context) (cancel context.Cancel
 // Returns (hasMore, error) where hasMore indicates if there are more chunks to process
 func (s *Snapshotter) processNextChunk(ctx context.Context, slotName, instanceID string, job *Job, handler Handler, chunkChan chan<- int64) (bool, error) {
 	// Check context cancellation
-	select {
-	case <-ctx.Done():
+	if ctx.Err() != nil {
 		return false, ctx.Err()
-	default:
 	}
 
 	// Claim next chunk
@@ -162,26 +168,66 @@ func (s *Snapshotter) processNextChunk(ctx context.Context, slotName, instanceID
 		return false, errors.Wrap(err, "claim next chunk")
 	}
 	if chunk == nil {
-		return false, nil // No more chunks
+		return false, nil // No more chunks available
 	}
 
-	// Log chunk start
+	// Setup chunk processing
+	s.prepareChunkProcessing(instanceID, chunk, chunkChan)
+
+	// Process chunk and handle errors
+	return s.executeChunkProcessing(ctx, slotName, instanceID, job, handler, chunk)
+}
+
+// prepareChunkProcessing logs and notifies heartbeat for chunk
+func (s *Snapshotter) prepareChunkProcessing(instanceID string, chunk *Chunk, chunkChan chan<- int64) {
 	s.logChunkStart(instanceID, chunk)
-
-	// Notify heartbeat
 	s.notifyHeartbeat(chunkChan, chunk.ID)
+}
 
-	// Process chunk
+// executeChunkProcessing processes a chunk and handles errors appropriately
+func (s *Snapshotter) executeChunkProcessing(ctx context.Context, slotName, instanceID string, job *Job, handler Handler, chunk *Chunk) (bool, error) {
 	rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
 	if err != nil {
-		logger.Error("[worker] chunk processing failed", "chunkID", chunk.ID, "error", err)
-		return true, nil // Continue with next chunk
+		return s.handleChunkProcessingError(ctx, instanceID, chunk, job.SnapshotID, err)
 	}
 
-	// Post-process: mark complete and update metrics
+	// Success: mark chunk as completed
 	s.completeChunk(ctx, slotName, instanceID, chunk, rowsProcessed)
-
 	return true, nil // More chunks may be available
+}
+
+// handleChunkProcessingError handles different types of chunk processing errors
+func (s *Snapshotter) handleChunkProcessingError(ctx context.Context, instanceID string, chunk *Chunk, snapshotID string, err error) (bool, error) {
+	// Invalid snapshot error: coordinator restarted
+	if isInvalidSnapshotError(err) {
+		return s.handleInvalidSnapshot(ctx, instanceID, chunk, snapshotID)
+	}
+
+	// Other errors: log and continue processing
+	logger.Error("[worker] chunk processing failed", "chunkID", chunk.ID, "error", err)
+	return true, nil // Continue with next chunk
+}
+
+// handleInvalidSnapshot handles the case when snapshot becomes invalid
+// Returns (false, error) to stop worker loop and trigger retry
+func (s *Snapshotter) handleInvalidSnapshot(ctx context.Context, instanceID string, chunk *Chunk, snapshotID string) (bool, error) {
+	logger.Warn("[worker] invalid snapshot detected, coordinator likely restarted",
+		"chunkID", chunk.ID,
+		"snapshotID", snapshotID,
+		"instanceID", instanceID)
+
+	// Release chunk back to pending so it can be reprocessed
+	if err := s.releaseChunk(ctx, chunk.ID); err != nil {
+		logger.Error("[worker] failed to release chunk after invalid snapshot",
+			"chunkID", chunk.ID,
+			"error", err)
+	} else {
+		logger.Info("[worker] chunk released back to pending", "chunkID", chunk.ID)
+	}
+
+	// Signal worker to stop and trigger retry at connector level
+	logger.Info("[worker] stopping worker due to invalid snapshot, will restart", "instanceID", instanceID)
+	return false, ErrSnapshotInvalidated
 }
 
 // logChunkStart logs the start of chunk processing
@@ -503,6 +549,27 @@ func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, c
 
 		if _, err := s.execQuery(ctx, s.metadataConn, jobQuery); err != nil {
 			return errors.Wrap(err, "increment completed chunks")
+		}
+
+		return nil
+	})
+}
+
+// releaseChunk releases a claimed chunk back to pending status
+// This allows other workers to reclaim and process the chunk
+func (s *Snapshotter) releaseChunk(ctx context.Context, chunkID int64) error {
+	return s.retryDBOperation(ctx, func() error {
+		query := fmt.Sprintf(`
+			UPDATE %s
+			SET status = 'pending',
+			    claimed_by = NULL,
+			    claimed_at = NULL,
+			    heartbeat_at = NULL
+			WHERE id = %d
+		`, chunksTableName, chunkID)
+
+		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
+			return errors.Wrap(err, "release chunk")
 		}
 
 		return nil

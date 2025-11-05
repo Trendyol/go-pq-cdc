@@ -3,6 +3,7 @@ package cdc
 import (
 	"context"
 	goerrors "errors"
+	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -275,13 +276,106 @@ func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
 		logger.Debug("snapshot prepared, LSN captured", "snapshotLSN", snapshotLSN.String())
 
 		// Phase 3: Execute snapshot (collect data from all chunks)
-		if err := c.snapshotter.Execute(ctx, c.snapshotHandler, c.cfg.Slot.Name); err != nil {
+		// This may fail if coordinator restarts during execution - retry with backoff
+		if err := c.executeSnapshotWithRetry(ctx); err != nil {
+			// Non-recoverable error
+			if c.isSnapshotInvalidationError(err) {
+				log.Fatal(err)
+			}
 			return errors.Wrap(err, "execute snapshot")
 		}
 
 		logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
 		return nil
 	})
+}
+
+// executeSnapshotWithRetry executes snapshot with retry on coordinator failures
+// When coordinator restarts, it creates a new snapshot - workers should retry to join the new snapshot
+func (c *connector) executeSnapshotWithRetry(ctx context.Context) error {
+	const (
+		maxRetries        = 5
+		initialDelay      = 10 * time.Second
+		maxDelay          = 60 * time.Second
+		backoffMultiplier = 2
+	)
+
+	retryDelay := initialDelay
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := c.snapshotter.Execute(ctx, c.snapshotHandler, c.cfg.Slot.Name)
+		if err == nil {
+			return nil // Success
+		}
+
+		// Check if this is a recoverable error (snapshot invalidation)
+		if !c.isSnapshotInvalidationError(err) {
+			// Non-recoverable error
+			return err
+		}
+
+		// Last attempt exhausted
+		if attempt >= maxRetries {
+			return errors.Wrap(err, "snapshot execution failed after maximum retries")
+		}
+
+		// Log and wait before retry
+		c.logRetryAttempt(attempt, maxRetries, retryDelay)
+
+		if waitErr := c.waitWithContext(ctx, retryDelay); waitErr != nil {
+			return waitErr
+		}
+
+		// Exponential backoff
+		retryDelay = c.calculateNextDelay(retryDelay, maxDelay, backoffMultiplier)
+	}
+
+	return errors.New("snapshot execution failed: unexpected exit from retry loop")
+}
+
+// isSnapshotInvalidationError checks if error is due to snapshot invalidation
+func (c *connector) isSnapshotInvalidationError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for typed error first (preferred)
+	if goerrors.Is(err, snapshot.ErrSnapshotInvalidated) {
+		return true
+	}
+
+	// Fallback to string matching for wrapped errors
+	return strings.Contains(err.Error(), "snapshot invalidated")
+}
+
+// logRetryAttempt logs snapshot retry attempt with context
+func (c *connector) logRetryAttempt(attempt, maxRetries int, delay time.Duration) {
+	logger.Warn("[snapshot] snapshot invalidated, coordinator likely restarted",
+		"attempt", attempt,
+		"maxRetries", maxRetries,
+		"waitTime", delay)
+
+	logger.Info("[snapshot] waiting for coordinator to create new snapshot",
+		"retryIn", delay)
+}
+
+// waitWithContext waits for duration or context cancellation
+func (c *connector) waitWithContext(ctx context.Context, duration time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(duration):
+		return nil
+	}
+}
+
+// calculateNextDelay calculates next retry delay with exponential backoff
+func (c *connector) calculateNextDelay(currentDelay, maxDelay time.Duration, multiplier int) time.Duration {
+	nextDelay := currentDelay * time.Duration(multiplier)
+	if nextDelay > maxDelay {
+		return maxDelay
+	}
+	return nextDelay
 }
 
 // retryOperation executes an operation with retry logic

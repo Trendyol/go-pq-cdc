@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"os"
 	"time"
@@ -14,6 +15,12 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// Sentinel errors for snapshot operations
+var (
+	// ErrSnapshotInvalidated indicates the snapshot transaction was closed (coordinator restart)
+	ErrSnapshotInvalidated = goerrors.New("snapshot invalidated by coordinator restart")
 )
 
 // Handler SnapshotHandler is a function that handles snapshot events

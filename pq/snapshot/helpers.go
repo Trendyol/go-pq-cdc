@@ -154,3 +154,24 @@ func isTransientError(err error) bool {
 
 	return false
 }
+
+// isInvalidSnapshotError checks if an error is due to invalid snapshot identifier
+// This occurs when the coordinator's snapshot transaction is closed/expired
+// Common in multi-pod deployments when coordinator restarts
+func isInvalidSnapshotError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for PostgreSQL error code 22023 (invalid_parameter_value) with snapshot message
+	var pgErr *pgconn.PgError
+	if goerrors.As(err, &pgErr) {
+		if pgErr.Code == "22023" && strings.Contains(strings.ToLower(pgErr.Message), "invalid snapshot identifier") {
+			return true
+		}
+	}
+
+	// Fallback to string matching
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "invalid snapshot identifier")
+}

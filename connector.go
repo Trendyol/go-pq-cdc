@@ -113,13 +113,11 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	prometheusRegistry := metric.NewRegistry(m)
 
 	var tdb *timescaledb.TimescaleDB
-
 	if cfg.ExtensionSupport.EnableTimeScaleDB {
 		tdb, err = timescaledb.NewTimescaleDB(ctx, cfg.DSN())
 		if err != nil {
 			return nil, err
 		}
-
 		_, err = tdb.FindHyperTables(ctx)
 		if err != nil {
 			return nil, err

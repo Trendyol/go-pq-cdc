@@ -331,6 +331,14 @@ func (c *connector) WaitUntilReady(ctx context.Context) error {
 }
 
 func (c *connector) Close() {
+	// Create a context with timeout for graceful cleanup
+	// 30 seconds should be sufficient for closing connections and cleanup operations
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	logger.Debug("[connector] closing connector")
+
+	// Close signal channels
 	if !isClosed(c.cancelCh) {
 		close(c.cancelCh)
 	}
@@ -338,9 +346,20 @@ func (c *connector) Close() {
 		close(c.readyCh)
 	}
 
+	// Close snapshotter connections if still open (fallback for crash/error scenarios)
+	// Normal flow: connections are already closed in finalizeSnapshot() when snapshot completes
+	if c.snapshotter != nil {
+		c.snapshotter.Close(ctx)
+	}
+
+	// Close replication slot and stream
 	c.slot.Close()
-	c.stream.Close(context.TODO())
+	c.stream.Close(ctx)
+
+	// Shutdown HTTP server
 	c.server.Shutdown()
+
+	logger.Info("[connector] connector closed successfully")
 }
 
 func (c *connector) GetConfig() *config.Config {

@@ -146,7 +146,7 @@ The main orchestrator that manages the snapshot lifecycle.
 type Snapshotter struct {
     metadataConn       pq.Connection  // Manages job/chunk metadata
     healthcheckConn    pq.Connection  // Heartbeat updates
-    exportSnapshotConn pq.Connection  // Keeps snapshot transaction open
+    exportSnapshotConn pq.Connection  // Keeps snapshot transaction open for only coordinator
     
     dsn     string
     metric  metric.Metric
@@ -589,7 +589,7 @@ INSERT INTO cdc_snapshot_job (
 
 // 3. Split tables into chunks
 for each table in publication.tables {
-    rowCount := SELECT reltuples FROM pg_class WHERE oid = 'schema.table'::regclass
+    rowCount := SELECT COUNT(*) FROM schema.table
     numChunks := ceiling(rowCount / chunkSize)
     
     for i := 0 to numChunks-1 {
@@ -828,7 +828,7 @@ Deploy multiple instances for faster snapshot processing:
 ```yaml
 # Instance 1
 snapshot:
-  instanceId: "instance-1"  # Optional: auto-generated if not set
+  instanceId: "instance-1"  # Optional: auto-generated (hostname & pid) if not set
   chunkSize: 10000
 
 # Instance 2

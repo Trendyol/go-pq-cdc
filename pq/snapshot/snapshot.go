@@ -112,7 +112,7 @@ func (s *Snapshotter) Execute(ctx context.Context, handler Handler, slotName str
 	return nil
 }
 
-// finalizeSnapshot checks completion and sends END marker
+// finalizeSnapshot checks completion, closes connections, and sends END marker
 func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job *Job, handler Handler) error {
 	allCompleted, err := s.checkJobCompleted(ctx, slotName)
 	if err != nil {
@@ -123,13 +123,16 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 		return nil // Not done yet, keep processing
 	}
 
-	logger.Debug("[snapshot] all chunks completed, marking job as complete")
+	logger.Info("[snapshot] all chunks completed, finalizing snapshot")
 
 	// Mark job as completed (idempotent - safe for multiple workers)
-	if err = s.markJobAsCompleted(ctx, slotName); err != nil {
+	if err := s.markJobAsCompleted(ctx, slotName); err != nil {
 		logger.Warn("[snapshot] failed to mark job as completed", "error", err)
 		return err
 	}
+
+	// Close all connections now that snapshot is complete
+	s.closeAllConnections(ctx, true)
 
 	// Send END marker
 	return handler(&format.Snapshot{
@@ -137,6 +140,66 @@ func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job
 		ServerTime: time.Now().UTC(),
 		LSN:        job.SnapshotLSN,
 	})
+}
+
+// closeAllConnections closes all snapshot connections
+// commitExport: if true, commits the export snapshot transaction; if false, rolls it back
+func (s *Snapshotter) closeAllConnections(ctx context.Context, commitExport bool) {
+	logger.Info("[snapshot] closing all connections")
+
+	// Close export snapshot connection (coordinator only)
+	if s.exportSnapshotConn != nil {
+		s.closeExportSnapshotConnection(ctx, commitExport)
+	}
+
+	// Close metadata connection
+	if s.metadataConn != nil {
+		if err := s.metadataConn.Close(ctx); err != nil {
+			logger.Warn("[snapshot] error closing metadata connection", "error", err)
+		}
+		s.metadataConn = nil
+	}
+
+	// Close healthcheck connection
+	if s.healthcheckConn != nil {
+		if err := s.healthcheckConn.Close(ctx); err != nil {
+			logger.Warn("[snapshot] error closing healthcheck connection", "error", err)
+		}
+		s.healthcheckConn = nil
+	}
+
+	logger.Info("[snapshot] all connections closed")
+}
+
+// closeExportSnapshotConnection commits or rolls back and closes the export snapshot connection
+func (s *Snapshotter) closeExportSnapshotConnection(ctx context.Context, commit bool) {
+	if commit {
+		logger.Info("[coordinator] committing and closing snapshot export connection")
+		if err := s.execSQL(ctx, s.exportSnapshotConn, "COMMIT"); err != nil {
+			logger.Warn("[coordinator] failed to commit snapshot transaction, attempting rollback", "error", err)
+			if rollbackErr := s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK"); rollbackErr != nil {
+				logger.Error("[coordinator] failed to rollback snapshot transaction", "error", rollbackErr)
+			}
+		}
+	} else {
+		logger.Info("[coordinator] rolling back and closing snapshot export connection")
+		if err := s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK"); err != nil {
+			logger.Warn("[coordinator] failed to rollback snapshot transaction", "error", err)
+		}
+	}
+
+	if err := s.exportSnapshotConn.Close(ctx); err != nil {
+		logger.Warn("[coordinator] error closing export snapshot connection", "error", err)
+	}
+	s.exportSnapshotConn = nil
+}
+
+// Close closes all connections held by the Snapshotter
+// Safe to call multiple times (idempotent)
+// This is a fallback for cleanup in case snapshot doesn't complete normally
+func (s *Snapshotter) Close(ctx context.Context) {
+	logger.Debug("[snapshot] closing snapshotter (fallback cleanup)")
+	s.closeAllConnections(ctx, false) // Rollback on abnormal termination
 }
 
 // decodeColumnData decodes PostgreSQL column data using pgtype

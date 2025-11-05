@@ -552,7 +552,7 @@ func (s *Snapshotter) getTableRawCount(ctx context.Context, schema, table string
 
 	results, err := s.execQuery(ctx, s.metadataConn, query)
 	if err != nil {
-		return 0, errors.Wrap(err, "estimate table row count")
+		return 0, errors.Wrap(err, "table row count")
 	}
 
 	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {

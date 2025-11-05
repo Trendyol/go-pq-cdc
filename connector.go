@@ -112,14 +112,18 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	prometheusRegistry := metric.NewRegistry(m)
 
-	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
-	if err != nil {
-		return nil, err
-	}
+	var tdb *timescaledb.TimescaleDB
 
-	_, err = tdb.FindHyperTables(ctx)
-	if err != nil {
-		return nil, err
+	if cfg.ExtensionSupport.EnableTimeScaleDB {
+		tdb, err = timescaledb.NewTimescaleDB(ctx, cfg.DSN())
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = tdb.FindHyperTables(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &connector{
@@ -156,7 +160,10 @@ func (c *connector) Start(ctx context.Context) {
 
 	logger.Info("slot captured")
 	go c.slot.Metrics(ctx)
-	go c.timescaleDB.SyncHyperTables(ctx)
+
+	if c.timescaleDB != nil {
+		go c.timescaleDB.SyncHyperTables(ctx)
+	}
 
 	signal.Notify(c.cancelCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGABRT, syscall.SIGQUIT)
 

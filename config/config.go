@@ -14,16 +14,17 @@ import (
 )
 
 type Config struct {
-	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
-	Host        string             `json:"host" yaml:"host"`
-	Username    string             `json:"username" yaml:"username"`
-	Password    string             `json:"password" yaml:"password"`
-	Database    string             `json:"database" yaml:"database"`
-	Publication publication.Config `json:"publication" yaml:"publication"`
-	Slot        slot.Config        `json:"slot" yaml:"slot"`
-	Port        int                `json:"port" yaml:"port"`
-	Metric      MetricConfig       `json:"metric" yaml:"metric"`
-	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
+	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
+	Host             string             `json:"host" yaml:"host"`
+	Username         string             `json:"username" yaml:"username"`
+	Password         string             `json:"password" yaml:"password"`
+	Database         string             `json:"database" yaml:"database"`
+	Publication      publication.Config `json:"publication" yaml:"publication"`
+	Slot             slot.Config        `json:"slot" yaml:"slot"`
+	Port             int                `json:"port" yaml:"port"`
+	Metric           MetricConfig       `json:"metric" yaml:"metric"`
+	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
+	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
 }
 
 type MetricConfig struct {
@@ -33,6 +34,10 @@ type MetricConfig struct {
 type LoggerConfig struct {
 	Logger   logger.Logger `json:"-" yaml:"-"`         // custom logger
 	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
+}
+
+type ExtensionSupport struct {
+	EnableTimeScaleDB bool `json:"enableTimeScaleDB" yaml:"EnableTimeScaleDB"`
 }
 
 func (c *Config) DSN() string {

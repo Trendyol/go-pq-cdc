@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+// go test -race -p=1 -v -run=TestBasicFunctionalityx
+func TestBasicFunctionalityx(t *testing.T) {
+	fmt.Println("köfte")
+}
+
 func TestBasicFunctionality(t *testing.T) {
 	ctx := context.Background()
 

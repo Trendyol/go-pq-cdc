@@ -3,13 +3,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"github.com/Trendyol/go-pq-cdc/config"
-	"github.com/Trendyol/go-pq-cdc/pq"
-	"github.com/go-playground/errors"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"io"
 	"log"
 	"net/http"
@@ -18,6 +11,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/go-playground/errors"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 var (
@@ -97,7 +98,7 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 			"POSTGRES_DB":       cfg.Database,
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		Cmd:          []string{"postgres", "-c", "fsync=off", "-c", "wal_level=logical", "-c", "max_wal_senders=20", "-c", "max_replication_slots=10"},
+		Cmd:          []string{"postgres", "-c", "fsync=off", "-c", "wal_level=logical", "-c", "max_wal_senders=100", "-c", "max_replication_slots=50"},
 	}
 
 	genericContainerReq := testcontainers.GenericContainerRequest{

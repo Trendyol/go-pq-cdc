@@ -71,6 +71,7 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 	return NewConnector(ctx, cfg, listenerFunc)
 }
 
+//nolint:funlen
 func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
 	cfg.SetDefault()
 	if err := cfg.Validate(); err != nil {

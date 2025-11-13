@@ -17,6 +17,7 @@ ensuring low resource consumption and high performance.
 - **Multi-Instance Support**: Parallel processing across multiple instances
 - **Crash Recovery**: Automatic resume from failures
 - **No Duplicates**: Seamless transition from snapshot to CDC
+- **Snapshot Only Mode**: One-time data export without CDC (no replication slot required)
 
 📚 **[Read Full Documentation](./SNAPSHOT_FEATURE.md)** for detailed architecture, configuration, and best practices.
 
@@ -131,7 +132,8 @@ func Handler(ctx *replication.ListenerContext) {
 
 * [Simple](./example/simple)
 * [Simple File Config](./example/simple-file-config)
-* [Snapshot Mode (Initial Data Capture)](./example/snapshotmode) - 📸 **NEW!**
+* [Snapshot Mode (Initial Data Capture)](./example/snapshotmode)
+* [Snapshot Only Mode (One-Time Export)](./example/snapshotonlymode)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
@@ -173,7 +175,7 @@ This setup ensures continuous data synchronization and minimal downtime in captu
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive.                                                                                                                  |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
 | `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
-| `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial` or `never`                                                                   | **initial:** Take snapshot only if no previous snapshot exists. <br> **never:** Skip snapshot.                                                     |
+| `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial`, `never`, or `snapshot_only`                                                 | **initial:** Take snapshot only if no previous snapshot exists, then start CDC. <br> **never:** Skip snapshot, start CDC immediately. <br> **snapshot_only:** Take snapshot and exit (no CDC, no replication slot required). |
 | `snapshot.chunkSize`                    |  int64   |    no    |  8000   | Number of rows per chunk during snapshot                                                              | Adjust based on table size. Larger chunks = fewer chunks but more memory per chunk.                                                               |
 | `snapshot.claimTimeout`                 | duration |    no    |  30s    | Timeout to reclaim stale chunks                                                                       | If a worker doesn't send heartbeat for this duration, chunk is reclaimed by another worker.                                                        |
 | `snapshot.heartbeatInterval`            | duration |    no    |  5s     | Interval for worker heartbeat updates                                                                 | Workers send heartbeat every N seconds to indicate they're processing a chunk.                                                                     |

@@ -15,17 +15,17 @@ import (
 )
 
 type Config struct {
-	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
-	Host        string             `json:"host" yaml:"host"`
-	Username    string             `json:"username" yaml:"username"`
-	Password    string             `json:"password" yaml:"password"`
-	Database    string             `json:"database" yaml:"database"`
-	Publication publication.Config `json:"publication" yaml:"publication"`
-	Slot        slot.Config        `json:"slot" yaml:"slot"`
-	Snapshot    SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
-	Port        int                `json:"port" yaml:"port"`
-	Metric      MetricConfig       `json:"metric" yaml:"metric"`
-	DebugMode   bool               `json:"debugMode" yaml:"debugMode"`
+	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
+	Host             string             `json:"host" yaml:"host"`
+	Username         string             `json:"username" yaml:"username"`
+	Password         string             `json:"password" yaml:"password"`
+	Database         string             `json:"database" yaml:"database"`
+	Publication      publication.Config `json:"publication" yaml:"publication"`
+	Slot             slot.Config        `json:"slot" yaml:"slot"`
+	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
+	Port             int                `json:"port" yaml:"port"`
+	Metric           MetricConfig       `json:"metric" yaml:"metric"`
+	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
 	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
 }
 
@@ -99,6 +99,11 @@ func (c *Config) SetDefault() {
 	}
 }
 
+// IsSnapshotOnlyMode returns true if snapshot is enabled and mode is snapshot_only
+func (c *Config) IsSnapshotOnlyMode() bool {
+	return c.Snapshot.Enabled && c.Snapshot.Mode == SnapshotModeSnapshotOnly
+}
+
 func (c *Config) Validate() error {
 	var err error
 	if isEmpty(c.Host) {
@@ -117,12 +122,15 @@ func (c *Config) Validate() error {
 		err = errors.Join(err, errors.New("database cannot be empty"))
 	}
 
-	if cErr := c.Publication.Validate(); cErr != nil {
-		err = errors.Join(err, cErr)
-	}
+	// Skip CDC-related validation for snapshot_only mode
+	if !c.IsSnapshotOnlyMode() {
+		if cErr := c.Publication.Validate(); cErr != nil {
+			err = errors.Join(err, cErr)
+		}
 
-	if cErr := c.Slot.Validate(); cErr != nil {
-		err = errors.Join(err, cErr)
+		if cErr := c.Slot.Validate(); cErr != nil {
+			err = errors.Join(err, cErr)
+		}
 	}
 
 	if cErr := c.Snapshot.Validate(); cErr != nil {
@@ -157,7 +165,7 @@ func (s *SnapshotConfig) Validate() error {
 		return nil
 	}
 
-	validModes := []SnapshotMode{SnapshotModeInitial, SnapshotModeNever}
+	validModes := []SnapshotMode{SnapshotModeInitial, SnapshotModeNever, SnapshotModeSnapshotOnly}
 	isValid := false
 	for _, mode := range validModes {
 		if s.Mode == mode {
@@ -166,7 +174,7 @@ func (s *SnapshotConfig) Validate() error {
 		}
 	}
 	if !isValid {
-		return errors.New("snapshot mode must be 'initial' or 'never'")
+		return errors.New("snapshot mode must be 'initial', 'never', or 'snapshot_only'")
 	}
 
 	// Validate chunk-based config
@@ -186,6 +194,7 @@ func (s *SnapshotConfig) Validate() error {
 type SnapshotMode string
 
 const (
-	SnapshotModeInitial SnapshotMode = "initial"
-	SnapshotModeNever   SnapshotMode = "never"
+	SnapshotModeInitial      SnapshotMode = "initial"
+	SnapshotModeNever        SnapshotMode = "never"
+	SnapshotModeSnapshotOnly SnapshotMode = "snapshot_only"
 )

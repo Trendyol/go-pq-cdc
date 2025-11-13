@@ -535,6 +535,120 @@ snapshot:
 - Always starts CDC from current point
 - Use when you don't need historical data
 
+#### `snapshot_only` Mode
+```yaml
+snapshot:
+  enabled: true
+  mode: snapshot_only
+  chunkSize: 10000
+```
+- Takes snapshot and **exits** (finite mode, no CDC)
+- No replication slot or publication required
+- Process terminates after snapshot completes
+- Similar to Debezium's snapshot-only mode
+- **Multi-pod safe**: Coordinator election enables parallel processing
+- **Resume capability**: Automatically continues if interrupted
+- **Use case**: One-time data export, initial data migration
+
+**Key Differences from `initial` mode:**
+
+| Feature | `initial` Mode | `snapshot_only` Mode |
+|---------|---------------|---------------------|
+| CDC after snapshot | ✅ Yes | ❌ No |
+| Replication slot | ✅ Required | ❌ Not created |
+| Publication | ✅ Required | ❌ Optional |
+| Process behavior | Continuous | Exits after snapshot |
+| Use case | CDC with bootstrap | One-time export |
+
+**Minimal Configuration Example:**
+
+```yaml
+host: localhost
+database: mydb
+username: user
+password: pass
+
+# Publication and slot NOT required for snapshot_only
+# Can be omitted or left empty
+
+publication:
+  tables:
+    - name: users
+      schema: public
+    - name: orders
+      schema: public
+
+snapshot:
+  enabled: true
+  mode: snapshot_only
+  chunkSize: 10000
+
+metric:
+  port: 8081
+```
+
+**Multi-Pod Deployment:**
+
+Multiple pods can run simultaneously for faster snapshot:
+
+```yaml
+# Same config on all pods
+snapshot:
+  enabled: true
+  mode: snapshot_only
+  chunkSize: 10000
+
+# All pods will:
+# - Use consistent slot name: "snapshot_only_<database>"
+# - Participate in coordinator election (one becomes coordinator)
+# - Process chunks in parallel (work together)
+# - Resume if any pod crashes (no duplicate work)
+```
+
+**Resume on Failure:**
+
+If snapshot is interrupted (pod crash, network issue), simply restart:
+
+```bash
+# Run 1: Process 500/1000 chunks → CRASH
+# Run 2: Automatically continues from chunk 501 ✅
+```
+
+**Output Example:**
+
+```
+INFO: snapshot-only mode enabled, tables=2
+INFO: starting snapshot-only execution slotName=snapshot_only_mydb
+INFO: [snapshot] elected as coordinator instanceID=pod-1-abc123
+INFO: snapshot prepared snapshotLSN=0/12345678
+📸 Snapshot BEGIN | LSN: 0/12345678
+📸 Snapshot DATA | Table: public.users | Data: {"id":1,"name":"Alice"}
+📸 Snapshot DATA | Table: public.users | Data: {"id":2,"name":"Bob"}
+...
+📸 Snapshot END | LSN: 0/12345678
+INFO: snapshot data collection completed snapshotLSN=0/12345678
+INFO: snapshot-only completed successfully, exiting
+```
+
+**Multi-Pod Output Example:**
+
+```
+# Pod 1 (Coordinator):
+INFO: snapshot-only mode enabled, tables=2
+INFO: starting snapshot-only execution slotName=snapshot_only_mydb
+INFO: [coordinator] elected as coordinator instanceID=pod-1
+INFO: [coordinator] chunks created table=users chunks=100
+INFO: [worker] processing chunk table=users chunkIndex=0
+
+# Pod 2 (Worker):
+INFO: snapshot-only mode enabled, tables=2
+INFO: starting snapshot-only execution slotName=snapshot_only_mydb
+INFO: [snapshot] joining as worker instanceID=pod-2
+INFO: [worker] processing chunk table=users chunkIndex=1
+
+# Both pods work together, exit when done
+```
+
 ---
 
 ## How It Works

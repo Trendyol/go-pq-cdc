@@ -205,6 +205,9 @@ func (s *Snapshotter) closeExportSnapshotConnection(ctx context.Context, commit 
 // Safe to call multiple times (idempotent)
 // This is a fallback for cleanup in case snapshot doesn't complete normally
 func (s *Snapshotter) Close(ctx context.Context) {
+	if s == nil {
+		return
+	}
 	logger.Debug("[snapshot] closing snapshotter (fallback cleanup)")
 	s.closeAllConnections(ctx, false) // Rollback on abnormal termination
 }

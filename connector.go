@@ -3,6 +3,7 @@ package cdc
 import (
 	"context"
 	goerrors "errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -81,6 +82,12 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	logger.InitLogger(cfg.Logger.Logger)
 
+	// Snapshot-only mode: minimal setup without CDC components
+	if cfg.IsSnapshotOnlyMode() {
+		return newSnapshotOnlyConnector(ctx, cfg, listenerFunc)
+	}
+
+	// Normal CDC mode: full setup with publication, slot, stream
 	// Normal connection for publication setup
 	// This uses regular DSN (no replication parameter) to avoid consuming max_wal_senders limit
 	conn, err := pq.NewConnection(ctx, cfg.DSN())
@@ -156,6 +163,34 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	}, nil
 }
 
+// newSnapshotOnlyConnector creates a minimal connector for snapshot-only mode
+// without CDC components (publication, slot, replication stream)
+func newSnapshotOnlyConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
+	// Use a dummy metric name since we don't have a slot
+	m := metric.NewMetric("snapshot_only")
+
+	// Initialize snapshotter with tables from config
+	snapshotter, err := initializeSnapshot(ctx, cfg, cfg.Publication.Tables, m)
+	if err != nil {
+		return nil, err
+	}
+
+	prometheusRegistry := metric.NewRegistry(m)
+
+	logger.Info("snapshot-only mode enabled", "tables", len(cfg.Publication.Tables))
+
+	return &connector{
+		cfg:                &cfg,
+		prometheusRegistry: prometheusRegistry,
+		server:             http.NewServer(cfg, prometheusRegistry),
+		snapshotter:        snapshotter,
+		listenerFunc:       listenerFunc,
+		cancelCh:           make(chan os.Signal, 1),
+		readyCh:            make(chan struct{}, 1),
+		// CDC components left nil: system, stream, slot
+	}, nil
+}
+
 // initializePublication sets up and creates the publication
 func initializePublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*publication.Config, error) {
 	pub := publication.New(cfg.Publication, conn)
@@ -180,6 +215,22 @@ func (c *connector) Start(ctx context.Context) {
 	c.once.Do(func() {
 		go c.server.Listen()
 	})
+
+	// Snapshot-only mode: execute snapshot and exit
+	if c.cfg.IsSnapshotOnlyMode() {
+		// Check if snapshot already completed (resume capability)
+		if !c.shouldTakeSnapshotOnly(ctx) {
+			logger.Info("snapshot-only already completed, exiting")
+			return
+		}
+
+		if err := c.executeSnapshotOnly(ctx); err != nil {
+			logger.Error("snapshot-only execution failed", "error", err)
+			return
+		}
+		logger.Info("snapshot-only completed successfully, exiting")
+		return
+	}
 
 	// Snapshot Pre-phase (optional): Prepare → CreateSlot → Execute
 	// This happens BEFORE the normal CDC flow to avoid data loss
@@ -286,6 +337,62 @@ func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
 		logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
 		return nil
 	})
+}
+
+// executeSnapshotOnly executes snapshot without creating a replication slot
+// Used for snapshot_only mode (finite data export without CDC)
+// Multi-pod safe: uses consistent slot name for coordinator election
+func (c *connector) executeSnapshotOnly(ctx context.Context) error {
+	slotName := c.getSnapshotOnlySlotName()
+
+	logger.Info("starting snapshot-only execution", "slotName", slotName)
+
+	// Prepare snapshot (capture LSN, create metadata, export snapshot)
+	snapshotLSN, err := c.snapshotter.Prepare(ctx, slotName)
+	if err != nil {
+		return errors.Wrap(err, "prepare snapshot")
+	}
+
+	c.snapshotLSN = snapshotLSN
+	logger.Info("snapshot prepared", "snapshotLSN", snapshotLSN.String())
+
+	// Execute snapshot (collect data from all chunks)
+	// Note: We call Execute directly with the slotName we prepared with,
+	// not through executeSnapshotWithRetry which uses c.cfg.Slot.Name
+	if err := c.snapshotter.Execute(ctx, c.snapshotHandler, slotName); err != nil {
+		return errors.Wrap(err, "execute snapshot")
+	}
+
+	logger.Info("snapshot data collection completed", "snapshotLSN", snapshotLSN.String())
+	return nil
+}
+
+// getSnapshotOnlySlotName returns a consistent slot name for snapshot_only mode
+// This ensures multi-pod deployments work together instead of duplicating work
+// The slot name is based on the database name to ensure consistency across restarts
+func (c *connector) getSnapshotOnlySlotName() string {
+	return fmt.Sprintf("snapshot_only_%s", c.cfg.Database)
+}
+
+// shouldTakeSnapshotOnly checks if snapshot_only should run
+// Returns false if snapshot already completed (resume capability)
+func (c *connector) shouldTakeSnapshotOnly(ctx context.Context) bool {
+	slotName := c.getSnapshotOnlySlotName()
+
+	job, err := c.snapshotter.LoadJob(ctx, slotName)
+	if err != nil {
+		logger.Error("failed to load snapshot job, will take snapshot", "error", err)
+		return true
+	}
+
+	// If job doesn't exist or not completed, take snapshot
+	if job == nil || !job.Completed {
+		return true
+	}
+
+	// Job exists and completed
+	logger.Info("snapshot-only already completed, skipping", "slotName", slotName)
+	return false
 }
 
 // executeSnapshotWithRetry executes snapshot with retry on coordinator failures
@@ -444,9 +551,13 @@ func (c *connector) Close() {
 		c.snapshotter.Close(ctx)
 	}
 
-	// Close replication slot and stream
-	c.slot.Close()
-	c.stream.Close(ctx)
+	// Close replication slot and stream (nil in snapshot_only mode)
+	if c.slot != nil {
+		c.slot.Close()
+	}
+	if c.stream != nil {
+		c.stream.Close(ctx)
+	}
 
 	// Shutdown HTTP server
 	c.server.Shutdown()

@@ -1,0 +1,29 @@
+host: localhost
+database: testdb
+port: 5433
+username: testuser
+password: testpass
+
+# Publication and slot NOT required for snapshot_only mode
+# Tables are specified directly in publication.tables
+publication:
+  tables:
+    - name: users
+      schema: public
+    - name: orders
+      schema: public
+
+# Snapshot-only configuration
+snapshot:
+  enabled: true
+  mode: snapshot_only  # Finite mode: snapshot then exit
+  chunkSize: 1000      # Rows per chunk (tune based on table size)
+  claimTimeout: 30s    # Timeout for chunk reclaim
+  heartbeatInterval: 10s
+
+logger:
+  level: info
+
+metric:
+  port: 8081
+

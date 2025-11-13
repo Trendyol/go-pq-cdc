@@ -63,6 +63,9 @@ func (s *server) Listen() {
 }
 
 func (s *server) Shutdown() {
+	if s == nil {
+		return
+	}
 	s.closed = true
 	err := s.server.Shutdown(context.Background())
 	if err != nil {

@@ -11,14 +11,6 @@ import (
 	"github.com/go-playground/errors"
 )
 
-const (
-	// Retry configuration for snapshot execution
-	snapshotRetryMaxAttempts       = 5
-	snapshotRetryInitialDelay      = 10 * time.Second
-	snapshotRetryMaxDelay          = 60 * time.Second
-	snapshotRetryBackoffMultiplier = 2
-)
-
 // waitForCoordinator waits for the coordinator to initialize job and create chunks
 // Workers need both job metadata and chunks to be ready before they can start processing
 func (s *Snapshotter) waitForCoordinator(ctx context.Context, slotName string) error {

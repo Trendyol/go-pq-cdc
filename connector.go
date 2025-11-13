@@ -175,19 +175,6 @@ func initializeSnapshot(ctx context.Context, cfg config.Config, tables publicati
 	return snapshot.New(ctx, cfg.Snapshot, tables, cfg.DSN(), m)
 }
 
-// initializeTimescaleDB sets up TimescaleDB connection
-func initializeTimescaleDB(ctx context.Context, cfg config.Config) (*timescaledb.TimescaleDB, error) {
-	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
-	if err != nil {
-		return nil, err
-	}
-	_, err = tdb.FindHyperTables(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return tdb, nil
-}
-
 func (c *connector) Start(ctx context.Context) {
 	c.once.Do(func() {
 		go c.server.Listen()

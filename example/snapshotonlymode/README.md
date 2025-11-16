@@ -187,7 +187,7 @@ docker-compose exec postgres psql -U testuser -d testdb -c \
 
 ## 📚 More Information
 
-- [SNAPSHOT_FEATURE.md](../../SNAPSHOT_FEATURE.md) - Detailed documentation
+- [SNAPSHOT_FEATURE.md](../../docs/SNAPSHOT_FEATURE.md) - Detailed documentation
 - [Integration Tests](../../integration_test/snapshot_only_test.go) - Test examples
 
 ## 🧹 Cleanup

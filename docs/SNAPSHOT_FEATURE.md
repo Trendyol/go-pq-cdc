@@ -1557,6 +1557,6 @@ vi config.yml  # Set snapshot.enabled=true, mode=initial
 curl http://localhost:8081/metrics | grep snapshot
 ```
 
-For questions or issues, please open a GitHub issue or refer to the main [README](./README.md).
+For questions or issues, please open a GitHub issue or refer to the main [README](../README.md).
 
 ---

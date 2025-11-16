@@ -19,7 +19,7 @@ ensuring low resource consumption and high performance.
 - **No Duplicates**: Seamless transition from snapshot to CDC
 - **Snapshot Only Mode**: One-time data export without CDC (no replication slot required)
 
-📚 **[Read Full Documentation](./SNAPSHOT_FEATURE.md)** for detailed architecture, configuration, and best practices.
+📚 **[Read Full Documentation](docs/SNAPSHOT_FEATURE.md)** for detailed architecture, configuration, and best practices.
 
 ### Contents
 

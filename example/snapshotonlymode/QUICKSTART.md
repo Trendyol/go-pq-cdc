@@ -184,7 +184,7 @@ docker-compose exec postgres psql -U testuser -d testdb -c \
 - **[README.md](./README.md)** - Detailed documentation
 - **[config.yml](./config.yml)** - Config example
 - **[main.go](./main.go)** - Code example
-- **[SNAPSHOT_FEATURE.md](../../SNAPSHOT_FEATURE.md)** - Feature documentation
+- **[SNAPSHOT_FEATURE.md](../../docs/SNAPSHOT_FEATURE.md)** - Feature documentation
 
 ## 🧹 Cleanup
 

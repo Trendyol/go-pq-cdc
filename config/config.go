@@ -20,9 +20,9 @@ type Config struct {
 	Username         string             `json:"username" yaml:"username"`
 	Password         string             `json:"password" yaml:"password"`
 	Database         string             `json:"database" yaml:"database"`
+	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Publication      publication.Config `json:"publication" yaml:"publication"`
 	Slot             slot.Config        `json:"slot" yaml:"slot"`
-	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Port             int                `json:"port" yaml:"port"`
 	Metric           MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
@@ -219,11 +219,11 @@ func isEmpty(s string) bool {
 type SnapshotConfig struct {
 	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
 	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
+	Tables            publication.Tables `json:"tables" yaml:"tables"`
 	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
 	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
 	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
 	Enabled           bool               `json:"enabled" yaml:"enabled"`
-	Tables            publication.Tables `json:"tables" yaml:"tables"` // Tables to snapshot (required for snapshot_only, optional for initial mode)
 }
 
 func (s *SnapshotConfig) Validate() error {

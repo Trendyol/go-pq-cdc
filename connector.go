@@ -106,7 +106,13 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	m := metric.NewMetric(cfg.Slot.Name)
 
-	snapshotter, err := initializeSnapshot(ctx, cfg, publicationInfo.Tables, m)
+	// Get tables to snapshot (either from snapshot.tables or publication.tables)
+	snapshotTables, err := cfg.GetSnapshotTables(publicationInfo)
+	if err != nil {
+		return nil, errors.Wrap(err, "get snapshot tables")
+	}
+
+	snapshotter, err := initializeSnapshot(ctx, cfg, snapshotTables, m)
 	if err != nil {
 		return nil, err
 	}
@@ -169,15 +175,21 @@ func newSnapshotOnlyConnector(ctx context.Context, cfg config.Config, listenerFu
 	// Use a dummy metric name since we don't have a slot
 	m := metric.NewMetric("snapshot_only")
 
-	// Initialize snapshotter with tables from config
-	snapshotter, err := initializeSnapshot(ctx, cfg, cfg.Publication.Tables, m)
+	// Get tables to snapshot from snapshot.tables
+	snapshotTables, err := cfg.GetSnapshotTables(nil) // nil publicationInfo for snapshot_only mode
+	if err != nil {
+		return nil, errors.Wrap(err, "get snapshot tables")
+	}
+
+	// Initialize snapshotter with tables from snapshot config
+	snapshotter, err := initializeSnapshot(ctx, cfg, snapshotTables, m)
 	if err != nil {
 		return nil, err
 	}
 
 	prometheusRegistry := metric.NewRegistry(m)
 
-	logger.Info("snapshot-only mode enabled", "tables", len(cfg.Publication.Tables))
+	logger.Info("snapshot-only mode enabled", "tables", len(snapshotTables))
 
 	return &connector{
 		cfg:                &cfg,

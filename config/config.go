@@ -96,12 +96,77 @@ func (c *Config) SetDefault() {
 		if c.Snapshot.HeartbeatInterval == 0 {
 			c.Snapshot.HeartbeatInterval = 5 * time.Second
 		}
+
+		// Set default schema names for snapshot tables
+		for tableID, table := range c.Snapshot.Tables {
+			if table.Schema == "" {
+				c.Snapshot.Tables[tableID].Schema = "public"
+			}
+		}
 	}
 }
 
 // IsSnapshotOnlyMode returns true if snapshot is enabled and mode is snapshot_only
 func (c *Config) IsSnapshotOnlyMode() bool {
 	return c.Snapshot.Enabled && c.Snapshot.Mode == SnapshotModeSnapshotOnly
+}
+
+// GetSnapshotTables returns the tables to snapshot based on the configuration and publication info.
+// For snapshot_only mode: uses snapshot.tables (independent from publication)
+// For initial mode (snapshot + CDC):
+//   - If snapshot.tables specified: validates it's a subset of publication tables and returns snapshot.tables
+//   - If snapshot.tables not specified: returns all tables from publication
+func (c *Config) GetSnapshotTables(publicationInfo *publication.Config) (publication.Tables, error) {
+	// Mode 1: snapshot_only - independent from publication
+	if c.IsSnapshotOnlyMode() {
+		if len(c.Snapshot.Tables) == 0 {
+			return nil, errors.New("snapshot.tables must be specified for snapshot_only mode")
+		}
+		return c.Snapshot.Tables, nil
+	}
+
+	// Mode 2: initial (snapshot + CDC)
+	// If snapshot.tables specified, validate it's a subset of publication tables
+	if len(c.Snapshot.Tables) > 0 {
+		return c.validateSnapshotSubset(publicationInfo.Tables)
+	}
+
+	// Mode 3: initial with no snapshot.tables specified
+	// Use all tables from publication (current behavior)
+	return publicationInfo.Tables, nil
+}
+
+// validateSnapshotSubset ensures snapshot.tables is a subset of publication tables
+// and returns the validated snapshot tables with publication metadata (like replica identity)
+func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publication.Tables, error) {
+	if len(pubTables) == 0 {
+		return nil, errors.New("publication has no tables defined. Either specify tables in publication.tables or query an existing publication")
+	}
+
+	// Create map of publication tables for quick lookup
+	pubMap := make(map[string]publication.Table)
+	for _, t := range pubTables {
+		key := t.Schema + "." + t.Name
+		pubMap[key] = t
+	}
+
+	// Validate each snapshot table exists in publication
+	validatedTables := make(publication.Tables, 0, len(c.Snapshot.Tables))
+	for _, st := range c.Snapshot.Tables {
+		key := st.Schema + "." + st.Name
+		pubTable, exists := pubMap[key]
+		if !exists {
+			return nil, fmt.Errorf(
+				"snapshot table '%s' not found in publication '%s'. "+
+					"For snapshot+CDC mode, snapshot.tables must be a subset of publication tables",
+				key, c.Publication.Name,
+			)
+		}
+		// Use publication table config (includes replica identity etc.)
+		validatedTables = append(validatedTables, pubTable)
+	}
+
+	return validatedTables, nil
 }
 
 func (c *Config) Validate() error {
@@ -152,12 +217,13 @@ func isEmpty(s string) bool {
 }
 
 type SnapshotConfig struct {
-	Mode              SnapshotMode  `json:"mode" yaml:"mode"`
-	InstanceID        string        `json:"instanceId" yaml:"instanceId"`
-	ChunkSize         int64         `json:"chunkSize" yaml:"chunkSize"`
-	ClaimTimeout      time.Duration `json:"claimTimeout" yaml:"claimTimeout"`
-	HeartbeatInterval time.Duration `json:"heartbeatInterval" yaml:"heartbeatInterval"`
-	Enabled           bool          `json:"enabled" yaml:"enabled"`
+	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
+	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
+	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
+	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
+	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
+	Enabled           bool               `json:"enabled" yaml:"enabled"`
+	Tables            publication.Tables `json:"tables" yaml:"tables"` // Tables to snapshot (required for snapshot_only, optional for initial mode)
 }
 
 func (s *SnapshotConfig) Validate() error {
@@ -186,6 +252,11 @@ func (s *SnapshotConfig) Validate() error {
 	}
 	if s.HeartbeatInterval <= 0 {
 		return errors.New("snapshot heartbeat interval must be greater than 0")
+	}
+
+	// For snapshot_only mode, tables must be specified
+	if s.Mode == SnapshotModeSnapshotOnly && len(s.Tables) == 0 {
+		return errors.New("snapshot.tables must be specified for snapshot_only mode")
 	}
 
 	return nil

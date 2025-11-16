@@ -59,22 +59,22 @@ snapshot:
   enabled: true
   mode: snapshot_only  # ✨ Main setting: snapshot only
   chunkSize: 1000      # How many rows per chunk
-  
-# Publication and slot NOT REQUIRED!
-publication:
-  tables:
+  tables:              # ✨ Tables to snapshot
     - name: users
       schema: public
     - name: orders
       schema: public
+  
+# Publication and slot NOT REQUIRED for snapshot_only mode!
 ```
 
 ### Important Points:
 
 1. **Mode**: Must be `snapshot_only`
-2. **Tables**: Specify in `publication.tables`
+2. **Tables**: Specify in `snapshot.tables`
 3. **Slot**: Automatically created: `snapshot_only_<database>`
 4. **Resume**: If it crashes, it resumes from where it left off
+5. **No CDC**: No publication or replication slot needed
 
 ## 📊 Output Example
 

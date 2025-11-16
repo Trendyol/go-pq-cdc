@@ -52,7 +52,7 @@ func main() {
 
 	log.Printf("📝 Configuration loaded from: %s", *configPath)
 	log.Printf("   Database: %s@%s:%d/%s", cfg.Username, cfg.Host, cfg.Port, cfg.Database)
-	log.Printf("   Tables: %d", len(cfg.Publication.Tables))
+	log.Printf("   Tables: %d", len(cfg.Snapshot.Tables))
 	log.Printf("   Chunk Size: %d", cfg.Snapshot.ChunkSize)
 
 	// Create connector

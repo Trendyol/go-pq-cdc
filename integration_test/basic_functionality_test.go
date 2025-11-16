@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// go test -race -p=1 -v -run=TestBasicFunctionalityx
-func TestBasicFunctionalityx(t *testing.T) {
-	fmt.Println("köfte")
+// go test -race -p=1 -v -run=TestBasicFunctionalitySanityTest
+func TestBasicFunctionalitySanityTest(t *testing.T) {
+	fmt.Println("sanity test")
 }
 
 func TestBasicFunctionality(t *testing.T) {

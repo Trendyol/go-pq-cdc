@@ -26,7 +26,7 @@ func TestSnapshotOnlyBasic(t *testing.T) {
 	// Setup: Create test table with data
 	tableName := "snapshot_only_basic_test"
 	cdcCfg := Config
-	cdcCfg.Publication.Tables = publication.Tables{
+	cdcCfg.Snapshot.Tables = publication.Tables{
 		{
 			Name:   tableName,
 			Schema: "public",
@@ -192,7 +192,7 @@ func TestSnapshotOnlyMultipleTables(t *testing.T) {
 	table1 := "snapshot_only_multi1"
 	table2 := "snapshot_only_multi2"
 	cdcCfg := Config
-	cdcCfg.Publication.Tables = publication.Tables{
+	cdcCfg.Snapshot.Tables = publication.Tables{
 		{
 			Name:   table1,
 			Schema: "public",
@@ -323,7 +323,7 @@ func TestSnapshotOnlyWithChunking(t *testing.T) {
 
 	tableName := "snapshot_only_chunking_test"
 	cdcCfg := Config
-	cdcCfg.Publication.Tables = publication.Tables{
+	cdcCfg.Snapshot.Tables = publication.Tables{
 		{
 			Name:   tableName,
 			Schema: "public",
@@ -435,7 +435,7 @@ func TestSnapshotOnlyMetrics(t *testing.T) {
 
 	tableName := "snapshot_only_metrics_test"
 	cdcCfg := Config
-	cdcCfg.Publication.Tables = publication.Tables{
+	cdcCfg.Snapshot.Tables = publication.Tables{
 		{
 			Name:   tableName,
 			Schema: "public",
@@ -526,7 +526,7 @@ func TestSnapshotOnlyResume(t *testing.T) {
 
 	tableName := "snapshot_only_resume_test"
 	cdcCfg := Config
-	cdcCfg.Publication.Tables = publication.Tables{
+	cdcCfg.Snapshot.Tables = publication.Tables{
 		{
 			Name:   tableName,
 			Schema: "public",
@@ -750,7 +750,7 @@ func TestSnapshotOnlyIdempotent(t *testing.T) {
 
 	tableName := "snapshot_only_idempotent_test"
 	cdcCfg := Config
-	cdcCfg.Publication.Tables = publication.Tables{
+	cdcCfg.Snapshot.Tables = publication.Tables{
 		{
 			Name:   tableName,
 			Schema: "public",

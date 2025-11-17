@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
-	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"log/slog"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
 
 	cdc "github.com/Trendyol/go-pq-cdc-kafka"
 	"github.com/Trendyol/go-pq-cdc-kafka/config"
@@ -42,40 +42,23 @@ func main() {
 			Database:  "cdc_db",
 			DebugMode: true,
 			Snapshot: cdcconfig.SnapshotConfig{
-				Mode: cdcconfig.SnapshotModeInitial,
+				Mode: cdcconfig.SnapshotModeSnapshotOnly,
 				Tables: []publication.Table{
 					{
 						Name:   "users",
 						Schema: "public",
 					},
 				},
-				ChunkSize: 8000,
-				Enabled:   true,
-			},
-			Publication: publication.Config{
-				CreateIfNotExists: true,
-				Name:              "cdc_publication",
-				Operations: publication.Operations{
-					publication.OperationInsert,
-					publication.OperationDelete,
-					publication.OperationTruncate,
-					publication.OperationUpdate,
-				},
-				Tables: publication.Tables{publication.Table{
-					Name:            "users",
-					ReplicaIdentity: publication.ReplicaIdentityFull,
-				}},
-			},
-			Slot: slot.Config{
-				CreateIfNotExists:           true,
-				Name:                        "cdc_slot",
-				SlotActivityCheckerInterval: 3000,
+				ChunkSize:         8000,
+				Enabled:           true,
+				ClaimTimeout:      60 * time.Second,
+				HeartbeatInterval: 10 * time.Second,
 			},
 			Metric: cdcconfig.MetricConfig{
 				Port: 2112,
 			},
 			Logger: cdcconfig.LoggerConfig{
-				LogLevel: slog.LevelDebug,
+				LogLevel: slog.LevelInfo,
 			},
 		},
 		Kafka: config.Kafka{

@@ -82,7 +82,7 @@ services:
     image: docker.redpanda.com/redpandadata/redpanda:v23.1.12
     command:
       - redpanda start
-      - --smp 1
+      - --smp 2
       - --overprovisioned
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
@@ -91,6 +91,7 @@ services:
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --rpc-addr redpanda:33145
       - --advertise-rpc-addr redpanda:33145
+      - --memory 2G
     ports:
       - "18081:18081"
       - "18082:18082"
@@ -165,7 +166,7 @@ services:
       CONNECT_LOG_LEVEL: info
 
   debezium:
-    image: debezium/connect:latest
+    image: debezium/connect:2.5
     restart: always
     container_name: debezium
     hostname: debezium

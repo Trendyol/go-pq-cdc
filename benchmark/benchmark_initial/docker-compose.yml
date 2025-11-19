@@ -207,10 +207,10 @@ services:
       resources:
         limits:
           cpus: "2"
-          memory: 2048M
+          memory: 4098M
         reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 1024M
 
   set-debezium-connector:
     image: curlimages/curl:latest

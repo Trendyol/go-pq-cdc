@@ -30,6 +30,8 @@ type Snapshotter struct {
 	metadataConn       pq.Connection
 	healthcheckConn    pq.Connection
 	exportSnapshotConn pq.Connection
+	connectionPool     *ConnectionPool
+	decoderCache       *DecoderCache
 
 	dsn     string
 	metric  metric.Metric
@@ -49,10 +51,21 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 		return nil, errors.Wrap(err, "create healthcheck connection")
 	}
 
+	// Create connection pool for chunk processing (10 connections)
+	connectionPool, err := NewConnectionPool(ctx, dsn, 10)
+	if err != nil {
+		return nil, errors.Wrap(err, "create connection pool")
+	}
+
+	// Create decoder cache for efficient type decoding
+	decoderCache := NewDecoderCache()
+
 	return &Snapshotter{
 		dsn:             dsn,
 		metadataConn:    metadataConn,
 		healthcheckConn: healthcheckConn,
+		connectionPool:  connectionPool,
+		decoderCache:    decoderCache,
 		config:          snapshotConfig,
 		tables:          tables,
 		typeMap:         pgtype.NewMap(),
@@ -159,6 +172,12 @@ func (s *Snapshotter) closeAllConnections(ctx context.Context, commitExport bool
 		s.closeExportSnapshotConnection(ctx, commitExport)
 	}
 
+	// Close connection pool
+	if s.connectionPool != nil {
+		s.connectionPool.Close(ctx)
+		s.connectionPool = nil
+	}
+
 	// Close metadata connection
 	if s.metadataConn != nil {
 		if err := s.metadataConn.Close(ctx); err != nil {
@@ -212,12 +231,11 @@ func (s *Snapshotter) Close(ctx context.Context) {
 	s.closeAllConnections(ctx, false) // Rollback on abnormal termination
 }
 
-// decodeColumnData decodes PostgreSQL column data using pgtype
+// decodeColumnData decodes PostgreSQL column data using cached decoder
 func (s *Snapshotter) decodeColumnData(data []byte, dataTypeOID uint32) (interface{}, error) {
-	if dt, ok := s.typeMap.TypeForOID(dataTypeOID); ok {
-		return dt.Codec.DecodeValue(s.typeMap, dataTypeOID, pgtype.TextFormatCode, data)
-	}
-	return string(data), nil
+	// Use cached decoder (optimization: avoid reflection overhead)
+	decoder := s.decoderCache.Get(dataTypeOID)
+	return decoder.Decode(s.typeMap, data)
 }
 
 // generateInstanceID generates a unique instance identifier

@@ -388,6 +388,8 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 	result := results[0]
 	rowCount := int64(len(result.Rows))
 
+	chunkTime := time.Now().UTC()
+
 	// Process each row
 	for i, row := range result.Rows {
 		rowData := s.parseRow(result.FieldDescriptions, row)
@@ -400,7 +402,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 			Table:      chunk.TableName,
 			Schema:     chunk.TableSchema,
 			Data:       rowData,
-			ServerTime: time.Now().UTC(),
+			ServerTime: chunkTime,
 			LSN:        lsn,
 			IsLast:     isLast,
 		})
@@ -494,7 +496,7 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 
 // parseRow converts PostgreSQL row data to map with proper type conversion
 func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) map[string]any {
-	rowData := make(map[string]any)
+	rowData := make(map[string]any, len(fields))
 
 	for i, field := range fields {
 		if i >= len(row) {

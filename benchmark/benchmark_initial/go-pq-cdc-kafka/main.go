@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"os"
 	"strconv"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 
@@ -16,6 +17,9 @@ import (
 	"github.com/segmentio/kafka-go"
 	gokafka "github.com/segmentio/kafka-go"
 )
+
+// Use jsoniter for 2-3x faster JSON encoding
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 /*
 	psql "postgres://cdc_user:cdc_pass@127.0.0.1/cdc_db?replication=database"

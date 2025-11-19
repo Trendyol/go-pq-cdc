@@ -290,14 +290,14 @@ func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Ch
 }
 
 // executeInTransaction executes a function within a snapshot transaction
-// Uses a fresh connection for each chunk to avoid dirty connection state
+// Uses a connection from the pool for efficient reuse
 func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID string, fn func(pq.Connection) (int64, error)) (int64, error) {
-	// Create a fresh connection for this chunk
-	chunkConn, err := pq.NewConnection(ctx, s.dsn)
+	// Get connection from pool (optimization: avoid connection create/destroy overhead)
+	chunkConn, err := s.connectionPool.Get(ctx)
 	if err != nil {
-		return 0, errors.Wrap(err, "create chunk connection")
+		return 0, errors.Wrap(err, "get connection from pool")
 	}
-	defer chunkConn.Close(ctx)
+	defer s.connectionPool.Put(chunkConn)
 
 	tx := &snapshotTransaction{
 		snapshotter: s,

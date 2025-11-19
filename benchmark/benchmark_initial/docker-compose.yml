@@ -136,7 +136,7 @@ services:
       - redpanda
 
   connect:
-    image: docker.redpanda.com/redpandadata/connectors:latest
+    image: redpandadata/connectors:v1.0.46
     hostname: connect
     container_name: connect
     networks:
@@ -207,10 +207,10 @@ services:
       resources:
         limits:
           cpus: "2"
-          memory: 1024M
+          memory: 2048M
         reservations:
           cpus: '0.25'
-          memory: 128M
+          memory: 256M
 
   set-debezium-connector:
     image: curlimages/curl:latest
@@ -256,8 +256,8 @@ services:
   go-pq-cdc-kafka:
     container_name: go-pq-cdc-kafka
     build:
-      context: .
-      dockerfile: ./go-pq-cdc-kafka/Dockerfile
+      context: ../../
+      dockerfile: ./benchmark/benchmark_initial/go-pq-cdc-kafka/Dockerfile
     restart: on-failure
     ports:
       - '2112:2112'

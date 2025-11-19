@@ -31,7 +31,7 @@ func NewConnectionPool(ctx context.Context, dsn string, size int) (*ConnectionPo
 	}
 
 	// Pre-create connections
-	logger.Info("[connection-pool] creating connection pool", "size", size)
+	logger.Info("[snapshot-connection-pool] creating connection pool", "size", size)
 	for i := 0; i < size; i++ {
 		conn, err := pq.NewConnection(ctx, dsn)
 		if err != nil {
@@ -43,7 +43,7 @@ func NewConnectionPool(ctx context.Context, dsn string, size int) (*ConnectionPo
 		p.pool <- conn
 	}
 
-	logger.Info("[connection-pool] connection pool ready", "size", size)
+	logger.Info("[snapshot-connection-pool] connection pool ready", "size", size)
 	return p, nil
 }
 
@@ -64,7 +64,7 @@ func (p *ConnectionPool) Put(conn pq.Connection) {
 		// Connection returned to pool
 	default:
 		// Pool is full (shouldn't happen with proper usage)
-		logger.Warn("[connection-pool] pool is full, connection not returned")
+		logger.Warn("[snapshot-connection-pool] pool is full, connection not returned")
 	}
 }
 
@@ -73,15 +73,15 @@ func (p *ConnectionPool) Close(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	logger.Info("[connection-pool] closing all connections", "count", len(p.conns))
+	logger.Info("[snapshot-connection-pool] closing all connections", "count", len(p.conns))
 
 	for _, conn := range p.conns {
 		if err := conn.Close(ctx); err != nil {
-			logger.Warn("[connection-pool] error closing connection", "error", err)
+			logger.Warn("[snapshot-connection-pool] error closing connection", "error", err)
 		}
 	}
 
 	close(p.pool)
 	p.conns = nil
-	logger.Info("[connection-pool] connection pool closed")
+	logger.Info("[snapshot-connection-pool] connection pool closed")
 }

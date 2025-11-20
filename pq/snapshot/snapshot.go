@@ -1,0 +1,262 @@
+package snapshot
+
+import (
+	"context"
+	goerrors "errors"
+	"fmt"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/internal/metric"
+	"github.com/Trendyol/go-pq-cdc/logger"
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/go-playground/errors"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// Sentinel errors for snapshot operations
+var (
+	// ErrSnapshotInvalidated indicates the snapshot transaction was closed (coordinator restart)
+	ErrSnapshotInvalidated = goerrors.New("snapshot invalidated by coordinator restart")
+)
+
+// Handler SnapshotHandler is a function that handles snapshot events
+type Handler func(event *format.Snapshot) error
+
+type Snapshotter struct {
+	metadataConn       pq.Connection
+	healthcheckConn    pq.Connection
+	exportSnapshotConn pq.Connection
+	metric             metric.Metric
+	connectionPool     *ConnectionPool
+	decoderCache       *DecoderCache
+	typeMap            *pgtype.Map
+	orderByCache       map[string]orderByCacheEntry
+	dsn                string
+	tables             publication.Tables
+	config             config.SnapshotConfig
+	orderByMu          sync.RWMutex
+}
+
+type orderByCacheEntry struct {
+	clause  string
+	columns []string
+}
+
+func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publication.Tables, dsn string, m metric.Metric) (*Snapshotter, error) {
+	metadataConn, err := pq.NewConnection(ctx, dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "create metadata connection")
+	}
+
+	healthcheckConn, err := pq.NewConnection(ctx, dsn)
+	if err != nil {
+		return nil, errors.Wrap(err, "create healthcheck connection")
+	}
+
+	// Create connection pool for chunk processing (5 connections)
+	connectionPool, err := NewConnectionPool(ctx, dsn, 5)
+	if err != nil {
+		return nil, errors.Wrap(err, "create connection pool")
+	}
+
+	// Create decoder cache for efficient type decoding
+	decoderCache := NewDecoderCache()
+
+	return &Snapshotter{
+		dsn:             dsn,
+		metadataConn:    metadataConn,
+		healthcheckConn: healthcheckConn,
+		connectionPool:  connectionPool,
+		decoderCache:    decoderCache,
+		config:          snapshotConfig,
+		tables:          tables,
+		typeMap:         pgtype.NewMap(),
+		metric:          m,
+		orderByCache:    make(map[string]orderByCacheEntry),
+	}, nil
+}
+
+// Prepare sets up snapshot metadata and exports snapshot transaction
+// This must be called BEFORE creating the replication slot to avoid data loss
+// Returns the snapshot LSN that should be used for replication slot creation
+//
+// Flow:
+//  1. Coordinator election
+//  2. Capture current LSN
+//  3. Create metadata (job, chunks)
+//  4. Export snapshot transaction (keeps transaction OPEN)
+//  5. Return LSN for slot creation
+//
+// IMPORTANT: Replication slot MUST be created immediately after this returns
+// to ensure no WAL changes are lost during snapshot execution
+func (s *Snapshotter) Prepare(ctx context.Context, slotName string) (pq.LSN, error) {
+	instanceID := generateInstanceID(s.config.InstanceID)
+	logger.Debug("[snapshot] preparing", "instanceID", instanceID)
+
+	snapshotLSN, isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
+	if err != nil {
+		return 0, errors.Wrap(err, "setup job")
+	}
+
+	if isCoordinator {
+		logger.Debug("[coordinator] snapshot transaction kept OPEN - replication slot must be created NOW")
+	}
+	if snapshotLSN == nil {
+		return 0, nil
+	}
+	return *snapshotLSN, nil
+}
+
+// Execute performs the actual snapshot data collection
+// This should be called AFTER the replication slot is created with the LSN from Prepare()
+// Returns when snapshot is complete
+func (s *Snapshotter) Execute(ctx context.Context, handler Handler, slotName string) error {
+	startTime := time.Now()
+	instanceID := generateInstanceID(s.config.InstanceID)
+	logger.Debug("[snapshot] executing", "instanceID", instanceID)
+
+	// Load job
+	job, err := s.loadJob(ctx, slotName)
+	if err != nil || job == nil {
+		return errors.New("job not found - Prepare() must be called first")
+	}
+
+	// Execute worker processing (ALL instances work, including coordinator)
+	if err := s.executeWorker(ctx, slotName, instanceID, job, handler, startTime); err != nil {
+		return errors.Wrap(err, "execute worker")
+	}
+
+	// Finalize (check completion, send END marker)
+	if err := s.finalizeSnapshot(ctx, slotName, job, handler); err != nil {
+		return errors.Wrap(err, "finalize snapshot")
+	}
+
+	logger.Info("[snapshot] execution completed", "instanceID", instanceID, "duration", time.Since(startTime))
+	return nil
+}
+
+// finalizeSnapshot checks completion, closes connections, and sends END marker
+func (s *Snapshotter) finalizeSnapshot(ctx context.Context, slotName string, job *Job, handler Handler) error {
+	allCompleted, err := s.checkJobCompleted(ctx, slotName)
+	if err != nil {
+		return errors.Wrap(err, "check job completed")
+	}
+
+	if !allCompleted {
+		return nil // Not done yet, keep processing
+	}
+
+	logger.Info("[snapshot] all chunks completed, finalizing snapshot")
+
+	// Mark job as completed (idempotent - safe for multiple workers)
+	if err := s.markJobAsCompleted(ctx, slotName); err != nil {
+		logger.Warn("[snapshot] failed to mark job as completed", "error", err)
+		return err
+	}
+
+	// Close all connections now that snapshot is complete
+	s.closeAllConnections(ctx, true)
+
+	// Send END marker
+	return handler(&format.Snapshot{
+		EventType:  format.SnapshotEventTypeEnd,
+		ServerTime: time.Now().UTC(),
+		LSN:        job.SnapshotLSN,
+	})
+}
+
+// closeAllConnections closes all snapshot connections
+// commitExport: if true, commits the export snapshot transaction; if false, rolls it back
+func (s *Snapshotter) closeAllConnections(ctx context.Context, commitExport bool) {
+	logger.Info("[snapshot] closing all connections")
+
+	// Close export snapshot connection (coordinator only)
+	if s.exportSnapshotConn != nil {
+		s.closeExportSnapshotConnection(ctx, commitExport)
+	}
+
+	// Close connection pool
+	if s.connectionPool != nil {
+		s.connectionPool.Close(ctx)
+		s.connectionPool = nil
+	}
+
+	// Close metadata connection
+	if s.metadataConn != nil {
+		if err := s.metadataConn.Close(ctx); err != nil {
+			logger.Warn("[snapshot] error closing metadata connection", "error", err)
+		}
+		s.metadataConn = nil
+	}
+
+	// Close healthcheck connection
+	if s.healthcheckConn != nil {
+		if err := s.healthcheckConn.Close(ctx); err != nil {
+			logger.Warn("[snapshot] error closing healthcheck connection", "error", err)
+		}
+		s.healthcheckConn = nil
+	}
+
+	logger.Info("[snapshot] all connections closed")
+}
+
+// closeExportSnapshotConnection commits or rolls back and closes the export snapshot connection
+func (s *Snapshotter) closeExportSnapshotConnection(ctx context.Context, commit bool) {
+	if commit {
+		logger.Info("[coordinator] committing and closing snapshot export connection")
+		if err := s.execSQL(ctx, s.exportSnapshotConn, "COMMIT"); err != nil {
+			logger.Warn("[coordinator] failed to commit snapshot transaction, attempting rollback", "error", err)
+			if rollbackErr := s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK"); rollbackErr != nil {
+				logger.Error("[coordinator] failed to rollback snapshot transaction", "error", rollbackErr)
+			}
+		}
+	} else {
+		logger.Info("[coordinator] rolling back and closing snapshot export connection")
+		if err := s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK"); err != nil {
+			logger.Warn("[coordinator] failed to rollback snapshot transaction", "error", err)
+		}
+	}
+
+	if err := s.exportSnapshotConn.Close(ctx); err != nil {
+		logger.Warn("[coordinator] error closing export snapshot connection", "error", err)
+	}
+	s.exportSnapshotConn = nil
+}
+
+// Close closes all connections held by the Snapshotter
+// Safe to call multiple times (idempotent)
+// This is a fallback for cleanup in case snapshot doesn't complete normally
+func (s *Snapshotter) Close(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	logger.Debug("[snapshot] closing snapshotter (fallback cleanup)")
+	s.closeAllConnections(ctx, false) // Rollback on abnormal termination
+}
+
+// decodeColumnData decodes PostgreSQL column data using cached decoder
+func (s *Snapshotter) decodeColumnData(data []byte, dataTypeOID uint32) (interface{}, error) {
+	// Use cached decoder (optimization: avoid reflection overhead)
+	decoder := s.decoderCache.Get(dataTypeOID)
+	return decoder.Decode(s.typeMap, data)
+}
+
+// generateInstanceID generates a unique instance identifier
+func generateInstanceID(configuredID string) string {
+	if configuredID != "" {
+		return configuredID
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
+	pid := os.Getpid()
+	return fmt.Sprintf("%s-%d", hostname, pid)
+}

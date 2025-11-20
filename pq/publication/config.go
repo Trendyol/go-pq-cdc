@@ -51,6 +51,20 @@ func (c Config) createQuery() string {
 }
 
 func (c Config) infoQuery() string {
-	q := fmt.Sprintf(`SELECT p.pubname, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate, COALESCE(array_agg(c.relname) FILTER (WHERE c.relname IS NOT NULL), ARRAY[]::text[]) AS included_tables FROM pg_publication p LEFT JOIN pg_publication_rel pr ON p.oid = pr.prpubid LEFT JOIN pg_class c ON pr.prrelid = c.oid WHERE p.pubname = '%s' GROUP BY p.pubname, p.pubowner, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate;`, c.Name)
+	q := fmt.Sprintf(`SELECT 
+		p.pubname, 
+		p.puballtables, 
+		p.pubinsert, 
+		p.pubupdate, 
+		p.pubdelete, 
+		p.pubtruncate, 
+		COALESCE(array_agg(c.relname) FILTER (WHERE c.relname IS NOT NULL), ARRAY[]::text[]) AS included_tables,
+		COALESCE(array_agg(n.nspname) FILTER (WHERE n.nspname IS NOT NULL), ARRAY[]::text[]) AS included_schemas
+	FROM pg_publication p 
+	LEFT JOIN pg_publication_rel pr ON p.oid = pr.prpubid 
+	LEFT JOIN pg_class c ON pr.prrelid = c.oid 
+	LEFT JOIN pg_namespace n ON c.relnamespace = n.oid
+	WHERE p.pubname = '%s' 
+	GROUP BY p.pubname, p.pubowner, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate;`, c.Name)
 	return q
 }

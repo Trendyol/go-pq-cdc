@@ -6,8 +6,8 @@ import (
 )
 
 type Book struct {
-	ID   int    `json:"id"`
 	Name string `json:"name"`
+	ID   int    `json:"id"`
 }
 
 func (b *Book) Map() map[string]any {

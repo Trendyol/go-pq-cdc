@@ -3,6 +3,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,11 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/go-playground/errors"
 )
+
+type primaryKeyColumn struct {
+	Name     string
+	DataType string
+}
 
 // initializeCoordinator sets up the snapshot job as coordinator
 // 1. Cleanup any incomplete job (from previous crash)
@@ -280,6 +286,8 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				chunk_index INT NOT NULL,
 				chunk_start BIGINT NOT NULL,
 				chunk_size BIGINT NOT NULL,
+				range_start BIGINT,
+				range_end BIGINT,
 				status TEXT NOT NULL DEFAULT 'pending',
 				claimed_by TEXT,
 				claimed_at TIMESTAMP,
@@ -358,20 +366,13 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 		Name:   chunk.TableName,
 	}
 
-	orderByClause, err := s.getOrderByClause(ctx, conn, table)
+	orderByClause, pkColumns, err := s.getOrderByClause(ctx, conn, table)
 	if err != nil {
 		return 0, errors.Wrap(err, "get order by clause")
 	}
 
 	// Build query for this chunk
-	query := fmt.Sprintf(
-		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
-		chunk.TableSchema,
-		chunk.TableName,
-		orderByClause,
-		chunk.ChunkSize,
-		chunk.ChunkStart,
-	)
+	query := s.buildChunkQuery(chunk, orderByClause, pkColumns)
 
 	logger.Debug("[chunk] executing query", "query", query)
 
@@ -411,44 +412,181 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 	return rowCount, nil
 }
 
-// getOrderByClause returns the ORDER BY clause for a table
-func (s *Snapshotter) getOrderByClause(ctx context.Context, conn pq.Connection, table publication.Table) (string, error) {
-	// Try to get primary key columns fallback to ctid
-	query := fmt.Sprintf(`
-		SELECT a.attname
-		FROM pg_index i
-		JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-		WHERE i.indrelid = '%s.%s'::regclass AND i.indisprimary
-		ORDER BY a.attnum
-	`, table.Schema, table.Name)
+func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
+		pkColumn := pkColumns[0]
 
-	results, err := s.execQuery(ctx, conn, query)
-	if err != nil {
-		return "", errors.Wrap(err, "query primary key")
+		return fmt.Sprintf(
+			"SELECT * FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
+			chunk.TableSchema,
+			chunk.TableName,
+			pkColumn,
+			*chunk.RangeStart,
+			pkColumn,
+			*chunk.RangeEnd,
+			orderByClause,
+			chunk.ChunkSize,
+		)
 	}
 
-	if len(results) > 0 && len(results[0].Rows) > 0 {
-		// Build ORDER BY from primary key columns
-		var columns []string
-		for _, row := range results[0].Rows {
-			if len(row) > 0 {
-				columns = append(columns, string(row[0]))
-			}
+	return fmt.Sprintf(
+		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
+		chunk.TableSchema,
+		chunk.TableName,
+		orderByClause,
+		chunk.ChunkSize,
+		chunk.ChunkStart,
+	)
+}
+
+// getOrderByClause returns the ORDER BY clause for a table
+func (s *Snapshotter) getOrderByClause(ctx context.Context, conn pq.Connection, table publication.Table) (string, []string, error) {
+	if entry, ok := s.loadOrderByCache(table); ok {
+		return entry.clause, cloneStringSlice(entry.columns), nil
+	}
+
+	columns, err := s.getPrimaryKeyColumnsDetailed(ctx, conn, table)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if len(columns) > 0 {
+		var columnNames []string
+		for _, column := range columns {
+			columnNames = append(columnNames, column.Name)
 		}
-		if len(columns) > 0 {
-			orderBy := strings.Join(columns, ", ")
-			logger.Debug("[chunk] using primary key for ordering", "table", table.Name, "orderBy", orderBy)
-			return orderBy, nil
-		}
+		orderBy := strings.Join(columnNames, ", ")
+		logger.Debug("[chunk] using primary key for ordering", "table", table.Name, "orderBy", orderBy)
+		s.storeOrderByCache(table, orderBy, columnNames)
+		return orderBy, columnNames, nil
 	}
 
 	// No primary key, use ctid (PostgreSQL internal row identifier)
 	logger.Debug("[chunk] no primary key, using ctid", "table", table.Name)
-	return "ctid", nil
+	s.storeOrderByCache(table, "ctid", nil)
+	return "ctid", nil, nil
+}
+
+func (s *Snapshotter) loadOrderByCache(table publication.Table) (orderByCacheEntry, bool) {
+	key := s.orderByCacheKey(table)
+
+	s.orderByMu.RLock()
+	entry, ok := s.orderByCache[key]
+	s.orderByMu.RUnlock()
+
+	if !ok {
+		return orderByCacheEntry{}, false
+	}
+
+	return orderByCacheEntry{
+		clause:  entry.clause,
+		columns: cloneStringSlice(entry.columns),
+	}, true
+}
+
+func (s *Snapshotter) storeOrderByCache(table publication.Table, clause string, columns []string) {
+	key := s.orderByCacheKey(table)
+
+	s.orderByMu.Lock()
+	s.orderByCache[key] = orderByCacheEntry{
+		clause:  clause,
+		columns: cloneStringSlice(columns),
+	}
+	s.orderByMu.Unlock()
+}
+
+func (s *Snapshotter) orderByCacheKey(table publication.Table) string {
+	return fmt.Sprintf("%s.%s", table.Schema, table.Name)
+}
+
+func cloneStringSlice(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
 }
 
 // createTableChunks divides a table into chunks
 func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
+	pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
+	if err != nil {
+		logger.Warn("[chunk] failed to inspect primary key", "table", table.Name, "error", err)
+	}
+
+	if ok {
+		if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
+			return rangeChunks
+		}
+		logger.Warn("[chunk] range chunking unavailable, falling back to OFFSET", "table", table.Name)
+	}
+
+	return s.createOffsetChunks(ctx, slotName, table)
+}
+
+func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, table publication.Table, pkColumn string) []*Chunk {
+	minValue, maxValue, ok, err := s.getPrimaryKeyBounds(ctx, table, pkColumn)
+	if err != nil {
+		logger.Warn("[chunk] failed to read primary key bounds", "table", table.Name, "error", err)
+		return nil
+	}
+
+	if !ok {
+		// Empty table, create single chunk to keep accounting simple
+		return []*Chunk{
+			{
+				SlotName:    slotName,
+				TableSchema: table.Schema,
+				TableName:   table.Name,
+				ChunkIndex:  0,
+				ChunkStart:  0,
+				ChunkSize:   s.config.ChunkSize,
+				Status:      ChunkStatusPending,
+			},
+		}
+	}
+
+	chunkSize := s.config.ChunkSize
+	totalRange := (maxValue - minValue) + 1
+	numChunks := (totalRange + chunkSize - 1) / chunkSize
+	chunks := make([]*Chunk, 0, numChunks)
+
+	for i := int64(0); i < numChunks; i++ {
+		rangeStart := minValue + (i * chunkSize)
+		rangeEnd := rangeStart + chunkSize - 1
+		if rangeEnd > maxValue {
+			rangeEnd = maxValue
+		}
+
+		startValue := rangeStart
+		endValue := rangeEnd
+
+		chunk := &Chunk{
+			SlotName:    slotName,
+			TableSchema: table.Schema,
+			TableName:   table.Name,
+			ChunkIndex:  int(i),
+			ChunkStart:  i * chunkSize,
+			ChunkSize:   chunkSize,
+			Status:      ChunkStatusPending,
+			RangeStart:  &startValue,
+			RangeEnd:    &endValue,
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	logger.Debug("[chunk] range chunks created",
+		"table", table.Name,
+		"chunkSize", chunkSize,
+		"numChunks", numChunks,
+		"rangeMin", minValue,
+		"rangeMax", maxValue,
+	)
+	return chunks
+}
+
+func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
 	rowCount, err := s.getTableRawCount(ctx, table.Schema, table.Name)
 	if err != nil {
 		logger.Warn("[chunk] failed to estimate row count, using single chunk", "table", table.Name, "error", err)
@@ -490,8 +628,98 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 		chunks = append(chunks, chunk)
 	}
 
-	logger.Debug("[chunk] chunks created", "table", table.Name, "rowCount", rowCount, "chunkSize", chunkSize, "numChunks", numChunks)
+	logger.Info("[chunk] offset chunks created", "table", table.Name, "rowCount", rowCount, "chunkSize", chunkSize, "numChunks", numChunks)
 	return chunks
+}
+
+func (s *Snapshotter) getPrimaryKeyColumnsDetailed(ctx context.Context, conn pq.Connection, table publication.Table) ([]primaryKeyColumn, error) {
+	query := fmt.Sprintf(`
+		SELECT a.attname, format_type(a.atttypid, a.atttypmod)
+		FROM pg_index i
+		JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+		WHERE i.indrelid = '%s.%s'::regclass AND i.indisprimary
+		ORDER BY a.attnum
+	`, table.Schema, table.Name)
+
+	results, err := s.execQuery(ctx, conn, query)
+	if err != nil {
+		return nil, errors.Wrap(err, "query primary key")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 {
+		return nil, nil
+	}
+
+	var columns []primaryKeyColumn
+	for _, row := range results[0].Rows {
+		if len(row) < 2 {
+			continue
+		}
+		columns = append(columns, primaryKeyColumn{
+			Name:     string(row[0]),
+			DataType: strings.ToLower(string(row[1])),
+		})
+	}
+	return columns, nil
+}
+
+func (s *Snapshotter) getSingleIntegerPrimaryKey(ctx context.Context, table publication.Table) (string, bool, error) {
+	columns, err := s.getPrimaryKeyColumnsDetailed(ctx, s.metadataConn, table)
+	if err != nil {
+		return "", false, err
+	}
+
+	if len(columns) != 1 {
+		return "", false, nil
+	}
+
+	if !isIntegerType(columns[0].DataType) {
+		return "", false, nil
+	}
+
+	return columns[0].Name, true, nil
+}
+
+func isIntegerType(dataType string) bool {
+	switch dataType {
+	case "smallint", "integer", "bigint", "int2", "int4", "int8":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Snapshotter) getPrimaryKeyBounds(ctx context.Context, table publication.Table, pkColumn string) (int64, int64, bool, error) {
+	query := fmt.Sprintf(`
+		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
+		FROM %s.%s
+	`, pkColumn, pkColumn, table.Schema, table.Name)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return 0, 0, false, errors.Wrap(err, "query primary key bounds")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 {
+		return 0, 0, false, nil
+	}
+
+	row := results[0].Rows[0]
+	if len(row) < 2 || row[0] == nil || row[1] == nil {
+		return 0, 0, false, nil
+	}
+
+	minValue, err := strconv.ParseInt(string(row[0]), 10, 64)
+	if err != nil {
+		return 0, 0, false, errors.Wrap(err, "parse min value")
+	}
+
+	maxValue, err := strconv.ParseInt(string(row[1]), 10, 64)
+	if err != nil {
+		return 0, 0, false, errors.Wrap(err, "parse max value")
+	}
+
+	return minValue, maxValue, true, nil
 }
 
 // parseRow converts PostgreSQL row data to map with proper type conversion
@@ -528,11 +756,21 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) m
 // saveChunk saves a chunk to the database (only INSERT, coordinator creates once)
 func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 	return s.retryDBOperation(ctx, func() error {
+		rangeStart := "NULL"
+		if chunk.RangeStart != nil {
+			rangeStart = fmt.Sprintf("%d", *chunk.RangeStart)
+		}
+
+		rangeEnd := "NULL"
+		if chunk.RangeEnd != nil {
+			rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
+		}
+
 		query := fmt.Sprintf(`
 			INSERT INTO %s (
 				slot_name, table_schema, table_name, chunk_index, 
-				chunk_start, chunk_size, status
-			) VALUES ('%s', '%s', '%s', %d, %d, %d, '%s')
+				chunk_start, chunk_size, range_start, range_end, status
+			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, '%s')
 		`, chunksTableName,
 			chunk.SlotName,
 			chunk.TableSchema,
@@ -540,6 +778,8 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			chunk.ChunkIndex,
 			chunk.ChunkStart,
 			chunk.ChunkSize,
+			rangeStart,
+			rangeEnd,
 			string(chunk.Status),
 		)
 

@@ -21,7 +21,7 @@ type ConnectionPool struct {
 // NewConnectionPool creates a new connection pool with the specified size
 func NewConnectionPool(ctx context.Context, dsn string, size int) (*ConnectionPool, error) {
 	if size <= 0 {
-		size = 10 // Default pool size
+		size = 5 // Default pool size
 	}
 
 	p := &ConnectionPool{

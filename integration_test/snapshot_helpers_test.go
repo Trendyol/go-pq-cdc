@@ -23,6 +23,17 @@ func createTestTable(ctx context.Context, conn pq.Connection, tableName string) 
 	return pgExec(ctx, conn, query)
 }
 
+func createTextPrimaryKeyTable(ctx context.Context, conn pq.Connection, tableName string) error {
+	query := fmt.Sprintf(`
+		DROP TABLE IF EXISTS %s;
+		CREATE TABLE %s (
+			id TEXT PRIMARY KEY,
+			payload TEXT NOT NULL
+		);
+	`, tableName, tableName)
+	return pgExec(ctx, conn, query)
+}
+
 func execQuery(ctx context.Context, conn pq.Connection, query string) ([]*pgconn.Result, error) {
 	resultReader := conn.Exec(ctx, query)
 	results, err := resultReader.ReadAll()

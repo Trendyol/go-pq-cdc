@@ -15,6 +15,14 @@ scrape_configs:
     static_configs:
       - targets: [ "es-exporter:9114" ]
   - job_name: go_pq_cdc_exporter
+    # DNS service discovery ile tüm scaled instance'ları scrape edebiliriz
+    dns_sd_configs:
+      - names:
+          - 'tasks.go-pq-cdc-kafka'
+        type: 'A'
+        port: 2112
+        refresh_interval: 5s
+    # Fallback için static config de ekleyelim
     static_configs:
       - targets: [ "go-pq-cdc-kafka:2112" ]
   - job_name: redpanda_exporter

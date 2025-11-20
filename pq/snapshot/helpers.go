@@ -4,6 +4,7 @@ import (
 	"context"
 	goerrors "errors"
 	"net"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -174,4 +175,22 @@ func isInvalidSnapshotError(err error) bool {
 	// Fallback to string matching
 	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "invalid snapshot identifier")
+}
+
+func parseNullableInt64(value []byte) (*int64, error) {
+	if value == nil {
+		return nil, nil
+	}
+
+	str := string(value)
+	if str == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
 }

@@ -32,6 +32,12 @@ type Chunk struct {
 	ChunkIndex  int
 	ChunkStart  int64
 	ChunkSize   int64
+	RangeStart  *int64
+	RangeEnd    *int64
+}
+
+func (c *Chunk) hasRangeBounds() bool {
+	return c.RangeStart != nil && c.RangeEnd != nil
 }
 
 // Job represents the overall snapshot job metadata

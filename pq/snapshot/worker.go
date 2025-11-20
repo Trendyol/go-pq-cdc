@@ -224,12 +224,22 @@ func (s *Snapshotter) handleInvalidSnapshot(ctx context.Context, instanceID stri
 
 // logChunkStart logs the start of chunk processing
 func (s *Snapshotter) logChunkStart(instanceID string, chunk *Chunk) {
-	logger.Debug("[worker] processing chunk",
+	args := []any{
 		"instanceID", instanceID,
 		"table", fmt.Sprintf("%s.%s", chunk.TableSchema, chunk.TableName),
 		"chunkIndex", chunk.ChunkIndex,
 		"chunkStart", chunk.ChunkStart,
-		"chunkSize", chunk.ChunkSize)
+		"chunkSize", chunk.ChunkSize,
+	}
+
+	if hasRange := chunk.hasRangeBounds(); hasRange {
+		args = append(args,
+			"rangeStart", *chunk.RangeStart,
+			"rangeEnd", *chunk.RangeEnd,
+		)
+	}
+
+	logger.Debug("[worker] processing chunk", args...)
 }
 
 // notifyHeartbeat sends chunk ID to heartbeat worker
@@ -424,7 +434,7 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 		}
 
 		row := results[0].Rows[0]
-		if len(row) < 7 {
+		if len(row) < 9 {
 			return errors.New("invalid chunk row")
 		}
 
@@ -458,7 +468,7 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 		FROM available_chunk
 		WHERE c.id = available_chunk.id
 		RETURNING c.id, c.table_schema, c.table_name, 
-		          c.chunk_index, c.chunk_start, c.chunk_size, c.rows_processed
+		          c.chunk_index, c.chunk_start, c.chunk_size, c.range_start, c.range_end, c.rows_processed
 	`, chunksTableName,
 		slotName,
 		timeoutThreshold.Format(postgresTimestampFormat),
@@ -494,6 +504,16 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
 		return nil, errors.Wrap(err, "parse chunk size")
 	}
+	rangeStart, err := parseNullableInt64(row[6])
+	if err != nil {
+		return nil, errors.Wrap(err, "parse range start")
+	}
+	rangeEnd, err := parseNullableInt64(row[7])
+	if err != nil {
+		return nil, errors.Wrap(err, "parse range end")
+	}
+	chunk.RangeStart = rangeStart
+	chunk.RangeEnd = rangeEnd
 
 	return chunk, nil
 }

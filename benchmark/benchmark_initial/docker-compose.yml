@@ -254,13 +254,12 @@ services:
       }'"
 
   go-pq-cdc-kafka:
-    container_name: go-pq-cdc-kafka
     build:
       context: ../../
       dockerfile: ./benchmark/benchmark_initial/go-pq-cdc-kafka/Dockerfile
     restart: on-failure
-    ports:
-      - '2112:2112'
+    expose:
+      - "2112"
     depends_on:
       redpanda:
         condition: service_healthy

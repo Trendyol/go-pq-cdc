@@ -249,6 +249,122 @@ func TestSnapshotMultipleChunks(t *testing.T) {
 	})
 }
 
+// TestSnapshotLimitOffsetFallback verifies that snapshot falls back to LIMIT/OFFSET chunking
+// when primary key range chunking is unavailable (non-integer primary key).
+func TestSnapshotLimitOffsetFallback(t *testing.T) {
+	ctx := context.Background()
+
+	tableName := "snapshot_offset_chunk_test"
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_snapshot_offset_chunk"
+	cdcCfg.Publication.Name = "pub_snapshot_offset_chunk"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{
+			Name:            tableName,
+			Schema:          "public",
+			ReplicaIdentity: publication.ReplicaIdentityFull,
+		},
+	}
+	cdcCfg.Snapshot.Enabled = true
+	cdcCfg.Snapshot.Mode = "initial"
+	cdcCfg.Snapshot.ChunkSize = 10
+	cdcCfg.Snapshot.HeartbeatInterval = 30 * time.Second
+	cdcCfg.Snapshot.ClaimTimeout = 30 * time.Second
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	// Create table with TEXT primary key to disable PK range chunking
+	err = createTextPrimaryKeyTable(ctx, postgresConn, tableName)
+	require.NoError(t, err)
+
+	// Insert 50 rows so we have 5 LIMIT/OFFSET chunks
+	for i := 1; i <= 50; i++ {
+		query := fmt.Sprintf("INSERT INTO %s(id, payload) VALUES('key-%02d', 'payload-%02d')", tableName, i, i)
+		err = pgExec(ctx, postgresConn, query)
+		require.NoError(t, err)
+	}
+
+	messageCh := make(chan any, 100)
+	snapshotBeginReceived := false
+	snapshotEndReceived := false
+	var snapshotData []map[string]any
+
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Snapshot:
+			messageCh <- msg
+		}
+		_ = ctx.Ack()
+	}
+
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		postgresConn.Close(ctx)
+		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+	})
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err = connector.WaitUntilReady(waitCtx)
+	require.NoError(t, err)
+
+	timeout := time.After(30 * time.Second)
+	snapshotCompleted := false
+
+	for !snapshotCompleted {
+		select {
+		case msg := <-messageCh:
+			switch m := msg.(type) {
+			case *format.Snapshot:
+				switch m.EventType {
+				case format.SnapshotEventTypeBegin:
+					snapshotBeginReceived = true
+				case format.SnapshotEventTypeData:
+					snapshotData = append(snapshotData, m.Data)
+				case format.SnapshotEventTypeEnd:
+					snapshotEndReceived = true
+					snapshotCompleted = true
+				}
+			}
+		case <-timeout:
+			t.Fatalf("timeout waiting for snapshot events, received %d data rows", len(snapshotData))
+		}
+	}
+
+	require.True(t, snapshotBeginReceived, "snapshot begin should be received")
+	require.True(t, snapshotEndReceived, "snapshot end should be received")
+	require.Len(t, snapshotData, 50, "should receive all rows from table")
+
+	// Verify that chunks were created with LIMIT/OFFSET (range columns are NULL)
+	query := fmt.Sprintf(`
+		SELECT chunk_index, chunk_start, chunk_size, range_start, range_end, status, rows_processed
+		FROM cdc_snapshot_chunks
+		WHERE slot_name = '%s'
+		ORDER BY chunk_index
+	`, cdcCfg.Slot.Name)
+
+	results, err := execQuery(ctx, postgresConn, query)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	require.Len(t, results[0].Rows, 5, "expected 5 chunks for 50 rows with chunk size 10")
+
+	for i, row := range results[0].Rows {
+		assert.Equal(t, fmt.Sprintf("%d", i), string(row[0]))
+		assert.Equal(t, fmt.Sprintf("%d", i*10), string(row[1]))
+		assert.Equal(t, "10", string(row[2]))
+		assert.Nil(t, row[3], "range_start should be NULL for LIMIT/OFFSET chunk")
+		assert.Nil(t, row[4], "range_end should be NULL for LIMIT/OFFSET chunk")
+		assert.Equal(t, "completed", string(row[5]))
+		assert.Equal(t, "10", string(row[6]))
+	}
+}
+
 // TestSnapshotEmptyTable tests edge case with empty table:
 // - No data in table
 // - Should create 1 chunk with 0 rows processed

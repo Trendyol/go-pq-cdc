@@ -5,6 +5,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -38,6 +39,14 @@ type Snapshotter struct {
 	typeMap *pgtype.Map
 	tables  publication.Tables
 	config  config.SnapshotConfig
+
+	orderByMu    sync.RWMutex
+	orderByCache map[string]orderByCacheEntry
+}
+
+type orderByCacheEntry struct {
+	clause  string
+	columns []string
 }
 
 func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publication.Tables, dsn string, m metric.Metric) (*Snapshotter, error) {
@@ -51,8 +60,8 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 		return nil, errors.Wrap(err, "create healthcheck connection")
 	}
 
-	// Create connection pool for chunk processing (10 connections)
-	connectionPool, err := NewConnectionPool(ctx, dsn, 10)
+	// Create connection pool for chunk processing (5 connections)
+	connectionPool, err := NewConnectionPool(ctx, dsn, 5)
 	if err != nil {
 		return nil, errors.Wrap(err, "create connection pool")
 	}
@@ -70,6 +79,7 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 		tables:          tables,
 		typeMap:         pgtype.NewMap(),
 		metric:          m,
+		orderByCache:    make(map[string]orderByCacheEntry),
 	}, nil
 }
 

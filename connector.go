@@ -393,7 +393,7 @@ func (c *connector) shouldTakeSnapshotOnly(ctx context.Context) bool {
 
 	job, err := c.snapshotter.LoadJob(ctx, slotName)
 	if err != nil {
-		logger.Error("failed to load snapshot job, will take snapshot", "error", err)
+		logger.Debug("failed to load snapshot job, will take snapshot", "error", err)
 		return true
 	}
 

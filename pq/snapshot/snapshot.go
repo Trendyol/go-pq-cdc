@@ -31,17 +31,15 @@ type Snapshotter struct {
 	metadataConn       pq.Connection
 	healthcheckConn    pq.Connection
 	exportSnapshotConn pq.Connection
+	metric             metric.Metric
 	connectionPool     *ConnectionPool
 	decoderCache       *DecoderCache
-
-	dsn     string
-	metric  metric.Metric
-	typeMap *pgtype.Map
-	tables  publication.Tables
-	config  config.SnapshotConfig
-
-	orderByMu    sync.RWMutex
-	orderByCache map[string]orderByCacheEntry
+	typeMap            *pgtype.Map
+	orderByCache       map[string]orderByCacheEntry
+	dsn                string
+	tables             publication.Tables
+	config             config.SnapshotConfig
+	orderByMu          sync.RWMutex
 }
 
 type orderByCacheEntry struct {

@@ -30,6 +30,8 @@ services:
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
+    command:
+      - '--podman=unix:///run/podman/podman.sock'
     ports:
       - "8080:8080"
     networks:
@@ -40,6 +42,8 @@ services:
       - "/sys:/sys"
       - "/var/lib/docker/:/var/lib/docker"
       - "/dev/disk/:/dev/disk"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "/run/podman/podman.sock:/run/podman/podman.sock"
     devices:
       - "/dev/kmsg"
     depends_on:
@@ -61,6 +65,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+      start_period: 30s
     networks:
       - cdc_net
     ports:
@@ -199,7 +204,7 @@ services:
           'GET',
           'http://localhost:8083/connectors',
         ]
-      start_period: 10s
+      start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 5

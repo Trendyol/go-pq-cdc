@@ -58,9 +58,16 @@ Debezium:
         'Oyleli' || i
     FROM generate_series(1, 1000000) AS i;
     ```
-- Go to grafana dashboard: http://localhost:3000/d/edl1ybvsmc64gb/benchmark?orgId=1
+- Go to benchmark dashboard: http://localhost:3000/d/edl1ybvsmc64gb/benchmark?orgId=1
     > **Grafana Credentials**  
      Username: `go-pq-cdc-user` Password: `go-pq-cdc-pass`
+- Container CPU/Mem dashboard: http://localhost:3000/d/container-resources/container-resources?orgId=1
+    > `Containers` selector defaults to `postgres`, `debezium`, `go-pq-cdc-kafka`.  
+    > Use it to compare cAdvisor metrics if the old panels show `No data`.
+- If panels still say `No data`, restart cAdvisor after pulling the latest compose file so it can access the Docker socket:
+    ```sh
+    docker compose up -d cadvisor
+    ```
 - Trace the process 
 ![benchmark_dashboard](./dashboard.png)
 

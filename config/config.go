@@ -20,9 +20,9 @@ type Config struct {
 	Username         string             `json:"username" yaml:"username"`
 	Password         string             `json:"password" yaml:"password"`
 	Database         string             `json:"database" yaml:"database"`
-	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Publication      publication.Config `json:"publication" yaml:"publication"`
 	Slot             slot.Config        `json:"slot" yaml:"slot"`
+	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Port             int                `json:"port" yaml:"port"`
 	Metric           MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`

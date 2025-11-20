@@ -23,17 +23,17 @@ type Chunk struct {
 	ClaimedAt   *time.Time
 	HeartbeatAt *time.Time
 	CompletedAt *time.Time
-	SlotName    string
-	TableSchema string
-	TableName   string
+	RangeEnd    *int64
+	RangeStart  *int64
 	Status      ChunkStatus
+	TableName   string
 	ClaimedBy   string
+	TableSchema string
+	SlotName    string
 	ID          int64
 	ChunkIndex  int
 	ChunkStart  int64
 	ChunkSize   int64
-	RangeStart  *int64
-	RangeEnd    *int64
 }
 
 func (c *Chunk) hasRangeBounds() bool {

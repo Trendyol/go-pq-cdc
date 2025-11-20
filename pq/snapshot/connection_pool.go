@@ -12,10 +12,10 @@ import (
 // ConnectionPool manages a pool of database connections for efficient reuse
 // Eliminates the overhead of creating/destroying connections for each chunk
 type ConnectionPool struct {
-	dsn   string
 	pool  chan pq.Connection
-	mu    sync.Mutex
+	dsn   string
 	conns []pq.Connection
+	mu    sync.Mutex
 }
 
 // NewConnectionPool creates a new connection pool with the specified size

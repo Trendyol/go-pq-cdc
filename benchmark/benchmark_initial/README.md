@@ -1,11 +1,12 @@
 ## 10 M Insert Test
 
-### Hardware 
+### Hardware
+
 ```txt
 PC: Macbook Apple M1 Pro (2021)
 Memory: 32 GB
 
-go-pq-cdc: 
+go-pq-cdc:
   resources:
     limits:
       cpus: 1
@@ -24,62 +25,68 @@ Debezium:
       memory: 128M
 ```
 
-### Result
-|                      | go-pq-cdc  | Debezium     |
-|----------------------|------------|--------------|
-| Row Count            | 10 m       | 10 m         |
-| Elapsed Time         | 2.5 min    | 21 min       |
-| Cpu Usage Max        | 44%        | 181%         |
-| Memory Usage Max     | 130 MB     | 1.07 GB      |
-| Received Traffic Max | 4.36 MiB/s | 7.97 MiB/s   |
-| Sent Traffic Max     | 5.96 MiB/s | 6.27 MiB/s   |
+### Results
 
-![10m_result](./10m_test.png)
+#### 1x Test
 
+|                      | go-pq-cdc  | Debezium   |
+| -------------------- | ---------- | ---------- |
+| Row Count            | 10 m       | 10 m       |
+| Elapsed Time         | 1 min      | 2 min      |
+| Cpu Usage Max        | 69.9%      | 167%       |
+| Memory Usage Max     | 44.6 MB    | 2.56 GB    |
+| Received Traffic Max | 6.30 MiB/s | 4.85 MiB/s |
+| Sent Traffic Max     | 15.4 MiB/s | 43.7 MiB/s |
+
+![10m_1x](./10m_1x.png)
+
+#### 3x Test
+
+|                      | go-pq-cdc  | Debezium   |
+| -------------------- | ---------- | ---------- |
+| Row Count            | 10 m       | 10 m       |
+| Elapsed Time         | 20 sec     | 2 min      |
+| Cpu Usage Max        | 71%        | 187%       |
+| Memory Usage Max     | 47.6 MB    | 2.43 GB    |
+| Received Traffic Max | 6.30 MiB/s | 4.85 MiB/s |
+| Sent Traffic Max     | 15.4 MiB/s | 46.1 MiB/s |
+
+![10m_3x](./10m_3x.png)
 
 ## Requirements
+
 - [Docker](https://docs.docker.com/compose/install/)
 - [psql](https://www.postgresql.org/download/)
- 
+
 ## Instructions
 
-- Start the containers 
-    ```sh
-    docker compose up -d
-    ```
+- Start the containers
+  ```sh
+  docker compose up -d
+  ```
 - Connect to Postgres database:
-   ```sh
-   psql postgres://cdc_user:cdc_pass@127.0.0.1:5432/cdc_db
-   ```
-- Insert data to users table: 
-    ```sql
-    INSERT INTO users (name)
-    SELECT
-        'Oyleli' || i
-    FROM generate_series(1, 1000000) AS i;
-    ```
-- Go to benchmark dashboard: http://localhost:3000/d/edl1ybvsmc64gb/benchmark?orgId=1
-    > **Grafana Credentials**  
-     Username: `go-pq-cdc-user` Password: `go-pq-cdc-pass`
-- Container CPU/Mem dashboard: http://localhost:3000/d/container-resources/container-resources?orgId=1
-    > `Containers` selector defaults to `postgres`, `debezium`, `go-pq-cdc-kafka`.  
-    > Use it to compare cAdvisor metrics if the old panels show `No data`.
-- If panels still say `No data`, restart cAdvisor after pulling the latest compose file so it can access the Docker socket:
-    ```sh
-    docker compose up -d cadvisor
-    ```
-- Trace the process 
-![benchmark_dashboard](./dashboard.png)
+  ```sh
+  psql postgres://cdc_user:cdc_pass@127.0.0.1:5432/cdc_db
+  ```
+- Insert data to users table:
+  ```sql
+  INSERT INTO users (name)
+  SELECT
+      'Oyleli' || i
+  FROM generate_series(1, 1000000) AS i;
+  ```
+- Go to grafana dashboard: http://localhost:3000/d/edl1ybvsmc64gb/benchmark?orgId=1
+  > **Grafana Credentials**  
+  >  Username: `go-pq-cdc-user` Password: `go-pq-cdc-pass`
 
 ## Ports
 
-- RedPanda Console: `8085` http://localhost:8085 
+- RedPanda Console: `8085` http://localhost:8085
 - RedPanda: `19092` http://localhost:19092
 - Grafana: `3000` http://localhost:3000
-- Prometheus: `9090`  http://localhost:9090
+- Prometheus: `9090` http://localhost:9090
 - cAdvisor: `8080` http://localhost:8080
 - PostgreSQL:`5432` http://localhost:5432
-- PostgreSQL Metric Exporter: `9187` http://localhost:9187 
+- PostgreSQL Metric Exporter: `9187` http://localhost:9187
 - Debezium: `9093` http://localhost:9093
 - go-pq-cdc Metric: `2112` http://localhost:2112
-

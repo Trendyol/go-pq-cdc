@@ -1,197 +1,197 @@
-# Go-PQ-CDC-Kafka Scaling Rehberi
+# Go-PQ-CDC-Kafka Scaling Guide
 
-Bu rehber, `go-pq-cdc-kafka` servisinden birden fazla instance çalıştırmanız için gerekli adımları açıklar.
+This guide explains the necessary steps to run multiple instances of the `go-pq-cdc-kafka` service.
 
-## Yapılan Değişiklikler
+## Changes Made
 
-### 1. Docker Compose Değişiklikleri
-- ✅ `container_name` kaldırıldı (Docker Compose her instance için otomatik isim verecek)
-- ✅ Port mapping `expose` ile değiştirildi (port çakışmasını önlemek için)
-- ✅ Metrics sadece internal network'te expose ediliyor
+### 1. Docker Compose Changes
+- ✅ `container_name` removed (Docker Compose will automatically name each instance)
+- ✅ Port mapping replaced with `expose` (to prevent port conflicts)
+- ✅ Metrics are only exposed on the internal network
 
-### 2. Prometheus Yapılandırması
-- ✅ DNS service discovery eklendi
-- ✅ Tüm scaled instance'lar otomatik olarak scrape edilecek
+### 2. Prometheus Configuration
+- ✅ DNS service discovery added
+- ✅ All scaled instances will be automatically scraped
 
-## Kullanım
+## Usage
 
-### Birden Fazla Instance Başlatma
+### Starting Multiple Instances
 
-**3 instance ile başlatmak için:**
+**To start with 3 instances:**
 ```bash
 cd benchmark/benchmark_initial
 docker-compose up --scale go-pq-cdc-kafka=3 -d
 ```
 
-**5 instance ile başlatmak için:**
+**To start with 5 instances:**
 ```bash
 docker-compose up --scale go-pq-cdc-kafka=5 -d
 ```
 
-### Çalışan Instance'ları Görüntüleme
+### Viewing Running Instances
 
 ```bash
 docker-compose ps go-pq-cdc-kafka
 ```
 
-Veya:
+Or:
 ```bash
 docker ps | grep go-pq-cdc-kafka
 ```
 
-### Instance Sayısını Değiştirme
+### Changing the Number of Instances
 
-**Çalışırken scale etme (örn: 3'ten 5'e çıkarma):**
+**Scaling while running (e.g., from 3 to 5):**
 ```bash
 docker-compose up --scale go-pq-cdc-kafka=5 -d
 ```
 
-**Scale down (örn: 5'ten 2'ye düşürme):**
+**Scale down (e.g., from 5 to 2):**
 ```bash
 docker-compose up --scale go-pq-cdc-kafka=2 -d
 ```
 
-### Belirli Bir Instance'ın Loglarını İzleme
+### Monitoring Logs of a Specific Instance
 
 ```bash
-# Tüm instance'ların logları
+# Logs of all instances
 docker-compose logs -f go-pq-cdc-kafka
 
-# Belirli bir container
+# Specific container
 docker logs -f benchmark_initial_go-pq-cdc-kafka_1
 docker logs -f benchmark_initial_go-pq-cdc-kafka_2
 ```
 
-### Prometheus'ta Instance'ları Kontrol Etme
+### Checking Instances in Prometheus
 
-Prometheus UI'da (http://localhost:9090):
-1. Status → Targets'a gidin
-2. `go_pq_cdc_exporter` job'ını bulun
-3. Tüm scaled instance'ların listelendiğini göreceksiniz
+In Prometheus UI (http://localhost:9090):
+1. Go to Status → Targets
+2. Find the `go_pq_cdc_exporter` job
+3. You will see all scaled instances listed
 
-## Önemli Notlar
+## Important Notes
 
-### ⚠️ Dikkat Edilmesi Gerekenler
+### ⚠️ Things to Be Careful About
 
-1. **Snapshot Mode**: Şu anda her instance `SnapshotModeSnapshotOnly` modunda çalışıyor. Bu, her instance'ın veritabanından snapshot almaya çalışacağı anlamına gelir. Koordinasyon için dikkatli olun.
+1. **Snapshot Mode**: Currently, each instance is running in `SnapshotModeSnapshotOnly` mode. This means each instance will try to take a snapshot from the database. Be careful with coordination.
 
-2. **Replication Slot**: Her instance aynı PostgreSQL replication slot'u kullanamaz. Eğer replication kullanıyorsanız, her instance için farklı slot isimleri gerekir.
+2. **Replication Slot**: Each instance cannot use the same PostgreSQL replication slot. If you're using replication, different slot names are required for each instance.
 
-3. **Kafka Partitions**: Birden fazla instance kullanıyorsanız, Kafka topic'inizin birden fazla partition'a sahip olması performans için önemlidir.
+3. **Kafka Partitions**: If you're using multiple instances, it's important for performance that your Kafka topic has multiple partitions.
 
-4. **Resource Limits**: Her instance için CPU ve memory limitleri şu şekilde:
+4. **Resource Limits**: CPU and memory limits for each instance:
    - CPU Limit: 1 core
    - Memory Limit: 512MB
-   - 3 instance = toplam 3 core, 1.5GB RAM
+   - 3 instances = total 3 cores, 1.5GB RAM
 
 ### 📊 Monitoring
 
-Grafana'da (http://localhost:3000) tüm instance'ların metrics'lerini görebilirsiniz:
-- CPU kullanımı
-- Memory kullanımı
+In Grafana (http://localhost:3000) you can see metrics for all instances:
+- CPU usage
+- Memory usage
 - Kafka produce rate
 - CDC lag
 
 ### 🔧 Troubleshooting
 
-**Problem: Instance'lar başlamıyor**
+**Problem: Instances are not starting**
 ```bash
-# Logları kontrol edin
+# Check logs
 docker-compose logs go-pq-cdc-kafka
 
-# Sağlık durumunu kontrol edin
+# Check health status
 docker-compose ps
 ```
 
-**Problem: Prometheus instance'ları görmüyor**
+**Problem: Prometheus is not seeing instances**
 ```bash
-# DNS çözümlemeyi test edin
+# Test DNS resolution
 docker-compose exec prometheus nslookup tasks.go-pq-cdc-kafka
 ```
 
-**Problem: Resource yetersiz**
+**Problem: Insufficient resources**
 ```bash
-# Resource kullanımını kontrol edin
+# Check resource usage
 docker stats
 ```
 
-## Alternatif: Manuel Instance Tanımlama
+## Alternative: Manual Instance Definition
 
-Eğer her instance için farklı yapılandırma istiyorsanız, docker-compose.yml'de manuel olarak tanımlayabilirsiniz:
+If you want different configuration for each instance, you can define them manually in docker-compose.yml:
 
 ```yaml
   go-pq-cdc-kafka-1:
     build:
       context: ../../
       dockerfile: ./benchmark/benchmark_initial/go-pq-cdc-kafka/Dockerfile
-    # ... diğer ayarlar
+    # ... other settings
 
   go-pq-cdc-kafka-2:
     build:
       context: ../../
       dockerfile: ./benchmark/benchmark_initial/go-pq-cdc-kafka/Dockerfile
-    # ... diğer ayarlar
+    # ... other settings
 
   go-pq-cdc-kafka-3:
     build:
       context: ../../
       dockerfile: ./benchmark/benchmark_initial/go-pq-cdc-kafka/Dockerfile
-    # ... diğer ayarlar
+    # ... other settings
 ```
 
-## Performance İpuçları
+## Performance Tips
 
-1. **Batch Size**: `main.go`'da `ProducerBatchSize: 10000` ayarı var. Instance sayısıyla optimize edin.
+1. **Batch Size**: There's a `ProducerBatchSize: 10000` setting in `main.go`. Optimize it with the number of instances.
 
-2. **Chunk Size**: Snapshot için `ChunkSize: 8000` ayarı var. Veritabanı yüküne göre ayarlayın.
+2. **Chunk Size**: There's a `ChunkSize: 8000` setting for snapshots. Adjust according to database load.
 
-3. **Network**: Tüm servisler aynı Docker network'te olmalı.
+3. **Network**: All services must be on the same Docker network.
 
-4. **PostgreSQL**: WAL (Write-Ahead Log) ayarları yeterli olmalı:
+4. **PostgreSQL**: WAL (Write-Ahead Log) settings should be sufficient:
    ```
    wal_level=logical
    max_wal_senders=10
    max_replication_slots=10
    ```
 
-## Örnek Senaryolar
+## Example Scenarios
 
-### Senaryo 1: Yüksek Throughput Test
+### Scenario 1: High Throughput Test
 ```bash
-# 5 instance ile başlat
+# Start with 5 instances
 docker-compose up --scale go-pq-cdc-kafka=5 -d
 
-# Test verisi ekle
+# Add test data
 docker-compose exec postgres psql -U cdc_user -d cdc_db -c \
   "INSERT INTO users (name) SELECT 'User' || i FROM generate_series(1, 1000000) AS i;"
 
-# Performance'ı izle
+# Monitor performance
 docker stats
 ```
 
-### Senaryo 2: Graceful Scale Down
+### Scenario 2: Graceful Scale Down
 ```bash
-# Önce mevcut instance'ları göster
+# First show existing instances
 docker-compose ps go-pq-cdc-kafka
 
-# Yavaşça scale down
+# Gradually scale down
 docker-compose up --scale go-pq-cdc-kafka=3 -d
 sleep 30
 docker-compose up --scale go-pq-cdc-kafka=1 -d
 ```
 
-### Senaryo 3: Load Testing
+### Scenario 3: Load Testing
 ```bash
-# Farklı instance sayılarıyla test
+# Test with different instance counts
 for i in 1 2 3 5 10; do
   echo "Testing with $i instances..."
   docker-compose up --scale go-pq-cdc-kafka=$i -d
   sleep 60
-  # Metrics'leri kaydet
+  # Record metrics
 done
 ```
 
-## Kaynaklar
+## Resources
 
 - Docker Compose Scale: https://docs.docker.com/compose/reference/up/
 - Prometheus DNS SD: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#dns_sd_config

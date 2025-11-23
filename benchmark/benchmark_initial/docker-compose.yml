@@ -61,11 +61,11 @@ services:
     volumes:
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: [ "CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      test: [ "CMD-SHELL", "pg_isready -U cdc_user -d cdc_db && psql -U cdc_user -d cdc_db -c 'SELECT 1 FROM users LIMIT 1' > /dev/null 2>&1 && test -f /var/lib/postgresql/data/postmaster.pid && head -1 /var/lib/postgresql/data/postmaster.pid | grep -q '^1$'" ]
       interval: 10s
       timeout: 3s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 240s
     networks:
       - cdc_net
     ports:
@@ -80,8 +80,10 @@ services:
     networks:
       - cdc_net
     depends_on:
-      - postgres
-      - prometheus
+      postgres:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
 
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v23.1.12
@@ -241,7 +243,7 @@ services:
           \"database.dbname\": \"cdc_db\",
           \"database.server.name\": \"postgres\",
           \"table.include.list\": \"public.users\",
-          \"database.history.kafka.bootstrap.servers\": \"kafka:9092\",
+          \"database.history.kafka.bootstrap.servers\": \"redpanda:9092\",
           \"key.converter\": \"org.apache.kafka.connect.json.JsonConverter\",
           \"key.converter.schemas.enable\": \"false\",
           \"value.converter\": \"org.apache.kafka.connect.json.JsonConverter\",

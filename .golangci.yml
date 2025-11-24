@@ -1,6 +1,6 @@
 linters-settings:
   funlen:
-    lines: 70
+    lines: 85
 
 linters:
   disable-all: true

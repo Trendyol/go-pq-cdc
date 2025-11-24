@@ -7,17 +7,35 @@ ensuring low resource consumption and high performance.
 
 [Debezium vs go-pq-cdc benchmark](./benchmark)
 
+## 📸 NEW: Snapshot Feature
+
+**Capture existing data before starting CDC!** The new snapshot feature enables initial data synchronization, ensuring downstream systems receive both historical and real-time data.
+
+✨ **Key Highlights:**
+- **Zero Data Loss**: Consistent point-in-time snapshot using PostgreSQL's `pg_export_snapshot()`
+- **Chunk-Based Processing**: Memory-efficient processing of large tables
+- **Multi-Instance Support**: Parallel processing across multiple instances
+- **Crash Recovery**: Automatic resume from failures
+- **No Duplicates**: Seamless transition from snapshot to CDC
+- **Snapshot Only Mode**: One-time data export without CDC (no replication slot required)
+
+📚 **[Read Full Documentation](docs/SNAPSHOT_FEATURE.md)** for detailed architecture, configuration, and best practices.
+
 ### Contents
 
-* [Why?](#why)
-* [Usage](#usage)
-* [Examples](#examples)
-* [Availability](#availability)
-* [Configuration](#configuration)
-* [API](#api)
-* [Exposed Metrics](#exposed-metrics)
-* [Compatibility](#compatibility)
-* [Breaking Changes](#breaking-changes)
+- [go-pq-cdc   ](#go-pq-cdc---)
+	- [📸 NEW: Snapshot Feature](#-new-snapshot-feature)
+		- [Contents](#contents)
+		- [Why?](#why)
+		- [Usage](#usage)
+		- [Examples](#examples)
+		- [Availability](#availability)
+		- [Configuration](#configuration)
+		- [API](#api)
+		- [Exposed Metrics](#exposed-metrics)
+		- [Grafana Dashboard](#grafana-dashboard)
+		- [Compatibility](#compatibility)
+		- [Breaking Changes](#breaking-changes)
 
 ### Why?
 
@@ -114,6 +132,8 @@ func Handler(ctx *replication.ListenerContext) {
 
 * [Simple](./example/simple)
 * [Simple File Config](./example/simple-file-config)
+* [Snapshot Mode (Initial Data Capture)](./example/snapshotmode)
+* [Snapshot Only Mode (One-Time Export)](./example/snapshotonlymode)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
@@ -154,6 +174,13 @@ This setup ensures continuous data synchronization and minimal downtime in captu
 | `slot.createIfNotExists`                |   bool   |    no    |    -    | Create replication slot if not exists. Otherwise, return `replication slot is not exists` error.      |                                                                                                                                                    |
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive.                                                                                                                  |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
+| `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
+| `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial`, `never`, or `snapshot_only`                                                 | **initial:** Take snapshot only if no previous snapshot exists, then start CDC. <br> **never:** Skip snapshot, start CDC immediately. <br> **snapshot_only:** Take snapshot and exit (no CDC, no replication slot required). |
+| `snapshot.chunkSize`                    |  int64   |    no    |  8000   | Number of rows per chunk during snapshot                                                              | Adjust based on table size. Larger chunks = fewer chunks but more memory per chunk.                                                               |
+| `snapshot.claimTimeout`                 | duration |    no    |  30s    | Timeout to reclaim stale chunks                                                                       | If a worker doesn't send heartbeat for this duration, chunk is reclaimed by another worker.                                                        |
+| `snapshot.heartbeatInterval`            | duration |    no    |  5s     | Interval for worker heartbeat updates                                                                 | Workers send heartbeat every N seconds to indicate they're processing a chunk.                                                                     |
+| `snapshot.instanceId`                   |  string  |    no    |  auto   | Custom instance identifier (optional)                                                                 | Auto-generated as `hostname-pid` if not specified. Useful for tracking workers.                                                                    |
+| `snapshot.tables`                       | []Table  |    no*   |    -    | Tables to snapshot (required for `snapshot_only` mode, optional for `initial` mode)                  | **snapshot_only:** Must be specified here (independent from publication). <br> **initial:** If specified, must be a subset of publication tables. If not specified, all publication tables are snapshotted. |
 | `extensionSupport.enableTimescaleDB`    |   bool   |    no    |  false  | Enable support for TimescaleDB hypertables. Ensures proper handling of compressed chunks during replication. |                                                                                                                                                    |
 
 ### API
@@ -181,6 +208,12 @@ the `/metrics` endpoint.
 | go_pq_cdc_replication_slot_slot_is_active           | Indicates whether the PostgreSQL replication slot is currently active (1 for active, 0 for inactive). | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_lag                 | The replication lag measured by the difference between the current LSN and the confirmed flush LSN.   | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_retained_wal_size   | The size of Write-Ahead Logging (WAL) files retained for the replication slot in bytes.               | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_in_progress                      | Indicates whether snapshot is currently in progress (1 for active, 0 for inactive).                   | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_total_tables                     | Total number of tables to snapshot.                                                                    | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_total_chunks                     | Total number of chunks to process across all tables.                                                   | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_completed_chunks                 | Number of chunks completed in snapshot.                                                                | slot_name, host| Gauge      |
+| go_pq_cdc_snapshot_total_rows                       | Total number of rows read during snapshot.                                                             | slot_name, host| Counter    |
+| go_pq_cdc_snapshot_duration_seconds                 | Duration of the last snapshot operation in seconds.                                                    | slot_name, host| Gauge      |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
 ### Grafana Dashboard

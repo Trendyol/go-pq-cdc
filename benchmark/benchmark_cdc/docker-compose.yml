@@ -1,0 +1,278 @@
+services:
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    networks:
+      - cdc_net
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - ./grafana/dashboard.yml:/etc/grafana/provisioning/dashboards/main.yaml
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - go-pq-cdc-kafka
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - cdc_net
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"
+    networks:
+      - cdc_net
+    volumes:
+      - "/:/rootfs"
+      - "/var/run:/var/run"
+      - "/sys:/sys"
+      - "/var/lib/docker/:/var/lib/docker"
+      - "/dev/disk/:/dev/disk"
+    devices:
+      - "/dev/kmsg"
+    depends_on:
+      - prometheus
+
+  postgres:
+    image: postgres:16.2
+    restart: always
+    command: ["-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
+    environment:
+      POSTGRES_USER: "cdc_user"
+      POSTGRES_PASSWORD: "cdc_pass"
+      POSTGRES_DB: "cdc_db"
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - cdc_net
+    ports:
+      - "5432:5432"
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://cdc_user:cdc_pass@postgres:5432/cdc_db?sslmode=disable"
+    networks:
+      - cdc_net
+    depends_on:
+      - postgres
+      - prometheus
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.1.12
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+    ports:
+      - "18081:18081"
+      - "18082:18082"
+      - "19092:19092"
+      - "9644:9644"
+    volumes:
+      - ~/pandapost_integration:/tmp/pandapost_integration
+    networks:
+      - cdc_net
+    healthcheck:
+      test: [ "CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1" ]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.2.4
+    entrypoint: /bin/sh
+    command: -c "echo \"$$CONSOLE_CONFIG_FILE\" > /tmp/config.yml; /app/console"
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+        connect:
+          enabled: true
+          clusters:
+            - name: local-connect-cluster
+              url: http://connect:8083
+    ports:
+      - 8085:8080
+    networks:
+      - cdc_net
+    depends_on:
+      - redpanda
+
+  connect:
+    image: docker.redpanda.com/redpandadata/connectors:latest
+    hostname: connect
+    container_name: connect
+    networks:
+      - cdc_net
+    # platform: 'linux/amd64'
+    depends_on:
+      - redpanda
+    ports:
+      - "9093:8083"
+    environment:
+      CONNECT_CONFIGURATION: |
+        key.converter=org.apache.kafka.connect.converters.ByteArrayConverter
+        value.converter=org.apache.kafka.connect.converters.ByteArrayConverter
+        group.id=connectors-cluster
+        offset.storage.topic=_internal_connectors_offsets
+        config.storage.topic=_internal_connectors_configs
+        status.storage.topic=_internal_connectors_status
+        config.storage.replication.factor=-1
+        offset.storage.replication.factor=-1
+        status.storage.replication.factor=-1
+        offset.flush.interval.ms=1000
+        producer.linger.ms=50
+        producer.batch.size=131072
+      CONNECT_BOOTSTRAP_SERVERS: redpanda:9092
+      CONNECT_GC_LOG_ENABLED: "false"
+      CONNECT_HEAP_OPTS: -Xms512M -Xmx512M
+      CONNECT_LOG_LEVEL: info
+
+  debezium:
+    image: debezium/connect:latest
+    restart: always
+    container_name: debezium
+    hostname: debezium
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8083:8083'
+    environment:
+      BOOTSTRAP_SERVERS: redpanda:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      STATUS_STORAGE_TOPIC: connect_statuses
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      ENABLE_DEBEZIUM_SCRIPTING: 'true'
+    networks:
+      - cdc_net
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'curl',
+          '--silent',
+          '--fail',
+          '-X',
+          'GET',
+          'http://localhost:8083/connectors',
+        ]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  set-debezium-connector:
+    image: curlimages/curl:latest
+    networks:
+      - cdc_net
+    depends_on:
+      debezium:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "curl --location 'http://debezium:8083/connectors' \
+      --request POST \
+      --header 'Content-Type: application/json' \
+      --data '{
+          \"name\": \"test-connector\",
+          \"config\": {
+              \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",
+              \"plugin.name\": \"pgoutput\",
+              \"tasks.max\": \"1\",
+              \"database.hostname\": \"postgres\",
+              \"database.port\": \"5432\",
+              \"database.user\": \"cdc_user\",
+              \"database.password\": \"cdc_pass\",
+              \"database.dbname\": \"cdc_db\",
+              \"database.server.name\": \"postgres\",
+              \"table.include.list\": \"public.users\",
+              \"database.history.kafka.bootstrap.servers\": \"kafka:9092\",
+              \"key.converter\": \"org.apache.kafka.connect.json.JsonConverter\",
+              \"key.converter.schemas.enable\": \"false\",
+              \"value.converter\": \"org.apache.kafka.connect.json.JsonConverter\",
+              \"value.converter.schemas.enable\": \"false\",
+              \"topic.prefix\": \"postgres\",
+              \"topic.creation.enable\": \"true\",
+              \"topic.creation.default.replication.factor\": \"1\",
+              \"topic.creation.default.partitions\": \"1\",
+              \"topic.creation.default.cleanup.policy\": \"delete\",
+              \"topic.creation.default.retention.ms\": \"604800000\"
+          }
+      }'"
+
+  go-pq-cdc-kafka:
+    container_name: go-pq-cdc-kafka
+    build:
+      context: .
+      dockerfile: ./go-pq-cdc-kafka/Dockerfile
+    restart: on-failure
+    ports:
+      - '2112:2112'
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - cdc_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+networks:
+  cdc_net:
+    driver: bridge

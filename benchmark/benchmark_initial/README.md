@@ -38,6 +38,10 @@ Debezium:
 | Received Traffic Max | 6.30 MiB/s | 4.85 MiB/s |
 | Sent Traffic Max     | 15.4 MiB/s | 43.7 MiB/s |
 
+> Note: snapshot progress and snapshot chunks metrics is not able to full completed. Because we are benchmarking on snapshot only mode. It means after snapshot finish, our container exit so prometheus cannot able to collect. No worries :)
+
+> You can also see postgresql grafana dashboard. We cannot see any big difference.
+
 ![10m_1x](./10m_1x.png)
 
 #### 3x Test

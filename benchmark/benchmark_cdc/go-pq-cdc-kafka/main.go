@@ -36,7 +36,8 @@ func main() {
 
 	cfg := config.Connector{
 		CDC: cdcconfig.Config{
-			Host:      "postgres:5432",
+			Host:      "postgres",
+			Port:      5432,
 			Username:  "cdc_user",
 			Password:  "cdc_pass",
 			Database:  "cdc_db",

@@ -57,7 +57,7 @@ services:
     volumes:
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: [ "CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U cdc_user -d cdc_pass'" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -165,7 +165,7 @@ services:
       CONNECT_LOG_LEVEL: info
 
   debezium:
-    image: debezium/connect:latest
+    image: debezium/connect:2.5
     restart: always
     container_name: debezium
     hostname: debezium
@@ -250,13 +250,12 @@ services:
       }'"
 
   go-pq-cdc-kafka:
-    container_name: go-pq-cdc-kafka
     build:
-      context: .
-      dockerfile: ./go-pq-cdc-kafka/Dockerfile
+      context: ../../
+      dockerfile: ./benchmark/benchmark_cdc/go-pq-cdc-kafka/Dockerfile
     restart: on-failure
     ports:
-      - '2112:2112'
+      - '2112'
     depends_on:
       redpanda:
         condition: service_healthy

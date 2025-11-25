@@ -27,7 +27,7 @@ Debezium:
 
 ### Results
 
-In this snapshot benchmark, go-pq-cdc completes the 1x run in about half the time of Debezium (~1 min vs 2 min) with lower CPU usage (~70% vs ~170%) and dramatically less memory (~45 MB vs ~2.5 GB), while in the 3x run it reduces the duration to ~20 seconds and maintains a similarly efficient CPU/memory profile.
+In this snapshot benchmark, go-pq-cdc delivers roughly 2x higher throughput in the 1x run (~1 min vs 2 min) compared to Debezium, with lower CPU usage (~70% vs ~170%) and dramatically less memory (~45 MB vs ~2.5 GB), and in the 3x run it reduces the duration to ~20 seconds while maintaining a similarly efficient CPU/memory profile.”
 
 #### 1x Test
 

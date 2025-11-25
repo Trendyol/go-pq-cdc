@@ -1396,20 +1396,9 @@ snapshot:
   chunkSize: 50000
 ```
 
-### 4. Use Replica for Snapshot (Optional)
-
-To reduce load on primary:
-```yaml
-host: replica.example.com  # Point to read replica
-snapshot:
-  enabled: true
-
-# After snapshot completes, switch to primary for CDC
-```
-
 **Note:** Ensure replica is up-to-date to avoid stale data.
 
-### 5. Clean Up After Successful Snapshot
+### 4. Clean Up After Successful Snapshot
 
 Once snapshot is completed and stable:
 ```sql
@@ -1419,7 +1408,7 @@ DELETE FROM cdc_snapshot_chunks WHERE slot_name = 'old_slot';
 DELETE FROM cdc_snapshot_job WHERE slot_name = 'old_slot';
 ```
 
-### 6. Test Disaster Recovery
+### 5. Test Disaster Recovery
 
 Periodically test recovery scenarios:
 ```bash

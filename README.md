@@ -30,6 +30,7 @@ ensuring low resource consumption and high performance.
 		- [Usage](#usage)
 		- [Examples](#examples)
 		- [Availability](#availability)
+  		- [TOAST Handling](#toast-handling)
 		- [Configuration](#configuration)
 		- [API](#api)
 		- [Exposed Metrics](#exposed-metrics)
@@ -151,6 +152,35 @@ availability:
   and when detected as inactive, they initiate data capturing.
 
 This setup ensures continuous data synchronization and minimal downtime in capturing database changes.
+
+### TOAST Handling
+
+PostgreSQL does not send TOASTed column values during an update unless the TOASTed column itself is modified.
+For example, if only a small field changes, large columns such as TEXT, JSONB, or BYTEA are sent as TOAST placeholders instead of real values.
+
+To guarantee that UPDATE messages include full, correct data, go-pq-cdc automatically merges old and new tuples, restoring any missing TOASTed fields:
+
+```go
+if m.OldTupleData != nil {
+    for i, col := range m.NewTupleData.Columns {
+        // Toasted columns are not sent unless the column itself changed
+        if col.DataType == tuple.DataTypeToast {
+            m.NewTupleData.Columns[i] = m.OldTupleData.Columns[i]
+        }
+    }
+}
+```
+
+#### Replica Identity Requirement
+
+For this TOAST reconstruction to work, PostgreSQL must send the old tuple.
+This requires setting the table's replica identity to FULL:
+
+`ALTER TABLE your_table REPLICA IDENTITY FULL;`
+
+- With `REPLICA IDENTITY DEFAULT`, PostgreSQL only sends primary keys for updates/deletes.
+- In that mode, old tuple values (including TOASTed fields) are not provided.
+- Therefore, `FULL` is required to correctly handle TOASTed columns in CDC.
 
 ### Configuration
 

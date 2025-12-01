@@ -31,6 +31,7 @@ func main() {
 	ctx := context.Background()
 	cfg := config.Config{
 		Host:      "127.0.0.1",
+		Port:      5433,
 		Username:  "cdc_user",
 		Password:  "cdc_pass",
 		Database:  "cdc_db",
@@ -44,11 +45,13 @@ func main() {
 				publication.OperationTruncate,
 				publication.OperationUpdate,
 			},
-			Tables: publication.Tables{publication.Table{
-				Name:            "users",
-				ReplicaIdentity: publication.ReplicaIdentityFull,
-				Schema:          "public",
-			}},
+			Tables: publication.Tables{
+				publication.Table{
+					Name:            "users",
+					ReplicaIdentity: publication.ReplicaIdentityDefault,
+					Schema:          "public",
+				},
+			},
 		},
 		Slot: slot.Config{
 			CreateIfNotExists:           true,

@@ -1,0 +1,27 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:16.2
+    environment:
+      POSTGRES_DB: cdc_db
+      POSTGRES_USER: cdc_user
+      POSTGRES_PASSWORD: cdc_pass
+    ports:
+      - "5433:5432"
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=20
+      - -c
+      - max_wal_senders=25
+      - -c
+      - max_connections=100
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U cdc_user -d cdc_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql

@@ -7,4 +7,4 @@ CREATE TABLE users (
 INSERT INTO users (name)
 SELECT
     'Oyleli' || i
-FROM generate_series(1, 5) AS i;
+FROM generate_series(1, 1000) AS i;

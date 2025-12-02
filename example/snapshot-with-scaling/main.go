@@ -14,7 +14,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 )
 
-// docker-compose up --scale go-pq-cdc-kafka=3 -d
+// docker-compose up --scale go-pq-cdc=3 -d
 func main() {
 	ctx := context.Background()
 	cfg := config.Config{
@@ -56,7 +56,7 @@ func main() {
 }
 
 func Handler(ctx *replication.ListenerContext) {
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond) // simulate for work
 	msg := ctx.Message.(*format.Snapshot)
 
 	switch msg.EventType {

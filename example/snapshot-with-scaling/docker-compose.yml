@@ -1,9 +1,9 @@
 version: "3"
 services:
-  go-pq-cdc-kafka:
+  go-pq-cdc:
     build:
       context: ../../
-      dockerfile: example/basic-snapshot-with-scaling/Dockerfile
+      dockerfile: example/snapshot-with-scaling/Dockerfile
     restart: on-failure
     expose:
       - "2112"

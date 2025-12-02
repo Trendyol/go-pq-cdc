@@ -10,21 +10,21 @@ WORKDIR /build
 COPY . .
 
 # Change to the example app directory
-WORKDIR /build/example/basic-snapshot-with-scaling
+WORKDIR /build/example/snapshot-with-scaling
 
 # Download dependencies
 RUN go mod download
 
 # Build the application
-RUN CGO_ENABLED=0 go build -trimpath -a -v -o /go/bin/go-pq-cdc-kafka ./main.go
+RUN CGO_ENABLED=0 go build -trimpath -a -v -o /go/bin/go-pq-cdc ./main.go
 
 #- Run Stage
 FROM --platform=linux/arm64 gcr.io/distroless/static-debian11
 
 WORKDIR /app
 
-COPY --from=builder /go/bin/go-pq-cdc-kafka ./
+COPY --from=builder /go/bin/go-pq-cdc ./
 
 EXPOSE 2112
 
-CMD [ "./go-pq-cdc-kafka" ]
+CMD [ "./go-pq-cdc" ]

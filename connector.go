@@ -44,6 +44,7 @@ type connector struct {
 	cfg                *config.Config
 	slot               *slot.Slot
 	heartbeatConn      pq.Connection
+	heartbeatMu        sync.Mutex
 	cancelCh           chan os.Signal
 	readyCh            chan struct{}
 	timescaleDB        *timescaledb.TimescaleDB
@@ -583,9 +584,7 @@ func (c *connector) Close() {
 	if c.slot != nil {
 		c.slot.Close()
 	}
-	if c.heartbeatConn != nil && !c.heartbeatConn.IsClosed() {
-		_ = c.heartbeatConn.Close(ctx)
-	}
+	c.closeHeartbeatConn(ctx)
 	if c.stream != nil {
 		c.stream.Close(ctx)
 	}
@@ -640,35 +639,62 @@ func (c *connector) runHeartbeat(ctx context.Context) {
 			logger.Info("heartbeat loop stopped", "reason", ctx.Err())
 			return
 		case <-ticker.C:
-			if c.heartbeatConn == nil || c.heartbeatConn.IsClosed() {
-				// Try to (re)establish heartbeat connection
-				conn, err := pq.NewConnection(ctx, c.cfg.DSN())
-				if err != nil {
-					logger.Error("heartbeat connection (re)establish failed", "error", err)
-					continue
-				}
-				c.heartbeatConn = conn
+			if err := c.execHeartbeat(ctx); err != nil {
+				logger.Error("heartbeat execution failed", "error", err)
+			} else {
+				logger.Debug("heartbeat query executed")
 			}
-
-			resultReader := c.heartbeatConn.Exec(ctx, c.cfg.Heartbeat.Query)
-			if resultReader == nil {
-				logger.Error("heartbeat exec returned nil resultReader")
-				continue
-			}
-
-			if _, err := resultReader.ReadAll(); err != nil {
-				logger.Error("heartbeat query failed", "error", err, "query", c.cfg.Heartbeat.Query)
-				_ = resultReader.Close()
-				continue
-			}
-
-			if err := resultReader.Close(); err != nil {
-				logger.Error("heartbeat result reader close failed", "error", err)
-				continue
-			}
-
-			logger.Debug("heartbeat query executed")
 		}
+	}
+}
+
+// execHeartbeat ensures there's an open heartbeat connection and executes the
+// configured heartbeat query using that connection. It serializes all access to
+// heartbeatConn so that Close() and runHeartbeat() never touch the same
+// pgx connection concurrently.
+func (c *connector) execHeartbeat(ctx context.Context) error {
+	c.heartbeatMu.Lock()
+	defer c.heartbeatMu.Unlock()
+
+	// Lazily (re)establish connection if needed
+	if c.heartbeatConn == nil {
+		conn, err := pq.NewConnection(ctx, c.cfg.DSN())
+		if err != nil {
+			return fmt.Errorf("heartbeat connection (re)establish failed: %w", err)
+		}
+		c.heartbeatConn = conn
+	}
+
+	resultReader := c.heartbeatConn.Exec(ctx, c.cfg.Heartbeat.Query)
+	if resultReader == nil {
+		return fmt.Errorf("heartbeat exec returned nil resultReader")
+	}
+	defer func() {
+		if err := resultReader.Close(); err != nil {
+			logger.Error("heartbeat result reader close failed", "error", err)
+		}
+	}()
+
+	if _, err := resultReader.ReadAll(); err != nil {
+		// On error, proactively close and nil the connection so that the next
+		// heartbeat tick will try to re-establish it.
+		_ = c.heartbeatConn.Close(ctx)
+		c.heartbeatConn = nil
+		return fmt.Errorf("heartbeat query failed: %w", err)
+	}
+
+	return nil
+}
+
+// closeHeartbeatConn safely closes the heartbeat connection if it exists.
+// It is used from Close() to avoid races with the heartbeat goroutine.
+func (c *connector) closeHeartbeatConn(ctx context.Context) {
+	c.heartbeatMu.Lock()
+	defer c.heartbeatMu.Unlock()
+
+	if c.heartbeatConn != nil {
+		_ = c.heartbeatConn.Close(ctx)
+		c.heartbeatConn = nil
 	}
 }
 

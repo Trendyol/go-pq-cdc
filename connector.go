@@ -627,7 +627,7 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 // WAL activity for low-traffic databases so that logical replication
 // slots can advance confirmed_flush_lsn/restart_lsn and prevent WAL bloat.
 func (c *connector) runHeartbeat(ctx context.Context) {
-	logger.Info("heartbeat loop started",
+	logger.Debug("heartbeat loop started",
 		"interval", c.cfg.Heartbeat.Interval,
 		"enabled", c.cfg.Heartbeat.Enabled)
 

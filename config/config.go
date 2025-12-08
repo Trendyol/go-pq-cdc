@@ -15,6 +15,7 @@ import (
 )
 
 type Config struct {
+	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
 	Host             string             `json:"host" yaml:"host"`
 	Username         string             `json:"username" yaml:"username"`
@@ -27,7 +28,6 @@ type Config struct {
 	Metric           MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
 	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
-	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 }
 
 type MetricConfig struct {
@@ -44,9 +44,9 @@ type ExtensionSupport struct {
 }
 
 type HeartbeatConfig struct {
-	Enabled  bool          `json:"enabled" yaml:"enabled"`
-	Interval time.Duration `json:"interval" yaml:"interval"`
 	Query    string        `json:"query" yaml:"query"`
+	Interval time.Duration `json:"interval" yaml:"interval"`
+	Enabled  bool          `json:"enabled" yaml:"enabled"`
 }
 
 // DSN returns a normal PostgreSQL connection string for regular database operations

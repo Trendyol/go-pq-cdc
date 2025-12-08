@@ -7,7 +7,7 @@ ensuring low resource consumption and high performance.
 
 [Debezium vs go-pq-cdc benchmark](./benchmark)
 
-## 📸 NEW: Snapshot Feature
+## Snapshot Feature
 
 **Capture existing data before starting CDC!** The new snapshot feature enables initial data synchronization, ensuring downstream systems receive both historical and real-time data.
 
@@ -24,19 +24,20 @@ ensuring low resource consumption and high performance.
 ### Contents
 
 - [go-pq-cdc   ](#go-pq-cdc---)
-	- [📸 NEW: Snapshot Feature](#-new-snapshot-feature)
-		- [Contents](#contents)
-		- [Why?](#why)
-		- [Usage](#usage)
-		- [Examples](#examples)
-		- [Availability](#availability)
-  		- [TOAST Handling](#toast-handling)
-		- [Configuration](#configuration)
-		- [API](#api)
-		- [Exposed Metrics](#exposed-metrics)
-		- [Grafana Dashboard](#grafana-dashboard)
-		- [Compatibility](#compatibility)
-		- [Breaking Changes](#breaking-changes)
+	- [Snapshot Feature](#-new-snapshot-feature)
+    - [Contents](#contents)
+    - [Why?](#why)
+    - [Usage](#usage)
+    - [Examples](#examples)
+    - [Availability](#availability)
+    - [TOAST Handling](#toast-handling)
+    - [Heartbeat-based WAL Protection](#heartbeat-based-wal-protection)
+    - [Configuration](#configuration)
+    - [API](#api)
+    - [Exposed Metrics](#exposed-metrics)
+    - [Grafana Dashboard](#grafana-dashboard)
+    - [Compatibility](#compatibility)
+    - [Breaking Changes](#breaking-changes)
 
 ### Why?
 
@@ -133,6 +134,7 @@ func Handler(ctx *replication.ListenerContext) {
 
 * [Simple](./example/simple)
 * [Simple File Config](./example/simple-file-config)
+* [Simple With Heartbeat](./example/simple-with-heartbeat)
 * [Snapshot Mode (Initial Data Capture)](./example/snapshotmode)
 * [Snapshot Only Mode (One-Time Export)](./example/snapshotonlymode)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
@@ -170,6 +172,29 @@ if m.OldTupleData != nil {
     }
 }
 ```
+
+### Heartbeat-based WAL Protection
+
+Logical replication slots in PostgreSQL retain WAL segments until all consumers have confirmed they no longer need them.
+In low-traffic databases, this can cause **WAL bloat** when other databases on the same Postgres instance generate a lot of
+traffic while the CDC database itself remains mostly idle. In this situation the replication slot's `restart_lsn` and
+`confirmed_flush_lsn` may lag far behind `pg_current_wal_lsn()`, preventing WAL segments from being recycled.
+
+go-pq-cdc provides a **heartbeat mechanism** similar to Debezium's `heartbeat.action.query` for this scenario.
+When enabled, the connector periodically executes a user-defined SQL statement on the **same source database** used
+for CDC. This statement should generate WAL (typically a small `INSERT` into a dedicated heartbeat table), and ideally
+target a table that is part of the publication so that changes flow through the normal CDC pipeline.
+
+Each heartbeat:
+
+- Produces a real transaction and COMMIT in the CDC database.
+- Is decoded and acknowledged by go-pq-cdc via the replication stream.
+- Advances the slot's `confirmed_flush_lsn` and, over time, `restart_lsn`, allowing PostgreSQL to safely recycle old WAL.
+
+This makes WAL retention **predictable** even when application traffic on the CDC database is very low, while other
+databases on the same instance are generating heavy write load.
+
+You can run [Simple With Heartbeat](./example/simple-with-heartbeat) example.
 
 #### Replica Identity Requirement
 
@@ -211,6 +236,9 @@ This requires setting the table's replica identity to FULL:
 | `snapshot.heartbeatInterval`            | duration |    no    |  5s     | Interval for worker heartbeat updates                                                                 | Workers send heartbeat every N seconds to indicate they're processing a chunk.                                                                     |
 | `snapshot.instanceId`                   |  string  |    no    |  auto   | Custom instance identifier (optional)                                                                 | Auto-generated as `hostname-pid` if not specified. Useful for tracking workers.                                                                    |
 | `snapshot.tables`                       | []Table  |    no*   |    -    | Tables to snapshot (required for `snapshot_only` mode, optional for `initial` mode)                  | **snapshot_only:** Must be specified here (independent from publication). <br> **initial:** If specified, must be a subset of publication tables. If not specified, all publication tables are snapshotted. |
+| `heartbeat.enabled`                     |   bool   |    no    |  false  | Enable WAL heartbeat. When true, the connector periodically executes `heartbeat.query` on the source database to produce small committed changes and advance the logical replication slot. |                                                                                                                                                    |
+| `heartbeat.interval`                    | duration |    no    |   5s    | Interval between heartbeat executions when `heartbeat.enabled` is true. Must be greater than 0.      | Any valid Go duration string (e.g. `1s`, `5s`, `500ms`, `1m`).                                              |
+| `heartbeat.query`                       |  string  |    no    |    -    | SQL statement executed on the source database for each heartbeat. Should generate WAL (e.g. an `INSERT` into a heartbeat table that is part of the publication). | Typically an `INSERT` into a small heartbeat table in the same database, for example: `INSERT INTO public.heartbeat_events(txt) VALUES ('hb')`.   |
 | `extensionSupport.enableTimescaleDB`    |   bool   |    no    |  false  | Enable support for TimescaleDB hypertables. Ensures proper handling of compressed chunks during replication. |                                                                                                                                                    |
 
 ### API

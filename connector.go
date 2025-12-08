@@ -43,6 +43,7 @@ type connector struct {
 	server             http.Server
 	cfg                *config.Config
 	slot               *slot.Slot
+	heartbeatConn      pq.Connection
 	cancelCh           chan os.Signal
 	readyCh            chan struct{}
 	timescaleDB        *timescaledb.TimescaleDB
@@ -139,6 +140,15 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
+	// Optional heartbeat connection (normal DSN, not replication)
+	var heartbeatConn pq.Connection
+	if cfg.Heartbeat.Enabled {
+		heartbeatConn, err = pq.NewConnection(ctx, cfg.DSN())
+		if err != nil {
+			return nil, errors.Wrap(err, "create heartbeat connection")
+		}
+	}
+
 	prometheusRegistry := metric.NewRegistry(m)
 
 	var tdb *timescaledb.TimescaleDB
@@ -160,6 +170,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		prometheusRegistry: prometheusRegistry,
 		server:             http.NewServer(cfg, prometheusRegistry),
 		slot:               sl,
+		heartbeatConn:      heartbeatConn,
 		timescaleDB:        tdb,
 		snapshotter:        snapshotter,
 		listenerFunc:       listenerFunc,
@@ -278,6 +289,11 @@ func (c *connector) Start(ctx context.Context) {
 
 	logger.Info("slot captured")
 	go c.slot.Metrics(ctx)
+
+	// Start heartbeat loop only for CDC mode when enabled
+	if c.cfg.Heartbeat.Enabled {
+		go c.runHeartbeat(ctx)
+	}
 
 	if c.timescaleDB != nil {
 		go c.timescaleDB.SyncHyperTables(ctx)
@@ -567,6 +583,9 @@ func (c *connector) Close() {
 	if c.slot != nil {
 		c.slot.Close()
 	}
+	if c.heartbeatConn != nil && !c.heartbeatConn.IsClosed() {
+		_ = c.heartbeatConn.Close(ctx)
+	}
 	if c.stream != nil {
 		c.stream.Close(ctx)
 	}
@@ -600,6 +619,56 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 		}
 
 		logger.Debug("capture slot", "slotInfo", info)
+	}
+}
+
+// runHeartbeat executes the configured heartbeat.action.query-style SQL
+// on the source database at a fixed interval. This is used to generate
+// WAL activity for low-traffic databases so that logical replication
+// slots can advance confirmed_flush_lsn/restart_lsn and prevent WAL bloat.
+func (c *connector) runHeartbeat(ctx context.Context) {
+	logger.Info("heartbeat loop started",
+		"interval", c.cfg.Heartbeat.Interval,
+		"enabled", c.cfg.Heartbeat.Enabled)
+
+	ticker := time.NewTicker(c.cfg.Heartbeat.Interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("heartbeat loop stopped", "reason", ctx.Err())
+			return
+		case <-ticker.C:
+			if c.heartbeatConn == nil || c.heartbeatConn.IsClosed() {
+				// Try to (re)establish heartbeat connection
+				conn, err := pq.NewConnection(ctx, c.cfg.DSN())
+				if err != nil {
+					logger.Error("heartbeat connection (re)establish failed", "error", err)
+					continue
+				}
+				c.heartbeatConn = conn
+			}
+
+			resultReader := c.heartbeatConn.Exec(ctx, c.cfg.Heartbeat.Query)
+			if resultReader == nil {
+				logger.Error("heartbeat exec returned nil resultReader")
+				continue
+			}
+
+			if _, err := resultReader.ReadAll(); err != nil {
+				logger.Error("heartbeat query failed", "error", err, "query", c.cfg.Heartbeat.Query)
+				_ = resultReader.Close()
+				continue
+			}
+
+			if err := resultReader.Close(); err != nil {
+				logger.Error("heartbeat result reader close failed", "error", err)
+				continue
+			}
+
+			logger.Debug("heartbeat query executed")
+		}
 	}
 }
 

@@ -27,6 +27,7 @@ type Config struct {
 	Metric           MetricConfig       `json:"metric" yaml:"metric"`
 	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
 	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
+	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 }
 
 type MetricConfig struct {
@@ -40,6 +41,12 @@ type LoggerConfig struct {
 
 type ExtensionSupport struct {
 	EnableTimeScaleDB bool `json:"enableTimeScaleDB" yaml:"EnableTimeScaleDB"`
+}
+
+type HeartbeatConfig struct {
+	Enabled  bool          `json:"enabled" yaml:"enabled"`
+	Interval time.Duration `json:"interval" yaml:"interval"`
+	Query    string        `json:"query" yaml:"query"`
 }
 
 // DSN returns a normal PostgreSQL connection string for regular database operations
@@ -65,6 +72,11 @@ func (c *Config) SetDefault() {
 
 	if c.Metric.Port == 0 {
 		c.Metric.Port = 8080
+	}
+
+	// Default heartbeat interval if enabled but not set
+	if c.Heartbeat.Enabled && c.Heartbeat.Interval == 0 {
+		c.Heartbeat.Interval = 5 * time.Second
 	}
 
 	if c.Slot.SlotActivityCheckerInterval == 0 {
@@ -200,6 +212,17 @@ func (c *Config) Validate() error {
 
 	if cErr := c.Snapshot.Validate(); cErr != nil {
 		err = errors.Join(err, cErr)
+	}
+
+	// Heartbeat validation (applies to both CDC and snapshot_only configs;
+	// feature is only used in CDC mode but we validate config consistently)
+	if c.Heartbeat.Enabled {
+		if c.Heartbeat.Interval <= 0 {
+			err = errors.Join(err, errors.New("heartbeat.interval must be greater than 0 when heartbeat.enabled is true"))
+		}
+		if isEmpty(c.Heartbeat.Query) {
+			err = errors.Join(err, errors.New("heartbeat.query cannot be empty when heartbeat.enabled is true"))
+		}
 	}
 
 	return err

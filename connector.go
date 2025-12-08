@@ -38,21 +38,21 @@ type Connector interface {
 }
 
 type connector struct {
-	stream             replication.Streamer
+	heartbeatConn      pq.Connection
 	prometheusRegistry metric.Registry
 	server             http.Server
-	cfg                *config.Config
+	stream             replication.Streamer
+	timescaleDB        *timescaledb.TimescaleDB
 	slot               *slot.Slot
-	heartbeatConn      pq.Connection
-	heartbeatMu        sync.Mutex
 	cancelCh           chan os.Signal
 	readyCh            chan struct{}
-	timescaleDB        *timescaledb.TimescaleDB
+	cfg                *config.Config
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
 	system             pq.IdentifySystemResult
-	snapshotLSN        pq.LSN // LSN from snapshot to continue CDC from
+	snapshotLSN        pq.LSN
 	once               sync.Once
+	heartbeatMu        sync.Mutex
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {

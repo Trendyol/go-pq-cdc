@@ -3,6 +3,7 @@ package publication
 import (
 	"context"
 	goerrors "errors"
+	"strings"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -81,8 +82,7 @@ func (c *Publication) Info(ctx context.Context) (*Config, error) {
 
 func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 	var publicationConfig Config
-	var tableNames []string
-	var schemaNames []string
+	var tables []string
 
 	for i, fd := range result.FieldDescriptions {
 		v, err := decodeTextColumnData(result.Rows[0][i], fd.DataTypeOID)
@@ -113,26 +113,18 @@ func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 			if v.(bool) {
 				publicationConfig.Operations = append(publicationConfig.Operations, "TRUNCATE")
 			}
-		case "included_tables":
+		case "pubtables":
 			for _, val := range v.([]any) {
-				tableNames = append(tableNames, val.(string))
-			}
-		case "included_schemas":
-			for _, val := range v.([]any) {
-				schemaNames = append(schemaNames, val.(string))
+				tables = append(tables, val.(string))
 			}
 		}
 	}
 
-	// Combine table names and schemas
-	for i, tableName := range tableNames {
-		schema := "public" // default schema
-		if i < len(schemaNames) && schemaNames[i] != "" {
-			schema = schemaNames[i]
-		}
+	for _, tableName := range tables {
+		st := strings.Split(tableName, ".")
 		publicationConfig.Tables = append(publicationConfig.Tables, Table{
-			Name:   tableName,
-			Schema: schema,
+			Name:   st[1],
+			Schema: st[0],
 		})
 	}
 

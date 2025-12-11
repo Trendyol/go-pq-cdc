@@ -58,7 +58,7 @@ func (c *connection) EnsureConnection(ctx context.Context) error {
 }
 
 func connect(ctx context.Context, dsn string) (*pgconn.PgConn, error) {
-	retryConfig := retry.OnErrorConfig[*pgconn.PgConn](5, func(err error) bool { return true })
+	retryConfig := retry.OnErrorConfig[*pgconn.PgConn](5, func(err error) bool { return err == nil })
 	conn, err := retryConfig.Do(func() (*pgconn.PgConn, error) {
 		conn, err := pgconn.Connect(ctx, dsn)
 		if err != nil {

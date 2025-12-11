@@ -4,6 +4,8 @@ import (
 	"context"
 	goerrors "errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
@@ -17,6 +19,7 @@ import (
 var (
 	ErrorSlotIsNotExists = goerrors.New("slot is not exists")
 	ErrorNotConnected    = goerrors.New("slot is not connected")
+	ErrorSlotClosed      = goerrors.New("slot is closed")
 )
 
 var typeMap = pgtype.NewMap()
@@ -32,6 +35,8 @@ type Slot struct {
 	ticker     *time.Ticker
 	statusSQL  string
 	cfg        Config
+	mu         sync.Mutex
+	closed     atomic.Bool
 }
 
 func NewSlot(dsn string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
@@ -48,10 +53,15 @@ func NewSlot(dsn string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot
 }
 
 func (s *Slot) Connect(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.conn.Connect(ctx)
 }
 
 func (s *Slot) Create(ctx context.Context) (*Info, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := s.conn.Connect(ctx); err != nil {
 		return nil, errors.Wrap(err, "slot connect")
 	}
@@ -59,7 +69,7 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 		_ = s.conn.Close(ctx)
 	}()
 
-	info, err := s.Info(ctx)
+	info, err := s.infoLocked(ctx)
 	if err != nil {
 		if !goerrors.Is(err, ErrorSlotIsNotExists) || !s.cfg.CreateIfNotExists {
 			return nil, errors.Wrap(err, "replication slot info")
@@ -82,10 +92,21 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 
 	logger.Info("replication slot created", "name", s.cfg.Name)
 
-	return s.Info(ctx)
+	return s.infoLocked(ctx)
 }
 
 func (s *Slot) Info(ctx context.Context) (*Info, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed.Load() {
+		return nil, ErrorSlotClosed
+	}
+
+	return s.infoLocked(ctx)
+}
+
+func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 	resultReader := s.conn.Exec(ctx, s.statusSQL)
 	results, err := resultReader.ReadAll()
 	if err != nil {
@@ -110,8 +131,15 @@ func (s *Slot) Info(ctx context.Context) (*Info, error) {
 
 func (s *Slot) Metrics(ctx context.Context) {
 	for range s.ticker.C {
+		if s.closed.Load() {
+			return
+		}
+
 		slotInfo, err := s.Info(ctx)
 		if err != nil {
+			if goerrors.Is(err, ErrorSlotClosed) {
+				return
+			}
 			logger.Error("slot metrics", "error", err)
 			continue
 		}
@@ -129,7 +157,12 @@ func (s *Slot) Metrics(ctx context.Context) {
 }
 
 func (s *Slot) Close(ctx context.Context) {
+	s.closed.Store(true)
 	s.ticker.Stop()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if !s.conn.IsClosed() {
 		_ = s.conn.Close(ctx)
 	}

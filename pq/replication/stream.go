@@ -47,6 +47,7 @@ type Streamer interface {
 	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
 	SetSnapshotLSN(lsn pq.LSN)
+	EnsureConnection(ctx context.Context) error
 }
 
 type stream struct {
@@ -272,6 +273,21 @@ func (s *stream) LoadXLogPos() pq.LSN {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.lastXLogPos
+}
+
+func (s *stream) EnsureConnection(ctx context.Context) error {
+	if err := s.conn.EnsureConnection(ctx); err != nil {
+		return err
+	}
+
+	system, err := pq.IdentifySystem(ctx, s.conn)
+	if err != nil {
+		return err
+	}
+
+	s.system = &system
+	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
+	return nil
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {

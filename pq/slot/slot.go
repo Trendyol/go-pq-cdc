@@ -125,6 +125,10 @@ func (s *Slot) Close() {
 	s.ticker.Stop()
 }
 
+func (s *Slot) EnsureConnection(ctx context.Context) error {
+	return s.conn.EnsureConnection(ctx)
+}
+
 func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {
 	var slotInfo Info
 	for i, fd := range result.FieldDescriptions {

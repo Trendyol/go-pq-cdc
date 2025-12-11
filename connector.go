@@ -274,8 +274,18 @@ func (c *connector) Start(ctx context.Context) {
 		logger.Info("slot info", "info", slotInfo)
 	}
 
+	if err := c.slot.EnsureConnection(ctx); err != nil {
+		logger.Error("slot connection ensure failed", "error", err)
+		return
+	}
+
 	// Normal CDC flow (unchanged for backward compatibility)
 	c.CaptureSlot(ctx)
+
+	if err := c.stream.EnsureConnection(ctx); err != nil {
+		logger.Error("stream connection ensure failed", "error", err)
+		return
+	}
 
 	err := c.stream.Open(ctx)
 	if err != nil {
@@ -610,14 +620,16 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 	for range ticker.C {
 		info, err := c.slot.Info(ctx)
 		if err != nil {
+			logger.Warn("slot info failed on capture slot", "error", err)
 			continue
 		}
 
-		if !info.Active {
-			break
+		if info.Active {
+			continue
 		}
 
 		logger.Debug("capture slot", "slotInfo", info)
+		break
 	}
 }
 

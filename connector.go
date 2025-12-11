@@ -49,7 +49,6 @@ type connector struct {
 	cfg                *config.Config
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
-	system             pq.IdentifySystemResult
 	snapshotLSN        pq.LSN
 	once               sync.Once
 	heartbeatMu        sync.Mutex
@@ -74,7 +73,6 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 	return NewConnector(ctx, cfg, listenerFunc)
 }
 
-//nolint:funlen
 func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
 	cfg.SetDefault()
 	if err := cfg.Validate(); err != nil {

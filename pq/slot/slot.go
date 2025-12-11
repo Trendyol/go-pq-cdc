@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrorSlotIsNotExists = goerrors.New("slot is not exists")
+	ErrorNotConnected    = goerrors.New("slot is not connected")
 )
 
 var typeMap = pgtype.NewMap()
@@ -33,25 +34,31 @@ type Slot struct {
 	cfg        Config
 }
 
-func NewSlot(ctx context.Context, dsn string, cfg Config, m metric.Metric, updater XLogUpdater) (*Slot, error) {
+func NewSlot(dsn string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
 	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
-
-	conn, err := pq.NewConnection(ctx, dsn)
-	if err != nil {
-		return nil, errors.Wrap(err, "new slot connection")
-	}
 
 	return &Slot{
 		cfg:        cfg,
-		conn:       conn,
+		conn:       pq.NewConnectionTemplate(dsn),
 		statusSQL:  query,
 		metric:     m,
 		ticker:     time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
 		logUpdater: updater,
-	}, nil
+	}
+}
+
+func (s *Slot) Connect(ctx context.Context) error {
+	return s.conn.Connect(ctx)
 }
 
 func (s *Slot) Create(ctx context.Context) (*Info, error) {
+	if err := s.conn.Connect(ctx); err != nil {
+		return nil, errors.Wrap(err, "slot connect")
+	}
+	defer func() {
+		_ = s.conn.Close(ctx)
+	}()
+
 	info, err := s.Info(ctx)
 	if err != nil {
 		if !goerrors.Is(err, ErrorSlotIsNotExists) || !s.cfg.CreateIfNotExists {
@@ -121,12 +128,11 @@ func (s *Slot) Metrics(ctx context.Context) {
 	}
 }
 
-func (s *Slot) Close() {
+func (s *Slot) Close(ctx context.Context) {
 	s.ticker.Stop()
-}
-
-func (s *Slot) EnsureConnection(ctx context.Context) error {
-	return s.conn.EnsureConnection(ctx)
+	if !s.conn.IsClosed() {
+		_ = s.conn.Close(ctx)
+	}
 }
 
 func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {

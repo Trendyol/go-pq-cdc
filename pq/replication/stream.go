@@ -22,7 +22,8 @@ import (
 )
 
 var (
-	ErrorSlotInUse = errors.New("replication slot in use")
+	ErrorSlotInUse    = errors.New("replication slot in use")
+	ErrorNotConnected = errors.New("stream is not connected")
 )
 
 const (
@@ -42,12 +43,12 @@ type Message struct {
 }
 
 type Streamer interface {
+	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
 	Close(ctx context.Context)
 	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
 	SetSnapshotLSN(lsn pq.LSN)
-	EnsureConnection(ctx context.Context) error
 }
 
 type stream struct {
@@ -65,11 +66,10 @@ type stream struct {
 	closed       atomic.Bool
 }
 
-func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
+func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
 	return &stream{
-		conn:         conn,
+		conn:         pq.NewConnectionTemplate(dsn),
 		metric:       m,
-		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
 		messageCH:    make(chan *Message, 1000),
@@ -80,7 +80,27 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *p
 	}
 }
 
+func (s *stream) Connect(ctx context.Context) error {
+	if err := s.conn.Connect(ctx); err != nil {
+		return errors.Wrap(err, "stream connection")
+	}
+
+	system, err := pq.IdentifySystem(ctx, s.conn)
+	if err != nil {
+		_ = s.conn.Close(ctx)
+		return errors.Wrap(err, "identify system")
+	}
+
+	s.system = &system
+	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
+	return nil
+}
+
 func (s *stream) Open(ctx context.Context) error {
+	if s.conn.IsClosed() {
+		return ErrorNotConnected
+	}
+
 	if err := s.setup(ctx); err != nil {
 		var v *pgconn.PgError
 		if goerrors.As(err, &v) && v.Code == "55006" {
@@ -273,21 +293,6 @@ func (s *stream) LoadXLogPos() pq.LSN {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.lastXLogPos
-}
-
-func (s *stream) EnsureConnection(ctx context.Context) error {
-	if err := s.conn.EnsureConnection(ctx); err != nil {
-		return err
-	}
-
-	system, err := pq.IdentifySystem(ctx, s.conn)
-	if err != nil {
-		return err
-	}
-
-	s.system = &system
-	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
-	return nil
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {

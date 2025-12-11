@@ -119,29 +119,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
-	// Create dedicated replication connection for CDC streaming
-	// This is the ONLY connection that should use ReplicationDSN()
-	// IMPORTANT: IDENTIFY_SYSTEM command requires replication connection
-	replConn, err := pq.NewConnection(ctx, cfg.ReplicationDSN())
-	if err != nil {
-		return nil, errors.Wrap(err, "create replication connection")
-	}
+	stream := replication.NewStream(cfg.ReplicationDSN(), cfg, m, listenerFunc)
 
-	system, err := pq.IdentifySystem(ctx, replConn)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
-
-	stream := replication.NewStream(replConn, cfg, m, &system, listenerFunc)
-
-	// Slot needs replication connection for CREATE_REPLICATION_SLOT command
-	sl, err := slot.NewSlot(ctx, cfg.ReplicationDSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
-	if err != nil {
-		return nil, err
-	}
-
-	// Optional heartbeat connection (normal DSN, not replication)
+	sl := slot.NewSlot(cfg.ReplicationDSN(), cfg.Slot, m, stream.(slot.XLogUpdater)) // Optional heartbeat connection (normal DSN, not replication)
 	var heartbeatConn pq.Connection
 	if cfg.Heartbeat.Enabled {
 		heartbeatConn, err = pq.NewConnection(ctx, cfg.DSN())
@@ -166,7 +146,6 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	return &connector{
 		cfg:                &cfg,
-		system:             system,
 		stream:             stream,
 		prometheusRegistry: prometheusRegistry,
 		server:             http.NewServer(cfg, prometheusRegistry),
@@ -175,9 +154,8 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		timescaleDB:        tdb,
 		snapshotter:        snapshotter,
 		listenerFunc:       listenerFunc,
-
-		cancelCh: make(chan os.Signal, 1),
-		readyCh:  make(chan struct{}, 1),
+		cancelCh:           make(chan os.Signal, 1),
+		readyCh:            make(chan struct{}, 1),
 	}, nil
 }
 
@@ -274,16 +252,16 @@ func (c *connector) Start(ctx context.Context) {
 		logger.Info("slot info", "info", slotInfo)
 	}
 
-	if err := c.slot.EnsureConnection(ctx); err != nil {
-		logger.Error("slot connection ensure failed", "error", err)
+	if err := c.slot.Connect(ctx); err != nil {
+		logger.Error("slot connection failed", "error", err)
 		return
 	}
 
 	// Normal CDC flow (unchanged for backward compatibility)
 	c.CaptureSlot(ctx)
 
-	if err := c.stream.EnsureConnection(ctx); err != nil {
-		logger.Error("stream connection ensure failed", "error", err)
+	if err := c.stream.Connect(ctx); err != nil {
+		logger.Error("stream connection failed", "error", err)
 		return
 	}
 
@@ -592,7 +570,7 @@ func (c *connector) Close() {
 
 	// Close replication slot and stream (nil in snapshot_only mode)
 	if c.slot != nil {
-		c.slot.Close()
+		c.slot.Close(ctx)
 	}
 	c.closeHeartbeatConn(ctx)
 	if c.stream != nil {

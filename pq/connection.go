@@ -10,12 +10,12 @@ import (
 )
 
 type Connection interface {
+	Connect(ctx context.Context) error
 	IsClosed() bool
 	Close(ctx context.Context) error
 	ReceiveMessage(ctx context.Context) (pgproto3.BackendMessage, error)
 	Frontend() *pgproto3.Frontend
 	Exec(ctx context.Context, sql string) *pgconn.MultiResultReader
-	EnsureConnection(ctx context.Context) error
 }
 
 type connection struct {
@@ -24,37 +24,34 @@ type connection struct {
 }
 
 func NewConnection(ctx context.Context, dsn string) (Connection, error) {
-	conn, err := connect(ctx, dsn)
-	if err != nil {
-		return nil, errors.Wrap(err, "postgres connection")
+	conn := NewConnectionTemplate(dsn)
+	if err := conn.Connect(ctx); err != nil {
+		return nil, err
 	}
-
-	return &connection{
-		PgConn: conn,
-		dsn:    dsn,
-	}, nil
+	return conn, nil
 }
 
-func (c *connection) EnsureConnection(ctx context.Context) error {
-	if c.IsClosed() {
-		conn, err := connect(ctx, c.dsn)
-		if err != nil {
-			return errors.Wrap(err, "reconnect postgres connection")
-		}
-		c.PgConn = conn
+func NewConnectionTemplate(dsn string) Connection {
+	return &connection{
+		dsn: dsn,
+	}
+}
+
+func (c *connection) Connect(ctx context.Context) error {
+	if c.PgConn != nil && !c.IsClosed() {
 		return nil
 	}
 
-	if err := c.Ping(ctx); err != nil {
-		conn, err := connect(ctx, c.dsn)
-		if err != nil {
-			return errors.Wrap(err, "reconnect postgres connection")
-		}
-		c.PgConn = conn
-		return nil
+	conn, err := connect(ctx, c.dsn)
+	if err != nil {
+		return errors.Wrap(err, "postgres connection")
 	}
-
+	c.PgConn = conn
 	return nil
+}
+
+func (c *connection) IsClosed() bool {
+	return c.PgConn == nil || c.PgConn.IsClosed()
 }
 
 func connect(ctx context.Context, dsn string) (*pgconn.PgConn, error) {

@@ -94,22 +94,19 @@ func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publi
 //
 // IMPORTANT: Replication slot MUST be created immediately after this returns
 // to ensure no WAL changes are lost during snapshot execution
-func (s *Snapshotter) Prepare(ctx context.Context, slotName string) (pq.LSN, error) {
+func (s *Snapshotter) Prepare(ctx context.Context, slotName string) error {
 	instanceID := generateInstanceID(s.config.InstanceID)
 	logger.Debug("[snapshot] preparing", "instanceID", instanceID)
 
-	snapshotLSN, isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
+	isCoordinator, err := s.setupJob(ctx, slotName, instanceID)
 	if err != nil {
-		return 0, errors.Wrap(err, "setup job")
+		return errors.Wrap(err, "setup job")
 	}
 
 	if isCoordinator {
 		logger.Debug("[coordinator] snapshot transaction kept OPEN - replication slot must be created NOW")
 	}
-	if snapshotLSN == nil {
-		return 0, nil
-	}
-	return *snapshotLSN, nil
+	return nil
 }
 
 // Execute performs the actual snapshot data collection

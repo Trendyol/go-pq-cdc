@@ -49,7 +49,6 @@ type connector struct {
 	cfg                *config.Config
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
-	snapshotLSN        pq.LSN
 	once               sync.Once
 	heartbeatMu        sync.Mutex
 }
@@ -330,14 +329,11 @@ func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
 		logger.Debug("replication slot created, WAL preserved", "slotName", slotInfo.Name, "restartLSN", slotInfo.RestartLSN.String())
 
 		// Phase 2: Prepare snapshot (capture LSN, create metadata, export snapshot)
-		snapshotLSN, err := c.snapshotter.Prepare(ctx, c.cfg.Slot.Name)
+		err = c.snapshotter.Prepare(ctx, c.cfg.Slot.Name)
 		if err != nil {
 			return errors.Wrap(err, "prepare snapshot")
 		}
-
-		c.snapshotLSN = snapshotLSN
-		c.stream.SetSnapshotLSN(snapshotLSN)
-		logger.Debug("snapshot prepared, LSN captured", "snapshotLSN", snapshotLSN.String())
+		c.stream.OpenFromSnapshotLSN()
 
 		// Phase 3: Execute snapshot (collect data from all chunks)
 		// This may fail if coordinator restarts during execution - retry with backoff
@@ -349,7 +345,7 @@ func (c *connector) prepareSnapshotAndSlot(ctx context.Context) error {
 			return errors.Wrap(err, "execute snapshot")
 		}
 
-		logger.Info("snapshot completed successfully", "snapshotLSN", snapshotLSN.String())
+		logger.Info("snapshot completed successfully")
 		return nil
 	})
 }
@@ -363,13 +359,10 @@ func (c *connector) executeSnapshotOnly(ctx context.Context) error {
 	logger.Info("starting snapshot-only execution", "slotName", slotName)
 
 	// Prepare snapshot (capture LSN, create metadata, export snapshot)
-	snapshotLSN, err := c.snapshotter.Prepare(ctx, slotName)
+	err := c.snapshotter.Prepare(ctx, slotName)
 	if err != nil {
 		return errors.Wrap(err, "prepare snapshot")
 	}
-
-	c.snapshotLSN = snapshotLSN
-	logger.Info("snapshot prepared", "snapshotLSN", snapshotLSN.String())
 
 	// Execute snapshot (collect data from all chunks)
 	// Note: We call Execute directly with the slotName we prepared with,
@@ -378,7 +371,7 @@ func (c *connector) executeSnapshotOnly(ctx context.Context) error {
 		return errors.Wrap(err, "execute snapshot")
 	}
 
-	logger.Info("snapshot data collection completed", "snapshotLSN", snapshotLSN.String())
+	logger.Info("snapshot data collection completed")
 	return nil
 }
 

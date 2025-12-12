@@ -51,10 +51,12 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	Config.Host, err = Container.ContainerIP(ctx)
+	mappedPort, err := Container.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("get mapped port", err)
 	}
+	Config.Host = "localhost"
+	Config.Port = mappedPort.Int()
 
 	conn, err := newPostgresConn()
 	if err != nil {

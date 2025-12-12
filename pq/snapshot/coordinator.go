@@ -210,35 +210,35 @@ func (s *Snapshotter) updateJobSnapshotID(ctx context.Context, snapshotID string
 
 // setupJob initializes tables, handles coordinator election, and returns the job
 // Returns: job, isCoordinator flag, error
-func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string) (*pq.LSN, bool, error) {
+func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string) (bool, error) {
 	if err := s.initTables(ctx); err != nil {
-		return nil, false, errors.Wrap(err, "initialize tables")
+		return false, errors.Wrap(err, "initialize tables")
 	}
 
 	lockAcquired, err := s.tryAcquireCoordinatorLock(ctx, slotName)
 	if err != nil {
-		return nil, false, errors.Wrap(err, "acquire coordinator lock")
+		return false, errors.Wrap(err, "acquire coordinator lock")
 	}
 
 	if lockAcquired {
 		currentLSN, err := s.getCurrentLSN(ctx)
 		if err != nil {
-			return nil, false, errors.Wrap(err, "get current LSN")
+			return false, errors.Wrap(err, "get current LSN")
 		}
 
 		logger.Debug("[snapshot] elected as coordinator", "instanceID", instanceID)
 		if err := s.initializeCoordinator(ctx, slotName, currentLSN); err != nil {
-			return nil, false, errors.Wrap(err, "initialize coordinator")
+			return false, errors.Wrap(err, "initialize coordinator")
 		}
-		return &currentLSN, true, nil
+		return true, nil
 	}
 
 	logger.Debug("[snapshot] joining as worker", "instanceID", instanceID)
 	if err = s.waitForCoordinator(ctx, slotName); err != nil {
-		return nil, false, errors.Wrap(err, "wait for coordinator")
+		return false, errors.Wrap(err, "wait for coordinator")
 	}
 
-	return nil, false, nil
+	return false, nil
 }
 
 //nolint:funlen

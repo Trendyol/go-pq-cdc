@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -122,4 +123,24 @@ func fetchSnapshotTotalTablesMetric() (int, error) {
 	var val int
 	fmt.Sscanf(m, "%d", &val)
 	return val, nil
+}
+
+func countWalsendersForSlot(ctx context.Context, conn pq.Connection, slotName string) (int, error) {
+	query := fmt.Sprintf(
+		"SELECT COUNT(*) FROM pg_stat_activity WHERE backend_type = 'walsender' AND query LIKE '%%%s%%'",
+		slotName,
+	)
+	resultReader := conn.Exec(ctx, query)
+	results, err := resultReader.ReadAll()
+	if err != nil {
+		return 0, err
+	}
+	if err = resultReader.Close(); err != nil {
+		return 0, err
+	}
+	if len(results) == 0 || len(results[0].Rows) == 0 {
+		return 0, nil
+	}
+	count, _ := strconv.Atoi(string(results[0].Rows[0][0]))
+	return count, nil
 }

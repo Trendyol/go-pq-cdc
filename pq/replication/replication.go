@@ -21,12 +21,6 @@ func New(conn pq.Connection) *Replication {
 }
 
 func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN) error {
-	// If no LSN provided, use a safe default
-	// PostgreSQL will start from slot's restart_lsn if startLSN < restart_lsn
-	if startLSN == 0 {
-		startLSN = pq.LSN(2)
-	}
-
 	pluginArguments := append([]string{
 		"proto_version '2'",
 		"messages 'true'",

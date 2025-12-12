@@ -29,26 +29,28 @@ type XLogUpdater interface {
 }
 
 type Slot struct {
-	conn       pq.Connection
-	metric     metric.Metric
-	logUpdater XLogUpdater
-	ticker     *time.Ticker
-	statusSQL  string
-	cfg        Config
-	mu         sync.Mutex
-	closed     atomic.Bool
+	conn            pq.Connection
+	replicationConn pq.Connection
+	metric          metric.Metric
+	logUpdater      XLogUpdater
+	ticker          *time.Ticker
+	statusSQL       string
+	cfg             Config
+	mu              sync.Mutex
+	closed          atomic.Bool
 }
 
-func NewSlot(dsn string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
+func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
 	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
 
 	return &Slot{
-		cfg:        cfg,
-		conn:       pq.NewConnectionTemplate(dsn),
-		statusSQL:  query,
-		metric:     m,
-		ticker:     time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
-		logUpdater: updater,
+		cfg:             cfg,
+		conn:            pq.NewConnectionTemplate(standardDSN),
+		replicationConn: pq.NewConnectionTemplate(replicationDSN),
+		statusSQL:       query,
+		metric:          m,
+		ticker:          time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
+		logUpdater:      updater,
 	}
 }
 
@@ -79,20 +81,36 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 		return info, nil
 	}
 
-	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s LOGICAL pgoutput", s.cfg.Name)
-	resultReader := s.conn.Exec(ctx, sql)
-	_, err = resultReader.ReadAll()
-	if err != nil {
-		return nil, errors.Wrap(err, "replication slot create result")
-	}
-
-	if err = resultReader.Close(); err != nil {
-		return nil, errors.Wrap(err, "replication slot create result reader close")
+	// Slot needs replication connection for CREATE_REPLICATION_SLOT command
+	if err := s.createSlotWithReplicationConn(ctx); err != nil {
+		return nil, err
 	}
 
 	logger.Info("replication slot created", "name", s.cfg.Name)
 
 	return s.infoLocked(ctx)
+}
+
+func (s *Slot) createSlotWithReplicationConn(ctx context.Context) error {
+	if err := s.replicationConn.Connect(ctx); err != nil {
+		return errors.Wrap(err, "slot replication connect")
+	}
+	defer func() {
+		_ = s.replicationConn.Close(ctx)
+	}()
+
+	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s LOGICAL pgoutput", s.cfg.Name)
+	resultReader := s.replicationConn.Exec(ctx, sql)
+	_, err := resultReader.ReadAll()
+	if err != nil {
+		return errors.Wrap(err, "replication slot create result")
+	}
+
+	if err = resultReader.Close(); err != nil {
+		return errors.Wrap(err, "replication slot create result reader close")
+	}
+
+	return nil
 }
 
 func (s *Slot) Info(ctx context.Context) (*Info, error) {

@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,7 +62,7 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 
 	// Walsender tracking
 	maxWalsendersDuringSnapshot := 0
-	snapshotInProgress := false
+	var snapshotInProgress atomic.Bool
 	stopWalsenderCheck := make(chan struct{})
 
 	messageCh := make(chan any, 200)
@@ -100,7 +101,7 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 			case <-stopWalsenderCheck:
 				return
 			case <-ticker.C:
-				if snapshotInProgress {
+				if snapshotInProgress.Load() {
 					count, err := countWalsendersForSlot(ctx, checkConn, cdcCfg.Slot.Name)
 					if err != nil {
 						t.Logf("⚠️  Failed to count walsenders: %v", err)
@@ -136,7 +137,7 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 				switch m.EventType {
 				case format.SnapshotEventTypeBegin:
 					snapshotBeginReceived = true
-					snapshotInProgress = true
+					snapshotInProgress.Store(true)
 					t.Logf("✅ Snapshot BEGIN received, LSN: %s", m.LSN.String())
 				case format.SnapshotEventTypeData:
 					snapshotDataCount++
@@ -145,7 +146,7 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 					}
 				case format.SnapshotEventTypeEnd:
 					snapshotEndReceived = true
-					snapshotInProgress = false
+					snapshotInProgress.Store(false)
 					snapshotCompleted = true
 					t.Logf("✅ Snapshot END received, LSN: %s", m.LSN.String())
 				}
@@ -200,10 +201,10 @@ collectCDC:
 		t.Logf("✅ Max walsenders during snapshot: %d (expected: 0)", maxWalsendersDuringSnapshot)
 	})
 
-	t.Run("Verify Walsender Exists After Snapshot", func(t *testing.T) {
-		assert.GreaterOrEqual(t, walsenderCountAfterSnapshot, 1,
-			"There should be at least 1 walsender connection after snapshot for CDC streaming")
-		t.Logf("✅ Walsender count after snapshot: %d (expected: >= 1)", walsenderCountAfterSnapshot)
+	t.Run("Verify Exactly One Walsender After Snapshot", func(t *testing.T) {
+		assert.Equal(t, 1, walsenderCountAfterSnapshot,
+			"There should be exactly 1 walsender connection after snapshot (stream only, slot uses standard DSN)")
+		t.Logf("✅ Walsender count after snapshot: %d (expected: 1)", walsenderCountAfterSnapshot)
 	})
 
 	t.Run("Verify CDC Streaming Works", func(t *testing.T) {

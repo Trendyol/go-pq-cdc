@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	goerrors "errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -379,38 +378,6 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 
 	logger.Info("fetched snapshot LSN from database", "slotName", s.config.Slot.Name, "snapshotLSN", snapshotLSN.String())
 	return snapshotLSN, nil
-}
-
-// isTransientError checks if an error is transient and should be retried
-func (s *stream) isTransientError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errStr := err.Error()
-
-	// Network and connection errors
-	transientPatterns := []string{
-		"connection refused",
-		"connection reset",
-		"connection timeout",
-		"timeout",
-		"network is unreachable",
-		"no such host",
-		"temporary failure",
-		"i/o timeout",
-		"broken pipe",
-		"connection lost",
-		"server closed the connection",
-	}
-
-	for _, pattern := range transientPatterns {
-		if strings.Contains(strings.ToLower(errStr), pattern) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {

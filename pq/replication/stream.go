@@ -326,11 +326,10 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			}
 			defer conn.Close(ctx)
 
-			// Query the snapshot job table to get the snapshot LSN
 			query := fmt.Sprintf(`
-				SELECT snapshot_lsn 
+				SELECT snapshot_lsn, completed 
 				FROM cdc_snapshot_job 
-				WHERE slot_name = '%s' AND completed = true
+				WHERE slot_name = '%s'
 			`, s.config.Slot.Name)
 
 			resultReader := conn.Exec(ctx, query)
@@ -345,17 +344,21 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			}
 
 			if len(results) == 0 || len(results[0].Rows) == 0 {
-				// This is not a transient error - if no snapshot job exists, retrying won't help
-				return retry.Unrecoverable(errors.New("no completed snapshot job found for slot: " + s.config.Slot.Name))
+				return retry.Unrecoverable(errors.New("no snapshot job found for slot: " + s.config.Slot.Name))
 			}
 
 			row := results[0].Rows[0]
-			if len(row) == 0 {
+
+			completed := string(row[1]) == "true" || string(row[1]) == "t"
+			if !completed {
+				return errors.New("snapshot job not completed yet for slot: " + s.config.Slot.Name)
+			}
+
+			lsnStr := string(row[0])
+			if lsnStr == "" {
 				return retry.Unrecoverable(errors.New("empty snapshot LSN result"))
 			}
 
-			// Parse the LSN string
-			lsnStr := string(row[0])
 			snapshotLSN, err = pq.ParseLSN(lsnStr)
 			if err != nil {
 				return retry.Unrecoverable(errors.Wrap(err, "parse snapshot LSN: "+lsnStr))

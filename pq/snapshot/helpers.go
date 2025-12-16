@@ -194,3 +194,16 @@ func parseNullableInt64(value []byte) (*int64, error) {
 
 	return &parsed, nil
 }
+
+func parseNullableString(value []byte) *string {
+	if value == nil {
+		return nil
+	}
+
+	str := string(value)
+	if str == "" {
+		return nil
+	}
+
+	return &str
+}

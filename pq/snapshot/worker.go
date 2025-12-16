@@ -239,6 +239,13 @@ func (s *Snapshotter) logChunkStart(instanceID string, chunk *Chunk) {
 		)
 	}
 
+	if hasTextRange := chunk.hasTextRangeBounds(); hasTextRange {
+		args = append(args,
+			"rangeStartText", *chunk.RangeStartText,
+			"rangeEndText", *chunk.RangeEndText,
+		)
+	}
+
 	logger.Debug("[worker] processing chunk", args...)
 }
 
@@ -434,7 +441,7 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 		}
 
 		row := results[0].Rows[0]
-		if len(row) < 9 {
+		if len(row) < 11 {
 			return errors.New("invalid chunk row")
 		}
 
@@ -468,7 +475,8 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 		FROM available_chunk
 		WHERE c.id = available_chunk.id
 		RETURNING c.id, c.table_schema, c.table_name, 
-		          c.chunk_index, c.chunk_start, c.chunk_size, c.range_start, c.range_end, c.rows_processed
+		          c.chunk_index, c.chunk_start, c.chunk_size, c.range_start, c.range_end, 
+		          c.range_start_text, c.range_end_text, c.rows_processed
 	`, chunksTableName,
 		slotName,
 		timeoutThreshold.Format(postgresTimestampFormat),
@@ -514,6 +522,10 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	}
 	chunk.RangeStart = rangeStart
 	chunk.RangeEnd = rangeEnd
+
+	// Parse TEXT range values (for keyset pagination on TEXT PKs)
+	chunk.RangeStartText = parseNullableString(row[8])
+	chunk.RangeEndText = parseNullableString(row[9])
 
 	return chunk, nil
 }

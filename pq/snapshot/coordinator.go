@@ -288,6 +288,8 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				chunk_size BIGINT NOT NULL,
 				range_start BIGINT,
 				range_end BIGINT,
+				range_start_text TEXT,
+				range_end_text TEXT,
 				status TEXT NOT NULL DEFAULT 'pending',
 				claimed_by TEXT,
 				claimed_at TIMESTAMP,
@@ -413,6 +415,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 }
 
 func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+	// INTEGER range-based query (most efficient)
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
 
@@ -429,6 +432,26 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 		)
 	}
 
+	// TEXT range-based query (keyset pagination - efficient for TEXT PKs)
+	if chunk.hasTextRangeBounds() && len(pkColumns) == 1 {
+		pkColumn := pkColumns[0]
+		// Escape single quotes in text values to prevent SQL injection
+		startText := strings.ReplaceAll(*chunk.RangeStartText, "'", "''")
+		endText := strings.ReplaceAll(*chunk.RangeEndText, "'", "''")
+
+		return fmt.Sprintf(
+			"SELECT * FROM %s.%s WHERE %s >= '%s' AND %s <= '%s' ORDER BY %s",
+			chunk.TableSchema,
+			chunk.TableName,
+			pkColumn,
+			startText,
+			pkColumn,
+			endText,
+			orderByClause,
+		)
+	}
+
+	// Fallback to OFFSET/LIMIT (slow for large offsets)
 	return fmt.Sprintf(
 		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
 		chunk.TableSchema,
@@ -510,16 +533,30 @@ func cloneStringSlice(in []string) []string {
 
 // createTableChunks divides a table into chunks
 func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
-	pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
+	// Try INTEGER primary key first (most efficient)
+	pkColumn, isInt, err := s.getSingleIntegerPrimaryKey(ctx, table)
 	if err != nil {
 		logger.Warn("[chunk] failed to inspect primary key", "table", table.Name, "error", err)
 	}
 
-	if ok {
+	if isInt {
 		if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
 			return rangeChunks
 		}
 		logger.Warn("[chunk] range chunking unavailable, falling back to OFFSET", "table", table.Name)
+	}
+
+	// Try TEXT/VARCHAR primary key (keyset pagination)
+	pkColumn, isText, err := s.getSingleTextPrimaryKey(ctx, table)
+	if err != nil {
+		logger.Warn("[chunk] failed to inspect text primary key", "table", table.Name, "error", err)
+	}
+
+	if isText {
+		if textChunks := s.createTextRangeChunks(ctx, slotName, table, pkColumn); len(textChunks) > 0 {
+			return textChunks
+		}
+		logger.Warn("[chunk] text range chunking unavailable, falling back to OFFSET", "table", table.Name)
 	}
 
 	return s.createOffsetChunks(ctx, slotName, table)
@@ -582,6 +619,82 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		"numChunks", numChunks,
 		"rangeMin", minValue,
 		"rangeMax", maxValue,
+	)
+	return chunks
+}
+
+// createTextRangeChunks creates chunks using TEXT primary key boundaries
+// Uses NTILE window function to evenly distribute rows into buckets
+func (s *Snapshotter) createTextRangeChunks(ctx context.Context, slotName string, table publication.Table, pkColumn string) []*Chunk {
+	// First, get total row count to determine number of chunks
+	rowCount, err := s.getTableRawCount(ctx, table.Schema, table.Name)
+	if err != nil || rowCount == 0 {
+		logger.Warn("[chunk] failed to get row count for text range chunking", "table", table.Name, "error", err)
+		return nil
+	}
+
+	chunkSize := s.config.ChunkSize
+	numChunks := (rowCount + chunkSize - 1) / chunkSize
+
+	if numChunks <= 1 {
+		logger.Warn("[chunk] numChumks <1", "table", table.Name)
+		return nil
+	}
+
+	// Use NTILE to get chunk boundaries
+	// This query divides all PK values into N buckets and returns min/max for each
+	query := fmt.Sprintf(`
+		WITH bucketed AS (
+			SELECT %s, NTILE(%d) OVER (ORDER BY %s) as bucket
+			FROM %s.%s
+		)
+		SELECT 
+			bucket,
+			MIN(%s) as range_start,
+			MAX(%s) as range_end
+		FROM bucketed
+		GROUP BY bucket
+		ORDER BY bucket
+	`, pkColumn, numChunks, pkColumn, table.Schema, table.Name, pkColumn, pkColumn)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		logger.Warn("[chunk] failed to compute text range boundaries", "table", table.Name, "error", err)
+		return nil
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 {
+		return nil
+	}
+
+	chunks := make([]*Chunk, 0, len(results[0].Rows))
+	for i, row := range results[0].Rows {
+		if len(row) < 3 {
+			continue
+		}
+
+		rangeStart := string(row[1])
+		rangeEnd := string(row[2])
+
+		chunk := &Chunk{
+			SlotName:       slotName,
+			TableSchema:    table.Schema,
+			TableName:      table.Name,
+			ChunkIndex:     i,
+			ChunkStart:     int64(i) * chunkSize,
+			ChunkSize:      chunkSize,
+			Status:         ChunkStatusPending,
+			RangeStartText: &rangeStart,
+			RangeEndText:   &rangeEnd,
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	logger.Info("[chunk] text range chunks created",
+		"table", table.Name,
+		"pkColumn", pkColumn,
+		"chunkSize", chunkSize,
+		"numChunks", len(chunks),
 	)
 	return chunks
 }
@@ -680,9 +793,47 @@ func (s *Snapshotter) getSingleIntegerPrimaryKey(ctx context.Context, table publ
 	return columns[0].Name, true, nil
 }
 
+func (s *Snapshotter) getSingleTextPrimaryKey(ctx context.Context, table publication.Table) (string, bool, error) {
+	columns, err := s.getPrimaryKeyColumnsDetailed(ctx, s.metadataConn, table)
+	if err != nil {
+		return "", false, err
+	}
+
+	if len(columns) != 1 {
+		return "", false, nil
+	}
+
+	if !isTextType(columns[0].DataType) {
+		return "", false, nil
+	}
+
+	return columns[0].Name, true, nil
+}
+
 func isIntegerType(dataType string) bool {
 	switch dataType {
 	case "smallint", "integer", "bigint", "int2", "int4", "int8":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTextType(dataType string) bool {
+	// Handle types like "character varying(255)" or "varchar(100)"
+	dt := strings.ToLower(dataType)
+	switch {
+	case dt == "text":
+		return true
+	case dt == "varchar":
+		return true
+	case dt == "char":
+		return true
+	case strings.HasPrefix(dt, "character varying"):
+		return true
+	case strings.HasPrefix(dt, "varchar"):
+		return true
+	case strings.HasPrefix(dt, "character"):
 		return true
 	default:
 		return false
@@ -766,11 +917,26 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
 		}
 
+		rangeStartText := "NULL"
+		if chunk.RangeStartText != nil {
+			// Escape single quotes for SQL safety
+			escaped := strings.ReplaceAll(*chunk.RangeStartText, "'", "''")
+			rangeStartText = fmt.Sprintf("'%s'", escaped)
+		}
+
+		rangeEndText := "NULL"
+		if chunk.RangeEndText != nil {
+			// Escape single quotes for SQL safety
+			escaped := strings.ReplaceAll(*chunk.RangeEndText, "'", "''")
+			rangeEndText = fmt.Sprintf("'%s'", escaped)
+		}
+
 		query := fmt.Sprintf(`
 			INSERT INTO %s (
 				slot_name, table_schema, table_name, chunk_index, 
-				chunk_start, chunk_size, range_start, range_end, status
-			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, '%s')
+				chunk_start, chunk_size, range_start, range_end, 
+				range_start_text, range_end_text, status
+			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, '%s')
 		`, chunksTableName,
 			chunk.SlotName,
 			chunk.TableSchema,
@@ -780,6 +946,8 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			chunk.ChunkSize,
 			rangeStart,
 			rangeEnd,
+			rangeStartText,
+			rangeEndText,
 			string(chunk.Status),
 		)
 

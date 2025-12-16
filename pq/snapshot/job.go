@@ -20,24 +20,30 @@ const (
 
 // Chunk represents a unit of work for snapshot processing
 type Chunk struct {
-	ClaimedAt   *time.Time
-	HeartbeatAt *time.Time
-	CompletedAt *time.Time
-	RangeEnd    *int64
-	RangeStart  *int64
-	Status      ChunkStatus
-	TableName   string
-	ClaimedBy   string
-	TableSchema string
-	SlotName    string
-	ID          int64
-	ChunkIndex  int
-	ChunkStart  int64
-	ChunkSize   int64
+	ClaimedAt      *time.Time
+	HeartbeatAt    *time.Time
+	CompletedAt    *time.Time
+	RangeEnd       *int64
+	RangeStart     *int64
+	RangeStartText *string // For TEXT/VARCHAR primary keys (keyset pagination)
+	RangeEndText   *string // For TEXT/VARCHAR primary keys (keyset pagination)
+	Status         ChunkStatus
+	TableName      string
+	ClaimedBy      string
+	TableSchema    string
+	SlotName       string
+	ID             int64
+	ChunkIndex     int
+	ChunkStart     int64
+	ChunkSize      int64
 }
 
 func (c *Chunk) hasRangeBounds() bool {
 	return c.RangeStart != nil && c.RangeEnd != nil
+}
+
+func (c *Chunk) hasTextRangeBounds() bool {
+	return c.RangeStartText != nil && c.RangeEndText != nil
 }
 
 // Job represents the overall snapshot job metadata

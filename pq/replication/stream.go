@@ -104,6 +104,8 @@ func (s *stream) Open(ctx context.Context) error {
 	}
 
 	if err := s.setup(ctx); err != nil {
+		s.sinkEnd <- struct{}{}
+
 		var v *pgconn.PgError
 		if goerrors.As(err, &v) && v.Code == "55006" {
 			return ErrorSlotInUse

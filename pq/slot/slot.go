@@ -32,7 +32,6 @@ type Slot struct {
 	conn            pq.Connection
 	replicationConn pq.Connection
 	metric          metric.Metric
-	logUpdater      XLogUpdater
 	ticker          *time.Ticker
 	statusSQL       string
 	cfg             Config
@@ -40,7 +39,7 @@ type Slot struct {
 	closed          atomic.Bool
 }
 
-func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
+func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric) *Slot {
 	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
 
 	return &Slot{
@@ -50,7 +49,6 @@ func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, up
 		statusSQL:       query,
 		metric:          m,
 		ticker:          time.NewTicker(time.Millisecond * cfg.SlotActivityCheckerInterval),
-		logUpdater:      updater,
 	}
 }
 
@@ -167,8 +165,6 @@ func (s *Slot) Metrics(ctx context.Context) {
 		s.metric.SetSlotConfirmedFlushLSN(float64(slotInfo.ConfirmedFlushLSN))
 		s.metric.SetSlotRetainedWALSize(float64(slotInfo.RetainedWALSize))
 		s.metric.SetSlotLag(float64(slotInfo.Lag))
-
-		s.logUpdater.UpdateXLogPos(slotInfo.CurrentLSN)
 
 		logger.Debug("slot metrics", "info", slotInfo)
 	}

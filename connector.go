@@ -118,7 +118,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	stream := replication.NewStream(cfg.ReplicationDSN(), cfg, m, listenerFunc)
 
-	sl := slot.NewSlot(cfg.ReplicationDSN(), cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
+	sl := slot.NewSlot(cfg.ReplicationDSN(), cfg.DSN(), cfg.Slot, m)
 	var heartbeatConn pq.Connection
 	if cfg.Heartbeat.Enabled {
 		heartbeatConn, err = pq.NewConnection(ctx, cfg.DSN())

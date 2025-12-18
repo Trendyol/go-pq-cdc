@@ -16,13 +16,15 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/avast/retry-go/v4"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
 var (
-	ErrorSlotInUse = errors.New("replication slot in use")
+	ErrorSlotInUse    = errors.New("replication slot in use")
+	ErrorNotConnected = errors.New("stream is not connected")
 )
 
 const (
@@ -42,33 +44,34 @@ type Message struct {
 }
 
 type Streamer interface {
+	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
 	Close(ctx context.Context)
 	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
-	SetSnapshotLSN(lsn pq.LSN)
+	OpenFromSnapshotLSN()
 }
 
 type stream struct {
-	conn         pq.Connection
-	metric       metric.Metric
-	system       *pq.IdentifySystemResult
-	relation     map[uint32]*format.Relation
-	messageCH    chan *Message
-	listenerFunc ListenerFunc
-	sinkEnd      chan struct{}
-	mu           *sync.RWMutex
-	config       config.Config
-	lastXLogPos  pq.LSN
-	snapshotLSN  pq.LSN // LSN from snapshot to start CDC from
-	closed       atomic.Bool
+	conn                pq.Connection
+	metric              metric.Metric
+	system              *pq.IdentifySystemResult
+	relation            map[uint32]*format.Relation
+	messageCH           chan *Message
+	listenerFunc        ListenerFunc
+	sinkEnd             chan struct{}
+	mu                  *sync.RWMutex
+	config              config.Config
+	lastXLogPos         pq.LSN
+	snapshotLSN         pq.LSN
+	openFromSnapshotLSN bool
+	closed              atomic.Bool
 }
 
-func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *pq.IdentifySystemResult, listenerFunc ListenerFunc) Streamer {
+func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
 	return &stream{
-		conn:         conn,
+		conn:         pq.NewConnectionTemplate(dsn),
 		metric:       m,
-		system:       system,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
 		messageCH:    make(chan *Message, 1000),
@@ -79,8 +82,30 @@ func NewStream(conn pq.Connection, cfg config.Config, m metric.Metric, system *p
 	}
 }
 
+func (s *stream) Connect(ctx context.Context) error {
+	if err := s.conn.Connect(ctx); err != nil {
+		return errors.Wrap(err, "stream connection")
+	}
+
+	system, err := pq.IdentifySystem(ctx, s.conn)
+	if err != nil {
+		_ = s.conn.Close(ctx)
+		return errors.Wrap(err, "identify system")
+	}
+
+	s.system = &system
+	logger.Info("system identification", "systemID", system.SystemID, "timeline", system.Timeline, "xLogPos", system.LoadXLogPos(), "database:", system.Database)
+	return nil
+}
+
 func (s *stream) Open(ctx context.Context) error {
+	if s.conn.IsClosed() {
+		return ErrorNotConnected
+	}
+
 	if err := s.setup(ctx); err != nil {
+		s.sinkEnd <- struct{}{}
+
 		var v *pgconn.PgError
 		if goerrors.As(err, &v) && v.Code == "55006" {
 			return ErrorSlotInUse
@@ -100,8 +125,16 @@ func (s *stream) Open(ctx context.Context) error {
 func (s *stream) setup(ctx context.Context) error {
 	replication := New(s.conn)
 
-	// Use snapshot LSN if available (from snapshot), otherwise will default to LSN(2)
-	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, s.snapshotLSN); err != nil {
+	replicationStartLsn := pq.LSN(2)
+	if s.openFromSnapshotLSN {
+		snapshotLSN, err := s.fetchSnapshotLSN(ctx)
+		if err != nil {
+			return errors.Wrap(err, "fetch snapshot LSN")
+		}
+		replicationStartLsn = snapshotLSN
+	}
+
+	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn); err != nil {
 		return err
 	}
 
@@ -109,10 +142,10 @@ func (s *stream) setup(ctx context.Context) error {
 		return err
 	}
 
-	if s.snapshotLSN > 0 {
-		logger.Info("replication started from snapshot LSN", "slot", s.config.Slot.Name, "startLSN", s.snapshotLSN.String())
+	if s.openFromSnapshotLSN {
+		logger.Info("replication started from snapshot LSN", "slot", s.config.Slot.Name)
 	} else {
-		logger.Info("replication started", "slot", s.config.Slot.Name)
+		logger.Info("replication started from restart LSN", "slot", s.config.Slot.Name)
 	}
 
 	return nil
@@ -272,6 +305,84 @@ func (s *stream) LoadXLogPos() pq.LSN {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.lastXLogPos
+}
+
+func (s *stream) OpenFromSnapshotLSN() {
+	s.openFromSnapshotLSN = true
+}
+
+// fetchSnapshotLSN queries the database to get the snapshot LSN from cdc_snapshot_job table
+// Uses infinite retry with exponential backoff for resilience against transient database errors
+func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
+	logger.Info("fetching snapshot LSN from database", "slotName", s.config.Slot.Name)
+
+	var snapshotLSN pq.LSN
+
+	err := retry.Do(
+		func() error {
+			// Create a separate connection for querying metadata
+			// Use regular DSN (not replication DSN) for normal SQL queries
+			conn, err := pq.NewConnection(ctx, s.config.DSN())
+			if err != nil {
+				return errors.Wrap(err, "create connection for snapshot LSN query")
+			}
+			defer conn.Close(ctx)
+
+			query := fmt.Sprintf(`
+				SELECT snapshot_lsn, completed 
+				FROM cdc_snapshot_job 
+				WHERE slot_name = '%s'
+			`, s.config.Slot.Name)
+
+			resultReader := conn.Exec(ctx, query)
+			results, err := resultReader.ReadAll()
+			if err != nil {
+				resultReader.Close()
+				return errors.Wrap(err, "execute snapshot LSN query")
+			}
+
+			if err = resultReader.Close(); err != nil {
+				return errors.Wrap(err, "close result reader")
+			}
+
+			if len(results) == 0 || len(results[0].Rows) == 0 {
+				return retry.Unrecoverable(errors.New("no snapshot job found for slot: " + s.config.Slot.Name))
+			}
+
+			row := results[0].Rows[0]
+
+			completed := string(row[1]) == "true" || string(row[1]) == "t"
+			if !completed {
+				return errors.New("snapshot job not completed yet for slot: " + s.config.Slot.Name)
+			}
+
+			lsnStr := string(row[0])
+			if lsnStr == "" {
+				return retry.Unrecoverable(errors.New("empty snapshot LSN result"))
+			}
+
+			snapshotLSN, err = pq.ParseLSN(lsnStr)
+			if err != nil {
+				return retry.Unrecoverable(errors.Wrap(err, "parse snapshot LSN: "+lsnStr))
+			}
+
+			return nil
+		},
+		retry.Attempts(0),                   // 0 means infinite retries
+		retry.DelayType(retry.BackOffDelay), // Exponential backoff
+		retry.OnRetry(func(n uint, err error) {
+			logger.Error("error in snapshot LSN fetch, retrying",
+				"attempt", n+1,
+				"error", err,
+				"slotName", s.config.Slot.Name)
+		}),
+	)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to fetch snapshot LSN")
+	}
+
+	logger.Info("fetched snapshot LSN from database", "slotName", s.config.Slot.Name, "snapshotLSN", snapshotLSN.String())
+	return snapshotLSN, nil
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {

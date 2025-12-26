@@ -39,8 +39,8 @@ type ListenerContext struct {
 type ListenerFunc func(ctx *ListenerContext)
 
 type Message struct {
-	message  any
-	walStart int64
+	message any
+	ackLSN  int64
 }
 
 type Streamer interface {
@@ -205,7 +205,8 @@ func (s *stream) sink(ctx context.Context) {
 				continue
 			}
 
-			logger.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
+			ackLSN := xld.WALStart + pq.LSN(len(xld.WALData))
+			logger.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", ackLSN, "serverWALEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
 
 			s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
@@ -217,8 +218,8 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			s.messageCH <- &Message{
-				message:  decodedMsg,
-				walStart: int64(xld.WALStart),
+				message: decodedMsg,
+				ackLSN:  int64(ackLSN),
 			}
 		}
 	}
@@ -243,7 +244,7 @@ func (s *stream) process(ctx context.Context) {
 		lCtx := &ListenerContext{
 			Message: msg.message,
 			Ack: func() error {
-				pos := pq.LSN(msg.walStart)
+				pos := pq.LSN(msg.ackLSN)
 				s.system.UpdateXLogPos(pos)
 				logger.Debug("send stand by status update", "xLogPos", pos.String())
 				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()))

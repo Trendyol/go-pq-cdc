@@ -212,9 +212,23 @@ func (s *stream) sink(ctx context.Context) {
 			var decodedMsg any
 			decodedMsg, err = message.New(xld.WALData, xld.ServerTime, s.relation)
 			if err != nil || decodedMsg == nil {
+				if len(xld.WALData) > 0 && message.Type(xld.WALData[0]) == message.CommitByte {
+					s.UpdateXLogPos(xld.ServerWALEnd)
+					err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
+					if err != nil {
+						logger.Error("send standby status update after commit", "error", err)
+					} else {
+						logger.Info("COMMIT ACK", "walEnd", xld.ServerWALEnd.String())
+					}
+				}
 				logger.Debug("wal data message parsing error", "error", err)
 				continue
 			}
+
+			logger.Info("MESSAGE RECEIVED",
+				"walStart", xld.WALStart,
+				"walEnd", xld.ServerWALEnd,
+				"serverTime", xld.ServerTime)
 
 			s.messageCH <- &Message{
 				message:  decodedMsg,
@@ -244,9 +258,13 @@ func (s *stream) process(ctx context.Context) {
 			Message: msg.message,
 			Ack: func() error {
 				pos := pq.LSN(msg.walStart)
-				s.system.UpdateXLogPos(pos)
-				logger.Debug("send stand by status update", "xLogPos", pos.String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()))
+				s.UpdateXLogPos(pos)
+				logger.Info("ACK SENDING",
+					"pos", pos.String(),
+					"posInt", uint64(pos),
+					"connType", fmt.Sprintf("%T", s.conn))
+				logger.Info("send stand by status update", "xLogPos", s.LoadXLogPos().String())
+				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 			},
 		}
 
@@ -392,7 +410,7 @@ func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosi
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, timeToPgTime(time.Now()))
-	data = append(data, 0)
+	data = append(data, 1)
 
 	cd := &pgproto3.CopyData{Data: data}
 	buf, err := cd.Encode(nil)

@@ -1,9 +1,10 @@
 package format
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/stretchr/testify/assert"
@@ -64,7 +65,7 @@ func TestNewCommit(t *testing.T) {
 		commit, err := NewCommit(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, commit)
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(1), commit.CommitLSN)
@@ -148,7 +149,7 @@ func TestCommit_decode(t *testing.T) {
 		err := commit.decode(data)
 
 		// Then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "commit message length must be at least 25 byte")
 	})
 

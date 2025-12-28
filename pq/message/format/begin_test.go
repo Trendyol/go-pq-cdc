@@ -145,7 +145,7 @@ func TestBegin_decode(t *testing.T) {
 		err := begin.decode(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, pq.LSN(0), begin.FinalLSN)
 		assert.Equal(t, time.Unix(0, 0), begin.CommitTime)
 		assert.Equal(t, uint32(0), begin.Xid)

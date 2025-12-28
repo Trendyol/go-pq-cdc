@@ -12,9 +12,9 @@ import (
 // PrimaryKeepaliveMessage represents a 'k' keep-alive message sent by the primary server.
 // See PostgreSQL replication protocol documentation.
 type PrimaryKeepaliveMessage struct {
-	ServerWALEnd   pq.LSN    // server's current WAL end position
-	ServerTime     time.Time // server clock at the time of sending (microseconds since 2000-01-01)
-	ReplyRequested bool      // whether the client should reply immediately
+	ServerTime     time.Time
+	ServerWALEnd   pq.LSN
+	ReplyRequested bool
 }
 
 // NewPrimaryKeepaliveMessage constructs a PrimaryKeepaliveMessage from raw payload (17 bytes, after the leading 'k').

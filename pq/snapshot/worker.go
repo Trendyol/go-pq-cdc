@@ -178,13 +178,13 @@ func (s *Snapshotter) prepareChunkProcessing(instanceID string, chunk *Chunk, ch
 
 // executeChunkProcessing processes a chunk and handles errors appropriately
 func (s *Snapshotter) executeChunkProcessing(ctx context.Context, slotName, instanceID string, job *Job, handler Handler, chunk *Chunk) (bool, error) {
-	rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
+	result, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
 	if err != nil {
 		return s.handleChunkProcessingError(ctx, instanceID, chunk, job.SnapshotID, err)
 	}
 
 	// Success: mark chunk as completed
-	s.completeChunk(ctx, slotName, instanceID, chunk, rowsProcessed)
+	s.completeChunk(ctx, slotName, instanceID, chunk, result)
 	return true, nil // More chunks may be available
 }
 
@@ -232,14 +232,23 @@ func (s *Snapshotter) logChunkStart(instanceID string, chunk *Chunk) {
 		"chunkSize", chunk.ChunkSize,
 	}
 
-	if hasRange := chunk.hasRangeBounds(); hasRange {
+	switch {
+	case chunk.hasRangeBounds():
 		args = append(args,
 			"rangeStart", *chunk.RangeStart,
 			"rangeEnd", *chunk.RangeEnd,
+			"mode", "range",
 		)
+	case chunk.isKeysetMode():
+		args = append(args,
+			"cursorStart", *chunk.RangeStart,
+			"mode", "keyset",
+		)
+	default:
+		args = append(args, "mode", "offset")
 	}
 
-	logger.Debug("[worker] processing chunk", args...)
+	logger.Info("[worker] processing chunk", args...)
 }
 
 // notifyHeartbeat sends chunk ID to heartbeat worker
@@ -251,22 +260,22 @@ func (s *Snapshotter) notifyHeartbeat(chunkChan chan<- int64, chunkID int64) {
 }
 
 // completeChunk marks chunk as completed and updates metrics
-func (s *Snapshotter) completeChunk(ctx context.Context, slotName, instanceID string, chunk *Chunk, rowsProcessed int64) {
+func (s *Snapshotter) completeChunk(ctx context.Context, slotName, instanceID string, chunk *Chunk, result ChunkResult) {
 	// Mark chunk as completed
-	if err := s.markChunkCompleted(ctx, slotName, chunk.ID, rowsProcessed); err != nil {
+	if err := s.markChunkCompleted(ctx, slotName, chunk.ID, result.RowCount, result.LastPK); err != nil {
 		logger.Warn("[worker] failed to mark chunk as completed", "error", err)
 		return
 	}
 
 	// Update metrics
-	s.metric.SnapshotRowsIncrement(rowsProcessed)
+	s.metric.SnapshotRowsIncrement(result.RowCount)
 	s.updateCompletedChunksMetric(ctx, slotName)
 
 	// Log completion
 	logger.Debug("[worker] chunk completed",
 		"instanceID", instanceID,
 		"chunkID", chunk.ID,
-		"rowsProcessed", rowsProcessed)
+		"rowsProcessed", result.RowCount)
 }
 
 // updateCompletedChunksMetric updates the completed chunks metric
@@ -278,34 +287,34 @@ func (s *Snapshotter) updateCompletedChunksMetric(ctx context.Context, slotName 
 
 // processChunkWithTransaction processes a single chunk within its own transaction
 // This allows each chunk to have an independent transaction lifecycle with retry support
-func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Chunk, snapshotID string, lsn pq.LSN, handler Handler) (int64, error) {
-	var rowsProcessed int64
+func (s *Snapshotter) processChunkWithTransaction(ctx context.Context, chunk *Chunk, snapshotID string, lsn pq.LSN, handler Handler) (ChunkResult, error) {
+	var result ChunkResult
 
 	err := s.retryDBOperation(ctx, func() error {
-		rows, err := s.executeInTransaction(ctx, snapshotID, func(conn pq.Connection) (int64, error) {
+		chunkResult, err := s.executeInTransaction(ctx, snapshotID, func(conn pq.Connection) (ChunkResult, error) {
 			return s.processChunk(ctx, conn, chunk, lsn, handler)
 		})
 		if err != nil {
 			return err
 		}
-		rowsProcessed = rows
+		result = chunkResult
 		return nil
 	})
 
 	if err != nil {
-		return 0, errors.Wrap(err, "process chunk with transaction")
+		return ChunkResult{}, errors.Wrap(err, "process chunk with transaction")
 	}
 
-	return rowsProcessed, nil
+	return result, nil
 }
 
 // executeInTransaction executes a function within a snapshot transaction
 // Uses a connection from the pool for efficient reuse
-func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID string, fn func(pq.Connection) (int64, error)) (int64, error) {
+func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID string, fn func(pq.Connection) (ChunkResult, error)) (ChunkResult, error) {
 	// Get connection from pool (optimization: avoid connection create/destroy overhead)
 	chunkConn, err := s.connectionPool.Get(ctx)
 	if err != nil {
-		return 0, errors.Wrap(err, "get connection from pool")
+		return ChunkResult{}, errors.Wrap(err, "get connection from pool")
 	}
 	defer s.connectionPool.Put(chunkConn)
 
@@ -317,20 +326,20 @@ func (s *Snapshotter) executeInTransaction(ctx context.Context, snapshotID strin
 	}
 
 	if err := tx.begin(); err != nil {
-		return 0, err
+		return ChunkResult{}, err
 	}
 	defer tx.rollbackIfNeeded()
 
-	rows, err := fn(chunkConn)
+	result, err := fn(chunkConn)
 	if err != nil {
-		return 0, errors.Wrap(err, "execute function")
+		return ChunkResult{}, errors.Wrap(err, "execute function")
 	}
 
 	if err := tx.commit(); err != nil {
-		return 0, err
+		return ChunkResult{}, err
 	}
 
-	return rows, nil
+	return result, nil
 }
 
 // snapshotTransaction manages a single snapshot transaction lifecycle
@@ -446,25 +455,60 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 }
 
 // buildClaimChunkQuery builds the SQL query for claiming a chunk
+// For sequential keyset chunks (range_end IS NULL AND range_start < 0), ensures previous chunk is completed
 func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time.Time, claimTimeout time.Duration) string {
 	timeoutThreshold := now.Add(-claimTimeout)
 	return fmt.Sprintf(`
 		WITH available_chunk AS (
-			SELECT id FROM %s
-			WHERE slot_name = '%s'
+			SELECT c.id, c.range_start, c.range_end, c.chunk_index, c.table_schema, c.table_name
+			FROM %s c
+			WHERE c.slot_name = '%s'
 			  AND (
-				  status = 'pending'
-				  OR (status = 'in_progress' AND heartbeat_at < '%s')
+				  c.status = 'pending'
+				  OR (c.status = 'in_progress' AND c.heartbeat_at < '%s')
 			  )
-			ORDER BY chunk_index
+			  -- For sequential keyset chunks (range_end IS NULL AND range_start < 0):
+			  -- Ensure previous chunk in same table is completed
+			  AND (
+			      -- Not a sequential keyset chunk (range_end is set OR first chunk OR positive range_start)
+			      c.range_end IS NOT NULL 
+			      OR c.chunk_index = 0 
+			      OR c.range_start >= 0
+			      -- OR previous chunk is completed
+			      OR EXISTS (
+			          SELECT 1 FROM %s prev 
+			          WHERE prev.slot_name = c.slot_name 
+			            AND prev.table_schema = c.table_schema 
+			            AND prev.table_name = c.table_name 
+			            AND prev.chunk_index = c.chunk_index - 1 
+			            AND prev.status = 'completed'
+			      )
+			  )
+			ORDER BY c.chunk_index
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
+		),
+		-- Get last_pk from previous chunk for sequential keyset mode
+		prev_chunk_info AS (
+			SELECT prev.last_pk
+			FROM available_chunk ac
+			JOIN %s prev ON prev.slot_name = '%s'
+			                AND prev.table_schema = ac.table_schema
+			                AND prev.table_name = ac.table_name
+			                AND prev.chunk_index = ac.chunk_index - 1
+			WHERE ac.range_end IS NULL AND ac.range_start < 0 AND ac.chunk_index > 0
 		)
 		UPDATE %s c
 		SET status = 'in_progress',
 		    claimed_by = '%s',
 		    claimed_at = '%s',
-		    heartbeat_at = '%s'
+		    heartbeat_at = '%s',
+		    -- Update range_start from previous chunk's last_pk for sequential keyset chunks
+		    range_start = CASE 
+		        WHEN c.range_end IS NULL AND c.range_start < 0 AND c.chunk_index > 0 
+		        THEN COALESCE((SELECT last_pk FROM prev_chunk_info), c.range_start)
+		        ELSE c.range_start 
+		    END
 		FROM available_chunk
 		WHERE c.id = available_chunk.id
 		RETURNING c.id, c.table_schema, c.table_name, 
@@ -472,6 +516,9 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 	`, chunksTableName,
 		slotName,
 		timeoutThreshold.Format(postgresTimestampFormat),
+		chunksTableName,
+		chunksTableName,
+		slotName,
 		chunksTableName,
 		instanceID,
 		now.Format(postgresTimestampFormat),
@@ -534,18 +581,25 @@ func (s *Snapshotter) updateChunkHeartbeat(ctx context.Context, chunkID int64) e
 // markChunkCompleted marks a chunk as completed and atomically increments completed_chunks
 // NOTE: Uses metadataConn (not workerConn) to avoid serialization conflicts
 // workerConn is in REPEATABLE READ snapshot transaction, metadata updates should be separate
-func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, chunkID, rowsProcessed int64) error {
+func (s *Snapshotter) markChunkCompleted(ctx context.Context, slotName string, chunkID, rowsProcessed int64, lastPK *int64) error {
 	return s.retryDBOperation(ctx, func() error {
 		now := time.Now().UTC()
+
+		// Build last_pk clause
+		lastPKClause := "NULL"
+		if lastPK != nil {
+			lastPKClause = fmt.Sprintf("%d", *lastPK)
+		}
 
 		// Update chunk status - use metadataConn for metadata updates
 		chunkQuery := fmt.Sprintf(`
 			UPDATE %s
 			SET status = 'completed',
 			    completed_at = '%s',
-			    rows_processed = %d
+			    rows_processed = %d,
+			    last_pk = %s
 			WHERE id = %d
-		`, chunksTableName, now.Format(postgresTimestampFormat), rowsProcessed, chunkID)
+		`, chunksTableName, now.Format(postgresTimestampFormat), rowsProcessed, lastPKClause, chunkID)
 
 		if _, err := s.execQuery(ctx, s.metadataConn, chunkQuery); err != nil {
 			return errors.Wrap(err, "update chunk status")

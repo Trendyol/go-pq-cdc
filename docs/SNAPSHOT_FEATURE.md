@@ -269,6 +269,48 @@ sequenceDiagram
     Note over I1: CDC continues from snapshot LSN
 ```
 
+#### Chunking Strategy (How Snapshot Picks Range vs Keyset vs Offset)
+
+We keep the decision tree simple for operators:
+
+- **Step 1: Primary Key inspection**
+  - If there is **one integer PK** (`smallint`, `integer`, `bigint`), range/keyset is allowed.
+  - Otherwise → **Offset mode** (fallback).
+
+- **Step 2: Bounds & row count**
+  - Read `MIN(pk)`, `MAX(pk)`, `COUNT(*)`.
+  - If `COUNT(*) == 0` → single chunk (empty table).
+
+- **Step 3: Sparsity check (snowflake-style IDs)**
+  - `sparsityRatio = (max - min + 1) / rowCount`
+  - If `sparsityRatio > 100` **or** projected range chunks would exceed `maxChunksPerTable = 1,000,000`:
+    - Use **Keyset mode** (exact boundaries via `NTILE` when feasible; otherwise sequential keyset).
+
+- **Step 4: Mode selection**
+  - **Dense PK** (sparsity ok) → **Range mode**  
+    `SELECT ... WHERE pk BETWEEN start AND end ORDER BY pk LIMIT chunkSize`
+  - **Sparse PK** → **Keyset mode**  
+    `SELECT ... WHERE pk > cursor ORDER BY pk LIMIT chunkSize`
+  - **No single integer PK** → **Offset mode**  
+    `SELECT ... ORDER BY ctid LIMIT ... OFFSET ...`
+
+- **Safety rails**
+  - Caps chunk count at `1,000,000` to avoid memory pressure.
+  - Uses quoted identifiers for schema/table/column names.
+  - Logs chosen mode at `INFO` level (e.g., `"sparse primary key detected, using keyset pagination"`).
+
+##### Concurrency Notes
+- **Range mode** and **keyset with NTILE boundaries**: chunks are independent; multiple pods process the same table in parallel.
+- **Sequential keyset mode** (used only when sparsity is extreme and NTILE is not feasible): chunks of that table advance one-by-one; adding pods does not speed that table, but other tables still run in parallel.
+- **Offset mode**: chunks are independent; multiple pods can process in parallel.
+
+##### Operator override
+- Config key: `snapshot.chunkingMode` (`auto` | `range` | `keyset` | `offset`)
+- Default is `auto` (decision tree above). Overrides:
+  - `range`: force range chunking (requires single integer PK; else falls back to offset).
+  - `keyset`: force keyset (requires single integer PK + bounds + row count; else falls back to offset).
+  - `offset`: force offset (order by `ctid`, suitable if you want to avoid range/keyset or have no PK).
+
 **ASCII Diagram:**
 
 ```

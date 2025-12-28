@@ -25,6 +25,7 @@ type Chunk struct {
 	CompletedAt *time.Time
 	RangeEnd    *int64
 	RangeStart  *int64
+	LastPK      *int64
 	Status      ChunkStatus
 	TableName   string
 	ClaimedBy   string
@@ -38,6 +39,11 @@ type Chunk struct {
 
 func (c *Chunk) hasRangeBounds() bool {
 	return c.RangeStart != nil && c.RangeEnd != nil
+}
+
+// This is used for sparse primary key tables where range-based chunking is inefficient
+func (c *Chunk) isKeysetMode() bool {
+	return c.RangeStart != nil && c.RangeEnd == nil
 }
 
 // Job represents the overall snapshot job metadata

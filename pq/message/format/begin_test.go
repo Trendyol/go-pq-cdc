@@ -44,7 +44,7 @@ func TestNewBegin(t *testing.T) {
 		begin, err := NewBegin(data)
 
 		// Then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, begin)
 		assert.Contains(t, err.Error(), "begin message length must be at least 20 byte")
 	})
@@ -119,7 +119,7 @@ func TestBegin_decode(t *testing.T) {
 		err := begin.decode(data)
 
 		// Then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "begin message length must be at least 20 byte")
 	})
 
@@ -132,7 +132,7 @@ func TestBegin_decode(t *testing.T) {
 		err := begin.decode(data)
 
 		// Then
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "begin message length must be at least 20 byte, but got 19")
 	})
 

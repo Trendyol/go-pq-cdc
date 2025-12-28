@@ -213,13 +213,7 @@ func (s *stream) sink(ctx context.Context) {
 			decodedMsg, err = message.New(xld.WALData, xld.ServerTime, s.relation)
 			if err != nil || decodedMsg == nil {
 				if len(xld.WALData) > 0 && message.Type(xld.WALData[0]) == message.CommitByte {
-					s.UpdateXLogPos(xld.ServerWALEnd)
-					err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
-					if err != nil {
-						logger.Error("send standby status update after commit", "error", err)
-					} else {
-						logger.Info("COMMIT ACK", "walEnd", xld.ServerWALEnd.String())
-					}
+					s.UpdateXLogPos(xld.WALStart)
 				}
 				logger.Debug("wal data message parsing error", "error", err)
 				continue

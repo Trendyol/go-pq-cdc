@@ -1,6 +1,7 @@
 package format
 
 import (
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestNewBegin(t *testing.T) {
 		begin, err := NewBegin(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, begin)
 		assert.Equal(t, pq.LSN(26647832), begin.FinalLSN)
 		// The decode function treats the 8 bytes as Unix seconds directly
@@ -80,7 +81,7 @@ func TestNewBegin(t *testing.T) {
 		begin, err := NewBegin(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, begin)
 		assert.Equal(t, pq.LSN(0xFFFFFFFFFFFFFFFF), begin.FinalLSN)
 		assert.Equal(t, uint32(0xFFFFFFFF), begin.Xid)

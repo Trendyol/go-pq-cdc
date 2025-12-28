@@ -1,6 +1,7 @@
 package format
 
 import (
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func TestNewCommit(t *testing.T) {
 		commit, err := NewCommit(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, commit)
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(26647832), commit.CommitLSN)

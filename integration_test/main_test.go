@@ -40,6 +40,7 @@ func TestMain(m *testing.M) {
 	Config.SetDefault()
 
 	ctx := context.Background()
+	// os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Podman: disable Ryuk
 	Container, err = SetupTestContainer(ctx, Config)
 	if err != nil {
 		log.Fatal("setup test container", err)

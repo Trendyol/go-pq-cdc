@@ -272,10 +272,6 @@ func (s *stream) process(ctx context.Context) {
 			Ack: func() error {
 				pos := pq.LSN(msg.walStart)
 				s.UpdateXLogPos(pos)
-				logger.Info("ACK SENDING",
-					"pos", pos.String(),
-					"posInt", uint64(pos),
-					"connType", fmt.Sprintf("%T", s.conn))
 				logger.Info("send stand by status update", "xLogPos", s.LoadXLogPos().String())
 				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 			},
@@ -423,7 +419,7 @@ func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosi
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, walWritePosition)
 	data = AppendUint64(data, timeToPgTime(time.Now()))
-	data = append(data, 1)
+	data = append(data, 0)
 
 	cd := &pgproto3.CopyData{Data: data}
 	buf, err := cd.Encode(nil)

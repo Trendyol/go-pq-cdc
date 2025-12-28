@@ -65,16 +65,6 @@ func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, e
 	return isr, nil
 }
 
-/*
-	func (isr *IdentifySystemResult) UpdateXLogPos(l LSN) {
-		isr.mu.Lock()
-		defer isr.mu.Unlock()
-
-		if isr.xLogPos < l {
-			isr.xLogPos = l
-		}
-	}
-*/
 func (isr *IdentifySystemResult) LoadXLogPos() LSN {
 	return isr.xLogPos
 }

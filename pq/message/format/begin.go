@@ -8,12 +8,9 @@ import (
 )
 
 type Begin struct {
-	//FinalLSN is the final LSN of the transaction.
-	FinalLSN pq.LSN
-	// CommitTime is the commit timestamp of the transaction.
 	CommitTime time.Time
-	// Xid of the transaction.
-	Xid uint32
+	FinalLSN   pq.LSN
+	Xid        uint32
 }
 
 /*

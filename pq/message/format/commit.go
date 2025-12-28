@@ -8,14 +8,10 @@ import (
 )
 
 type Commit struct {
-	// Flags currently unused (must be 0).
-	Flags uint8
-	// CommitLSN is the LSN of the commit.
-	CommitLSN pq.LSN
-	// TransactionEndLSN is the end LSN of the transaction.
+	CommitTime        time.Time
+	CommitLSN         pq.LSN
 	TransactionEndLSN pq.LSN
-	// CommitTime is the commit timestamp of the transaction
-	CommitTime time.Time
+	Flags             uint8
 }
 
 func NewCommit(data []byte) (*Commit, error) {

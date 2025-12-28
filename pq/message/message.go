@@ -37,6 +37,10 @@ var streamedTransaction bool
 
 func New(data []byte, serverTime time.Time, relation map[uint32]*format.Relation) (any, error) {
 	switch Type(data[0]) {
+	case BeginByte:
+		return format.NewBegin(data)
+	case CommitByte:
+		return format.NewCommit(data)
 	case InsertByte:
 		return format.NewInsert(data, streamedTransaction, relation, serverTime)
 	case UpdateByte:

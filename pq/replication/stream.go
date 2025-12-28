@@ -157,6 +157,8 @@ func (s *stream) sink(ctx context.Context) {
 
 	var corruptedConn bool
 
+	var pendingMessages []*Message
+
 	for {
 		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*300))
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
@@ -212,22 +214,37 @@ func (s *stream) sink(ctx context.Context) {
 			var decodedMsg any
 			decodedMsg, err = message.New(xld.WALData, xld.ServerTime, s.relation)
 			if err != nil || decodedMsg == nil {
-				if len(xld.WALData) > 0 && message.Type(xld.WALData[0]) == message.CommitByte {
-					s.UpdateXLogPos(xld.WALStart)
-				}
 				logger.Debug("wal data message parsing error", "error", err)
 				continue
 			}
+			if _, ok := decodedMsg.(*format.Begin); ok {
+				pendingMessages = []*Message{}
+				continue
+			}
+			if commitMsg, ok := decodedMsg.(*format.Commit); ok {
+				for i := range pendingMessages {
+					if i == len(pendingMessages)-1 {
+						s.messageCH <- &Message{
+							message:  pendingMessages[i].message,
+							walStart: int64(commitMsg.TransactionEndLSN),
+						}
+						continue
+					}
+					s.messageCH <- &Message{
+						message:  pendingMessages[i].message,
+						walStart: int64(pendingMessages[i].walStart),
+					}
+				}
 
-			logger.Info("MESSAGE RECEIVED",
-				"walStart", xld.WALStart,
-				"walEnd", xld.ServerWALEnd,
-				"serverTime", xld.ServerTime)
+				pendingMessages = []*Message{}
+				continue
+			}
 
-			s.messageCH <- &Message{
+			pendingMessages = append(pendingMessages, &Message{
 				message:  decodedMsg,
 				walStart: int64(xld.WALStart),
-			}
+			})
+
 		}
 	}
 	s.sinkEnd <- struct{}{}

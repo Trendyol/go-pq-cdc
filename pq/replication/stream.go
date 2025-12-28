@@ -272,7 +272,7 @@ func (s *stream) process(ctx context.Context) {
 			Ack: func() error {
 				pos := pq.LSN(msg.walStart)
 				s.UpdateXLogPos(pos)
-				logger.Info("send stand by status update", "xLogPos", s.LoadXLogPos().String())
+				logger.Debug("send stand by status update", "xLogPos", s.LoadXLogPos().String())
 				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 			},
 		}

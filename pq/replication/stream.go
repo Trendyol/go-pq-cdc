@@ -157,7 +157,12 @@ func (s *stream) sink(ctx context.Context) {
 
 	var corruptedConn bool
 
-	var pendingMessages []*Message
+	// prevMessage holds the last data change message seen in the current transaction.
+	// We only need to retain a single message so that we can rewrite its WAL position
+	// to the transaction end LSN once the COMMIT is received. All other messages can
+	// be streamed to the listener immediately. This keeps memory usage constant even
+	// for very large transactions (e.g., COPY commands).
+	var prevMessage *Message
 
 	for {
 		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*300))
@@ -218,33 +223,30 @@ func (s *stream) sink(ctx context.Context) {
 				continue
 			}
 			if _, ok := decodedMsg.(*format.Begin); ok {
-				pendingMessages = []*Message{}
+				// Start of a new transaction – reset state
+				prevMessage = nil
 				continue
 			}
 			if commitMsg, ok := decodedMsg.(*format.Commit); ok {
-				for i := range pendingMessages {
-					if i == len(pendingMessages)-1 {
-						s.messageCH <- &Message{
-							message:  pendingMessages[i].message,
-							walStart: int64(commitMsg.TransactionEndLSN),
-						}
-						continue
-					}
+				// Emit the last buffered message (if any) rewriting its WAL position
+				if prevMessage != nil {
 					s.messageCH <- &Message{
-						message:  pendingMessages[i].message,
-						walStart: int64(pendingMessages[i].walStart),
+						message:  prevMessage.message,
+						walStart: int64(commitMsg.TransactionEndLSN),
 					}
 				}
-
-				pendingMessages = []*Message{}
+				prevMessage = nil
 				continue
 			}
 
-			pendingMessages = append(pendingMessages, &Message{
+			// For DML events we keep at most one message buffered. Older message is flushed.
+			if prevMessage != nil {
+				s.messageCH <- prevMessage
+			}
+			prevMessage = &Message{
 				message:  decodedMsg,
 				walStart: int64(xld.WALStart),
-			})
-
+			}
 		}
 	}
 	s.sinkEnd <- struct{}{}

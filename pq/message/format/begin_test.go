@@ -1,9 +1,10 @@
 package format
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/stretchr/testify/assert"
@@ -61,7 +62,7 @@ func TestNewBegin(t *testing.T) {
 		begin, err := NewBegin(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, begin)
 		assert.Equal(t, pq.LSN(1), begin.FinalLSN)
 		assert.Equal(t, time.Unix(0, 0), begin.CommitTime)
@@ -103,7 +104,7 @@ func TestBegin_decode(t *testing.T) {
 		err := begin.decode(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, pq.LSN(26647832), begin.FinalLSN)
 		assert.Equal(t, time.Unix(820254872552580, 0), begin.CommitTime)
 		assert.Equal(t, uint32(761), begin.Xid)

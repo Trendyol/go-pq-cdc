@@ -87,7 +87,7 @@ func TestNewCommit(t *testing.T) {
 		commit, err := NewCommit(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, commit)
 		assert.Equal(t, uint8(1), commit.Flags)
 		assert.Equal(t, pq.LSN(100), commit.CommitLSN)
@@ -109,7 +109,7 @@ func TestNewCommit(t *testing.T) {
 		commit, err := NewCommit(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, commit)
 		assert.Equal(t, uint8(0xFF), commit.Flags)
 		assert.Equal(t, pq.LSN(0xFFFFFFFFFFFFFFFF), commit.CommitLSN)
@@ -133,7 +133,7 @@ func TestCommit_decode(t *testing.T) {
 		err := commit.decode(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(26647832), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(26647880), commit.TransactionEndLSN)
@@ -176,7 +176,7 @@ func TestCommit_decode(t *testing.T) {
 		err := commit.decode(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(0), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(0), commit.TransactionEndLSN)
@@ -198,7 +198,7 @@ func TestCommit_decode(t *testing.T) {
 		err := commit.decode(data)
 
 		// Then
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, uint8(255), commit.Flags)
 		assert.Equal(t, pq.LSN(256), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(512), commit.TransactionEndLSN)

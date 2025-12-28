@@ -178,6 +178,7 @@ func (s *stream) sink(ctx context.Context) {
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
+					corruptedConn = true
 					break
 				}
 				logger.Debug("send stand by status update")
@@ -196,7 +197,7 @@ func (s *stream) sink(ctx context.Context) {
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			logger.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
+			logger.Warn(fmt.Sprintf("received unexpected message: %T", rawMsg))
 			continue
 		}
 
@@ -204,6 +205,19 @@ func (s *stream) sink(ctx context.Context) {
 
 		switch msg.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
+			pkm, errPKM := format.NewPrimaryKeepaliveMessage(msg.Data[1:])
+			if errPKM != nil {
+				logger.Error("decode primary keepalive message", "error", errPKM)
+				continue
+			}
+			if pkm.ReplyRequested {
+				if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
+					logger.Error("standby status update", "error", err)
+					corruptedConn = true
+					break
+				}
+				logger.Debug("standby status update sent on keepalive request")
+			}
 			continue
 		case message.XLogDataByteID:
 			xld, err = ParseXLogData(msg.Data[1:])

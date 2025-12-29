@@ -373,57 +373,6 @@ func (s *stream) OpenFromSnapshotLSN() {
 	s.openFromSnapshotLSN = true
 }
 
-// fetchSlotLSNsWithRetry returns confirmed_flush_lsn and restart_lsn in a single query with retry
-// This is the last LSN that was acknowledged, so we resume from here to avoid reprocessing messages
-func (s *stream) fetchSlotConfirmedFlushLSN(ctx context.Context) (pq.LSN, error) {
-	// Create a separate connection for querying metadata
-	// Use regular DSN (not replication DSN) for normal SQL queries
-	conn, err := pq.NewConnection(ctx, s.config.DSN())
-	if err != nil {
-		return 0, errors.Wrap(err, "create connection for slot confirmed flush LSN query")
-	}
-	defer conn.Close(ctx)
-
-	query := fmt.Sprintf(`
-		SELECT confirmed_flush_lsn 
-		FROM pg_replication_slots 
-		WHERE slot_name = '%s'
-	`, s.config.Slot.Name)
-
-	resultReader := conn.Exec(ctx, query)
-	results, err := resultReader.ReadAll()
-	if err != nil {
-		resultReader.Close()
-		return 0, errors.Wrap(err, "execute slot confirmed flush LSN query")
-	}
-
-	if err = resultReader.Close(); err != nil {
-		return 0, errors.Wrap(err, "close result reader")
-	}
-
-	if len(results) == 0 || len(results[0].Rows) == 0 {
-		return 0, errors.New("slot not found: " + s.config.Slot.Name)
-	}
-
-	row := results[0].Rows[0]
-	if len(row) == 0 {
-		return 0, errors.New("empty confirmed_flush_lsn result for slot: " + s.config.Slot.Name)
-	}
-
-	lsnStr := string(row[0])
-	if lsnStr == "" {
-		// confirmed_flush_lsn can be NULL for newly created slots that haven't received any WAL yet
-		return 0, errors.New("confirmed_flush_lsn is NULL for slot: " + s.config.Slot.Name)
-	}
-
-	confirmedLSN, err := pq.ParseLSN(lsnStr)
-	if err != nil {
-		return 0, errors.Wrap(err, "parse confirmed flush LSN: "+lsnStr)
-	}
-
-	return confirmedLSN, nil
-}
-
 // fetchSlotLSNs queries confirmed_flush_lsn and restart_lsn in one IO
 func (s *stream) fetchSlotLSNs(ctx context.Context) (confirmed pq.LSN, restart pq.LSN, err error) {
 	conn, errNew := pq.NewConnection(ctx, s.config.DSN())
@@ -475,72 +424,6 @@ func (s *stream) fetchSlotLSNsWithRetry(ctx context.Context) (pq.LSN, pq.LSN, er
 		return 0, 0, retryErr
 	}
 	return confirmed, restart, nil
-}
-
-// fetchSlotRestartLSN queries the database to get the slot's restart_lsn from pg_replication_slots
-// This is used as a fallback when confirmed_flush_lsn is not available
-// fetchSlotConfirmedFlushLSNWithRetry wraps fetchSlotConfirmedFlushLSN with retry logic to avoid transient errors
-func (s *stream) fetchSlotConfirmedFlushLSNWithRetry(ctx context.Context) (pq.LSN, error) {
-	var lsn pq.LSN
-	err := retry.Do(
-		func() error {
-			var innerErr error
-			lsn, innerErr = s.fetchSlotConfirmedFlushLSN(ctx)
-			return innerErr
-		},
-		retry.Attempts(3),
-		retry.DelayType(retry.BackOffDelay),
-	)
-	return lsn, err
-}
-
-func (s *stream) fetchSlotRestartLSN(ctx context.Context) (pq.LSN, error) {
-	// Create a separate connection for querying metadata
-	// Use regular DSN (not replication DSN) for normal SQL queries
-	conn, err := pq.NewConnection(ctx, s.config.DSN())
-	if err != nil {
-		return 0, errors.Wrap(err, "create connection for slot restart LSN query")
-	}
-	defer conn.Close(ctx)
-
-	query := fmt.Sprintf(`
-		SELECT restart_lsn 
-		FROM pg_replication_slots 
-		WHERE slot_name = '%s'
-	`, s.config.Slot.Name)
-
-	resultReader := conn.Exec(ctx, query)
-	results, err := resultReader.ReadAll()
-	if err != nil {
-		resultReader.Close()
-		return 0, errors.Wrap(err, "execute slot restart LSN query")
-	}
-
-	if err = resultReader.Close(); err != nil {
-		return 0, errors.Wrap(err, "close result reader")
-	}
-
-	if len(results) == 0 || len(results[0].Rows) == 0 {
-		return 0, errors.New("slot not found: " + s.config.Slot.Name)
-	}
-
-	row := results[0].Rows[0]
-	if len(row) == 0 {
-		return 0, errors.New("empty restart_lsn result for slot: " + s.config.Slot.Name)
-	}
-
-	lsnStr := string(row[0])
-	if lsnStr == "" {
-		// restart_lsn can be NULL for newly created slots that haven't received any WAL yet
-		return 0, errors.New("restart_lsn is NULL for slot: " + s.config.Slot.Name)
-	}
-
-	restartLSN, err := pq.ParseLSN(lsnStr)
-	if err != nil {
-		return 0, errors.Wrap(err, "parse restart LSN: "+lsnStr)
-	}
-
-	return restartLSN, nil
 }
 
 // fetchSnapshotLSN queries the database to get the snapshot LSN from cdc_snapshot_job table

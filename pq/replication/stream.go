@@ -76,9 +76,12 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		relation:     make(map[uint32]*format.Relation),
 		messageCH:    make(chan *Message, 1000),
 		listenerFunc: listenerFunc,
-		lastXLogPos:  10,
-		sinkEnd:      make(chan struct{}, 1),
-		mu:           &sync.RWMutex{},
+		// lastXLogPos:0 is not magical, create replication starts with confirmed_flush_lsn
+		// https://github.com/postgres/postgres/blob/master/src/include/access/xlogdefs.h#L28
+		// https://github.com/postgres/postgres/blob/master/src/backend/replication/logical/logical.c#L540
+		lastXLogPos: 0,
+		sinkEnd:     make(chan struct{}, 1),
+		mu:          &sync.RWMutex{},
 	}
 }
 
@@ -125,35 +128,14 @@ func (s *stream) Open(ctx context.Context) error {
 func (s *stream) setup(ctx context.Context) error {
 	replication := New(s.conn)
 
-	replicationStartLsn := pq.LSN(2)
+	replicationStartLsn := s.lastXLogPos
 	if s.openFromSnapshotLSN {
 		snapshotLSN, err := s.fetchSnapshotLSN(ctx)
 		if err != nil {
 			return errors.Wrap(err, "fetch snapshot LSN")
 		}
 		replicationStartLsn = snapshotLSN
-	} else {
-		// Fetch slot's confirmed_flush_lsn to resume from the last acknowledged position
-		// Using confirmed_flush_lsn ensures we don't reprocess messages that were already
-		// acknowledged. PostgreSQL will use restart_lsn if we provide a smaller LSN,
-		// but using confirmed_flush_lsn is safer to avoid duplicate processing.
-		// Retry confirmed_flush_lsn read to tolerate transient connection errors
-		confirmedLSN, restartLSN, err := s.fetchSlotLSNsWithRetry(ctx)
-		if err != nil {
-			logger.Info("could not fetch slot LSNs, using default", "error", err, "slot", s.config.Slot.Name)
-		} else {
-			if confirmedLSN > 0 {
-				replicationStartLsn = confirmedLSN
-				logger.Info("using slot confirmed flush LSN", "confirmedLSN", confirmedLSN.String(), "slot", s.config.Slot.Name)
-			} else if restartLSN > 0 {
-				replicationStartLsn = restartLSN
-				logger.Info("using slot restart LSN", "restartLSN", restartLSN.String(), "slot", s.config.Slot.Name)
-			}
-		}
 	}
-
-	// Initialise lastXLogPos so that standby status updates report correct position even if no message processed yet
-	s.UpdateXLogPos(replicationStartLsn)
 
 	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn); err != nil {
 		return err
@@ -371,59 +353,6 @@ func (s *stream) LoadXLogPos() pq.LSN {
 
 func (s *stream) OpenFromSnapshotLSN() {
 	s.openFromSnapshotLSN = true
-}
-
-// fetchSlotLSNs queries confirmed_flush_lsn and restart_lsn in one IO
-func (s *stream) fetchSlotLSNs(ctx context.Context) (confirmed pq.LSN, restart pq.LSN, err error) {
-	conn, errNew := pq.NewConnection(ctx, s.config.DSN())
-	if errNew != nil {
-		return 0, 0, errors.Wrap(errNew, "create connection for slot LSNs query")
-	}
-	defer conn.Close(ctx)
-
-	query := fmt.Sprintf(`SELECT confirmed_flush_lsn, restart_lsn FROM pg_replication_slots WHERE slot_name = '%s'`, s.config.Slot.Name)
-	rr := conn.Exec(ctx, query)
-	results, errNew := rr.ReadAll()
-	if errNew != nil {
-		rr.Close()
-		return 0, 0, errors.Wrap(errNew, "execute slot LSNs query")
-	}
-	if errNew = rr.Close(); errNew != nil {
-		return 0, 0, errors.Wrap(errNew, "close result reader")
-	}
-	if len(results) == 0 || len(results[0].Rows) == 0 {
-		return 0, 0, errors.New("slot not found: " + s.config.Slot.Name)
-	}
-	row := results[0].Rows[0]
-	// row[0]=confirmed, row[1]=restart (may be NULL)
-	if len(row) < 2 {
-		return 0, 0, errors.New("unexpected columns for slot")
-	}
-	if len(row[0]) > 0 {
-		confirmed, _ = pq.ParseLSN(string(row[0]))
-	}
-	if len(row[1]) > 0 {
-		restart, _ = pq.ParseLSN(string(row[1]))
-	}
-	return confirmed, restart, nil
-}
-
-// fetchSlotLSNsWithRetry wraps fetchSlotLSNs in retry to tolerate transient errors
-func (s *stream) fetchSlotLSNsWithRetry(ctx context.Context) (pq.LSN, pq.LSN, error) {
-	var confirmed, restart pq.LSN
-	var err error
-	retryErr := retry.Do(
-		func() error {
-			confirmed, restart, err = s.fetchSlotLSNs(ctx)
-			return err
-		},
-		retry.Attempts(5),
-		retry.DelayType(retry.BackOffDelay),
-	)
-	if retryErr != nil {
-		return 0, 0, retryErr
-	}
-	return confirmed, restart, nil
 }
 
 // fetchSnapshotLSN queries the database to get the snapshot LSN from cdc_snapshot_job table

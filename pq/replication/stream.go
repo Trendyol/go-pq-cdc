@@ -76,7 +76,7 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		relation:     make(map[uint32]*format.Relation),
 		messageCH:    make(chan *Message, 1000),
 		listenerFunc: listenerFunc,
-		// lastXLogPos:0 is not magical, create replication starts with confirmed_flush_lsn
+		// lastXLogPos:0 is not magical, 0 means, create replication starts with confirmed_flush_lsn
 		// https://github.com/postgres/postgres/blob/master/src/include/access/xlogdefs.h#L28
 		// https://github.com/postgres/postgres/blob/master/src/backend/replication/logical/logical.c#L540
 		lastXLogPos: 0,
@@ -148,7 +148,7 @@ func (s *stream) setup(ctx context.Context) error {
 	if s.openFromSnapshotLSN {
 		logger.Info("replication started from snapshot LSN", "slot", s.config.Slot.Name, "lsn", replicationStartLsn.String())
 	} else {
-		logger.Info("replication started from LSN", "slot", s.config.Slot.Name, "lsn", replicationStartLsn.String())
+		logger.Info("replication started from confirmed_flush_lsn", "slot", s.config.Slot.Name)
 	}
 
 	return nil

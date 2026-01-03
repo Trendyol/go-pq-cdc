@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
@@ -288,6 +289,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				chunk_size BIGINT NOT NULL,
 				range_start BIGINT,
 				range_end BIGINT,
+				last_pk BIGINT,
 				status TEXT NOT NULL DEFAULT 'pending',
 				claimed_by TEXT,
 				claimed_at TIMESTAMP,
@@ -358,8 +360,14 @@ func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
 	return lsn, err
 }
 
+// ChunkResult contains the result of processing a chunk
+type ChunkResult struct {
+	RowCount int64
+	LastPK   *int64 // Last processed primary key value (for keyset pagination)
+}
+
 // processChunk processes a single chunk
-func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chunk *Chunk, lsn pq.LSN, handler Handler) (int64, error) {
+func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chunk *Chunk, lsn pq.LSN, handler Handler) (ChunkResult, error) {
 	// Get ORDER BY clause for the table
 	table := publication.Table{
 		Schema: chunk.TableSchema,
@@ -368,7 +376,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 
 	orderByClause, pkColumns, err := s.getOrderByClause(ctx, conn, table)
 	if err != nil {
-		return 0, errors.Wrap(err, "get order by clause")
+		return ChunkResult{}, errors.Wrap(err, "get order by clause")
 	}
 
 	// Build query for this chunk
@@ -378,18 +386,32 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 
 	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
-		return 0, errors.Wrap(err, "execute chunk query")
+		return ChunkResult{}, errors.Wrap(err, "execute chunk query")
 	}
 
 	if len(results) == 0 || len(results[0].Rows) == 0 {
 		// Empty chunk
-		return 0, nil
+		return ChunkResult{RowCount: 0, LastPK: nil}, nil
 	}
 
 	result := results[0]
 	rowCount := int64(len(result.Rows))
 
 	chunkTime := time.Now().UTC()
+
+	// Track last PK value for keyset pagination
+	var lastPK *int64
+	pkColumnIndex := -1
+
+	// Find PK column index for keyset mode
+	if chunk.isKeysetMode() && len(pkColumns) == 1 {
+		for i, field := range result.FieldDescriptions {
+			if field.Name == pkColumns[0] {
+				pkColumnIndex = i
+				break
+			}
+		}
+	}
 
 	// Process each row
 	for i, row := range result.Rows {
@@ -407,17 +429,42 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 			LSN:        lsn,
 			IsLast:     isLast,
 		})
+
+		// Track last PK for keyset pagination
+		if pkColumnIndex >= 0 && i == len(result.Rows)-1 {
+			if pkValue, err := strconv.ParseInt(string(row[pkColumnIndex]), 10, 64); err == nil {
+				lastPK = &pkValue
+			}
+		}
 	}
 
-	return rowCount, nil
+	return ChunkResult{RowCount: rowCount, LastPK: lastPK}, nil
 }
 
 func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+	// Case 1: Keyset pagination mode (RangeStart set, RangeEnd nil)
+	// Used for sparse primary key tables (snowflake IDs, etc.)
+	if chunk.isKeysetMode() && len(pkColumns) == 1 {
+		pkColumn := pkColumns[0]
+
+		return fmt.Sprintf(
+			`SELECT * FROM "%s"."%s" WHERE "%s" > %d ORDER BY %s LIMIT %d`,
+			chunk.TableSchema,
+			chunk.TableName,
+			pkColumn,
+			*chunk.RangeStart,
+			orderByClause,
+			chunk.ChunkSize,
+		)
+	}
+
+	// Case 2: Range-based mode (both RangeStart and RangeEnd set)
+	// Used for dense primary key tables
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
 
 		return fmt.Sprintf(
-			"SELECT * FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
+			`SELECT * FROM "%s"."%s" WHERE "%s" >= %d AND "%s" <= %d ORDER BY %s LIMIT %d`,
 			chunk.TableSchema,
 			chunk.TableName,
 			pkColumn,
@@ -429,8 +476,9 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 		)
 	}
 
+	// Case 3: Offset-based mode (fallback for composite PKs or no PK)
 	return fmt.Sprintf(
-		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
+		`SELECT * FROM "%s"."%s" ORDER BY %s LIMIT %d OFFSET %d`,
 		chunk.TableSchema,
 		chunk.TableName,
 		orderByClause,
@@ -452,10 +500,12 @@ func (s *Snapshotter) getOrderByClause(ctx context.Context, conn pq.Connection, 
 
 	if len(columns) > 0 {
 		var columnNames []string
+		var quotedColumnNames []string
 		for _, column := range columns {
 			columnNames = append(columnNames, column.Name)
+			quotedColumnNames = append(quotedColumnNames, fmt.Sprintf(`"%s"`, column.Name))
 		}
-		orderBy := strings.Join(columnNames, ", ")
+		orderBy := strings.Join(quotedColumnNames, ", ")
 		logger.Debug("[chunk] using primary key for ordering", "table", table.Name, "orderBy", orderBy)
 		s.storeOrderByCache(table, orderBy, columnNames)
 		return orderBy, columnNames, nil
@@ -515,15 +565,70 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 		logger.Warn("[chunk] failed to inspect primary key", "table", table.Name, "error", err)
 	}
 
-	if ok {
+	switch s.config.ChunkingMode {
+	case config.SnapshotChunkingModeRange:
+		if !ok {
+			logger.Warn("[chunk] chunking mode override requires single integer PK, falling back to OFFSET", "table", table.Name, "mode", s.config.ChunkingMode)
+			return s.createOffsetChunks(ctx, slotName, table)
+		}
 		if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
 			return rangeChunks
 		}
-		logger.Warn("[chunk] range chunking unavailable, falling back to OFFSET", "table", table.Name)
-	}
+		logger.Warn("[chunk] range chunking unavailable under override, falling back to OFFSET", "table", table.Name)
+		return s.createOffsetChunks(ctx, slotName, table)
 
-	return s.createOffsetChunks(ctx, slotName, table)
+	case config.SnapshotChunkingModeKeyset:
+		if !ok {
+			logger.Warn("[chunk] chunking mode override requires single integer PK, falling back to OFFSET", "table", table.Name, "mode", s.config.ChunkingMode)
+			return s.createOffsetChunks(ctx, slotName, table)
+		}
+		minValue, _, boundsOK, boundsErr := s.getPrimaryKeyBounds(ctx, table, pkColumn)
+		if boundsErr != nil || !boundsOK {
+			logger.Warn("[chunk] failed to read primary key bounds for keyset override, falling back to OFFSET", "table", table.Name, "error", boundsErr)
+			return s.createOffsetChunks(ctx, slotName, table)
+		}
+		rowCount, rcErr := s.getTableRawCount(ctx, table.Schema, table.Name)
+		if rcErr != nil {
+			logger.Warn("[chunk] failed to get row count for keyset override, falling back to OFFSET", "table", table.Name, "error", rcErr)
+			return s.createOffsetChunks(ctx, slotName, table)
+		}
+		if rowCount == 0 {
+			return []*Chunk{
+				{
+					SlotName:    slotName,
+					TableSchema: table.Schema,
+					TableName:   table.Name,
+					ChunkIndex:  0,
+					ChunkStart:  0,
+					ChunkSize:   s.config.ChunkSize,
+					Status:      ChunkStatusPending,
+				},
+			}
+		}
+		logger.Info("[chunk] chunking mode override: keyset", "table", table.Name)
+		return s.createKeysetChunks(slotName, table, pkColumn, minValue, rowCount, s.config.ChunkSize)
+
+	case config.SnapshotChunkingModeOffset:
+		logger.Info("[chunk] chunking mode override: offset", "table", table.Name)
+		return s.createOffsetChunks(ctx, slotName, table)
+
+	default: // auto (default behavior)
+		if ok {
+			if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
+				return rangeChunks
+			}
+			logger.Warn("[chunk] range chunking unavailable, falling back to OFFSET", "table", table.Name)
+		}
+		return s.createOffsetChunks(ctx, slotName, table)
+	}
 }
+
+// sparsityThreshold defines when a table is considered "sparse"
+// If (maxValue - minValue) / rowCount > sparsityThreshold, use keyset pagination
+const sparsityThreshold = 100
+
+// maxChunksPerTable prevents memory exhaustion from astronomical chunk counts
+const maxChunksPerTable = 1_000_000
 
 func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, table publication.Table, pkColumn string) []*Chunk {
 	minValue, maxValue, ok, err := s.getPrimaryKeyBounds(ctx, table, pkColumn)
@@ -549,7 +654,57 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 
 	chunkSize := s.config.ChunkSize
 	totalRange := (maxValue - minValue) + 1
+
+	// Get actual row count to detect sparse tables
+	rowCount, err := s.getTableRawCount(ctx, table.Schema, table.Name)
+	if err != nil {
+		logger.Warn("[chunk] failed to get row count for sparsity check", "table", table.Name, "error", err)
+		return nil
+	}
+
+	if rowCount == 0 {
+		// Empty table based on COUNT, create single chunk
+		return []*Chunk{
+			{
+				SlotName:    slotName,
+				TableSchema: table.Schema,
+				TableName:   table.Name,
+				ChunkIndex:  0,
+				ChunkStart:  0,
+				ChunkSize:   chunkSize,
+				Status:      ChunkStatusPending,
+			},
+		}
+	}
+
+	// Calculate sparsity ratio to detect sparse primary key distributions
+	// Example: Snowflake IDs where minValue=1, maxValue=7234567890123456789, but only 1000 rows
+	sparsityRatio := float64(totalRange) / float64(rowCount)
+
+	if sparsityRatio > sparsityThreshold {
+		logger.Info("[chunk] sparse primary key detected, using keyset pagination",
+			"table", table.Name,
+			"minValue", minValue,
+			"maxValue", maxValue,
+			"rowCount", rowCount,
+			"sparsityRatio", sparsityRatio,
+		)
+		return s.createKeysetChunks(slotName, table, pkColumn, minValue, rowCount, chunkSize)
+	}
+
+	// Dense table: use traditional range-based chunking
 	numChunks := (totalRange + chunkSize - 1) / chunkSize
+
+	// Safety guard: prevent memory exhaustion from extreme chunk counts
+	if numChunks > maxChunksPerTable {
+		logger.Warn("[chunk] range chunking would create too many chunks, falling back to keyset pagination",
+			"table", table.Name,
+			"calculatedChunks", numChunks,
+			"maxAllowed", maxChunksPerTable,
+		)
+		return s.createKeysetChunks(slotName, table, pkColumn, minValue, rowCount, chunkSize)
+	}
+
 	chunks := make([]*Chunk, 0, numChunks)
 
 	for i := int64(0); i < numChunks; i++ {
@@ -582,6 +737,182 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		"numChunks", numChunks,
 		"rangeMin", minValue,
 		"rangeMax", maxValue,
+	)
+	return chunks
+}
+
+// createKeysetChunks creates chunks for sparse primary key tables using percentile-based boundaries.
+// Instead of dividing the ID range into fixed intervals (which fails for sparse data),
+// this calculates actual PK value boundaries using SQL window functions.
+//
+// This approach:
+// - Uses O(1) memory regardless of PK range (no astronomical slice allocations)
+// - Calculates exact chunk boundaries based on actual data distribution
+// - Allows parallel chunk processing (no sequential dependency)
+// - Works correctly with snowflake IDs, UUIDs cast to bigint, and other sparse distributions
+func (s *Snapshotter) createKeysetChunks(slotName string, table publication.Table, pkColumn string, minValue, rowCount, chunkSize int64) []*Chunk {
+	// Calculate number of chunks based on actual row count (not PK range)
+	numChunks := (rowCount + chunkSize - 1) / chunkSize
+	if numChunks == 0 {
+		numChunks = 1
+	}
+
+	// Safety guard with coverage: increase chunkSize so we still cover all rows
+	if numChunks > maxChunksPerTable {
+		chunkSize = (rowCount + maxChunksPerTable - 1) / maxChunksPerTable
+		if chunkSize <= 0 {
+			chunkSize = 1
+		}
+		numChunks = (rowCount + chunkSize - 1) / chunkSize
+		logger.Warn("[chunk] row count would create too many chunks, increasing chunk size",
+			"table", table.Name,
+			"rowCount", rowCount,
+			"newChunkSize", chunkSize,
+			"numChunks", numChunks,
+			"maxAllowed", maxChunksPerTable,
+		)
+	}
+
+	// For small number of chunks, calculate exact boundaries using NTILE
+	// This enables parallel processing without sequential dependencies
+	if numChunks <= 10000 {
+		chunks := s.createChunksWithExactBoundaries(slotName, table, pkColumn, minValue, int(numChunks), chunkSize)
+		if chunks != nil {
+			return chunks
+		}
+		// Fall through to keyset mode if boundary calculation fails
+		logger.Warn("[chunk] exact boundary calculation failed, using keyset mode", "table", table.Name)
+	}
+
+	// For very large number of chunks or when exact boundaries fail,
+	// use keyset pagination with sequential processing
+	return s.createSequentialKeysetChunks(slotName, table, pkColumn, minValue, numChunks, chunkSize)
+}
+
+// createChunksWithExactBoundaries calculates exact chunk boundaries using SQL NTILE
+// This allows parallel chunk processing for sparse tables
+func (s *Snapshotter) createChunksWithExactBoundaries(slotName string, table publication.Table, pkColumn string, minValue int64, numChunks int, chunkSize int64) []*Chunk {
+	ctx := context.Background()
+
+	// Use NTILE to divide rows into equal groups and get boundary values
+	// Use quoted identifiers to handle special characters in table/column names
+	query := fmt.Sprintf(`
+		WITH chunk_boundaries AS (
+			SELECT 
+				"%s" as pk_value,
+				NTILE(%d) OVER (ORDER BY "%s") as chunk_num
+			FROM "%s"."%s"
+		)
+		SELECT 
+			chunk_num - 1 as chunk_index,
+			MIN(pk_value) as range_start,
+			MAX(pk_value) as range_end
+		FROM chunk_boundaries
+		GROUP BY chunk_num
+		ORDER BY chunk_num
+	`, pkColumn, numChunks, pkColumn, table.Schema, table.Name)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		logger.Warn("[chunk] failed to calculate exact boundaries", "table", table.Name, "error", err)
+		return nil
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 {
+		logger.Warn("[chunk] no boundary results returned", "table", table.Name)
+		return nil
+	}
+
+	chunks := make([]*Chunk, 0, len(results[0].Rows))
+	for _, row := range results[0].Rows {
+		if len(row) < 3 {
+			continue
+		}
+
+		var chunkIndex int
+		if _, err := fmt.Sscanf(string(row[0]), "%d", &chunkIndex); err != nil {
+			logger.Warn("[chunk] failed to parse chunk index", "error", err)
+			continue
+		}
+
+		rangeStart, err := strconv.ParseInt(string(row[1]), 10, 64)
+		if err != nil {
+			logger.Warn("[chunk] failed to parse range start", "error", err)
+			continue
+		}
+
+		rangeEnd, err := strconv.ParseInt(string(row[2]), 10, 64)
+		if err != nil {
+			logger.Warn("[chunk] failed to parse range end", "error", err)
+			continue
+		}
+
+		chunk := &Chunk{
+			SlotName:    slotName,
+			TableSchema: table.Schema,
+			TableName:   table.Name,
+			ChunkIndex:  chunkIndex,
+			ChunkStart:  int64(chunkIndex) * chunkSize,
+			ChunkSize:   chunkSize,
+			Status:      ChunkStatusPending,
+			RangeStart:  &rangeStart,
+			RangeEnd:    &rangeEnd,
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	logger.Info("[chunk] exact boundary chunks created",
+		"table", table.Name,
+		"chunkSize", chunkSize,
+		"numChunks", len(chunks),
+		"pkColumn", pkColumn,
+	)
+	return chunks
+}
+
+// createSequentialKeysetChunks creates chunks that must be processed sequentially
+// Used when exact boundary calculation is not feasible (very large tables)
+func (s *Snapshotter) createSequentialKeysetChunks(slotName string, table publication.Table, pkColumn string, minValue, numChunks, chunkSize int64) []*Chunk {
+	chunks := make([]*Chunk, 0, numChunks)
+
+	// For keyset pagination, we use RangeStart to indicate the cursor position
+	// RangeEnd is set to nil to signal keyset mode
+	// First chunk starts at minValue-1 so the first row is included
+
+	for i := int64(0); i < numChunks; i++ {
+		var startValue int64
+		if i == 0 {
+			// First chunk: start just before minValue to include it
+			startValue = minValue - 1
+		} else {
+			// Subsequent chunks: use a sentinel value indicating sequential dependency
+			// The actual start will be determined by reading previous chunk's last PK
+			startValue = -(i + 1) // Negative value signals "needs previous chunk's cursor"
+		}
+
+		chunk := &Chunk{
+			SlotName:    slotName,
+			TableSchema: table.Schema,
+			TableName:   table.Name,
+			ChunkIndex:  int(i),
+			ChunkStart:  i * chunkSize,
+			ChunkSize:   chunkSize,
+			Status:      ChunkStatusPending,
+			RangeStart:  &startValue,
+			RangeEnd:    nil, // nil RangeEnd signals keyset pagination mode
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	logger.Info("[chunk] sequential keyset chunks created",
+		"table", table.Name,
+		"chunkSize", chunkSize,
+		"numChunks", numChunks,
+		"pkColumn", pkColumn,
 	)
 	return chunks
 }
@@ -637,12 +968,13 @@ func (s *Snapshotter) getPrimaryKeyColumnsDetailed(ctx context.Context, conn pq.
 		SELECT a.attname, format_type(a.atttypid, a.atttypmod)
 		FROM pg_index i
 		JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-		WHERE i.indrelid = '%s.%s'::regclass AND i.indisprimary
+		WHERE i.indrelid = '"%s"."%s"'::regclass AND i.indisprimary
 		ORDER BY a.attnum
 	`, table.Schema, table.Name)
 
 	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
+		logger.Debug("[chunk] primary key query failed", "table", table.Name, "schema", table.Schema, "error", err)
 		return nil, errors.Wrap(err, "query primary key")
 	}
 
@@ -666,17 +998,29 @@ func (s *Snapshotter) getPrimaryKeyColumnsDetailed(ctx context.Context, conn pq.
 func (s *Snapshotter) getSingleIntegerPrimaryKey(ctx context.Context, table publication.Table) (string, bool, error) {
 	columns, err := s.getPrimaryKeyColumnsDetailed(ctx, s.metadataConn, table)
 	if err != nil {
+		logger.Debug("[chunk] failed to get primary key columns", "table", table.Name, "error", err)
 		return "", false, err
 	}
 
+	if len(columns) == 0 {
+		logger.Debug("[chunk] no primary key found", "table", table.Name)
+		return "", false, nil
+	}
+
 	if len(columns) != 1 {
+		logger.Debug("[chunk] composite primary key not supported for range chunking",
+			"table", table.Name, "pkColumns", len(columns))
 		return "", false, nil
 	}
 
 	if !isIntegerType(columns[0].DataType) {
+		logger.Debug("[chunk] primary key is not integer type",
+			"table", table.Name, "pkColumn", columns[0].Name, "dataType", columns[0].DataType)
 		return "", false, nil
 	}
 
+	logger.Debug("[chunk] single integer primary key found",
+		"table", table.Name, "pkColumn", columns[0].Name, "dataType", columns[0].DataType)
 	return columns[0].Name, true, nil
 }
 
@@ -691,8 +1035,8 @@ func isIntegerType(dataType string) bool {
 
 func (s *Snapshotter) getPrimaryKeyBounds(ctx context.Context, table publication.Table, pkColumn string) (int64, int64, bool, error) {
 	query := fmt.Sprintf(`
-		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
-		FROM %s.%s
+		SELECT MIN("%s")::bigint AS min_value, MAX("%s")::bigint AS max_value
+		FROM "%s"."%s"
 	`, pkColumn, pkColumn, table.Schema, table.Name)
 
 	results, err := s.execQuery(ctx, s.metadataConn, query)
@@ -789,8 +1133,7 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 }
 
 func (s *Snapshotter) getTableRawCount(ctx context.Context, schema, table string) (int64, error) {
-	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM "%s"."%s"`, schema, table)
 
 	results, err := s.execQuery(ctx, s.metadataConn, query)
 	if err != nil {

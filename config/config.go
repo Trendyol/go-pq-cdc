@@ -99,6 +99,9 @@ func (c *Config) SetDefault() {
 		if c.Snapshot.Mode == "" {
 			c.Snapshot.Mode = SnapshotModeNever
 		}
+		if c.Snapshot.ChunkingMode == "" {
+			c.Snapshot.ChunkingMode = SnapshotChunkingModeAuto
+		}
 		if c.Snapshot.ChunkSize == 0 {
 			c.Snapshot.ChunkSize = 8_000
 		}
@@ -240,13 +243,14 @@ func isEmpty(s string) bool {
 }
 
 type SnapshotConfig struct {
-	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
-	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
-	Tables            publication.Tables `json:"tables" yaml:"tables"`
-	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
-	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
-	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
-	Enabled           bool               `json:"enabled" yaml:"enabled"`
+	Mode              SnapshotMode         `json:"mode" yaml:"mode"`
+	InstanceID        string               `json:"instanceId" yaml:"instanceId"`
+	Tables            publication.Tables   `json:"tables" yaml:"tables"`
+	ChunkSize         int64                `json:"chunkSize" yaml:"chunkSize"`
+	ChunkingMode      SnapshotChunkingMode `json:"chunkingMode" yaml:"chunkingMode"`
+	ClaimTimeout      time.Duration        `json:"claimTimeout" yaml:"claimTimeout"`
+	HeartbeatInterval time.Duration        `json:"heartbeatInterval" yaml:"heartbeatInterval"`
+	Enabled           bool                 `json:"enabled" yaml:"enabled"`
 }
 
 func (s *SnapshotConfig) Validate() error {
@@ -282,6 +286,14 @@ func (s *SnapshotConfig) Validate() error {
 		return errors.New("snapshot.tables must be specified for snapshot_only mode")
 	}
 
+	// Validate chunking mode
+	switch s.ChunkingMode {
+	case SnapshotChunkingModeAuto, SnapshotChunkingModeRange, SnapshotChunkingModeKeyset, SnapshotChunkingModeOffset:
+		// ok
+	default:
+		return fmt.Errorf("snapshot chunkingMode must be 'auto', 'range', 'keyset', or 'offset'")
+	}
+
 	return nil
 }
 
@@ -291,4 +303,13 @@ const (
 	SnapshotModeInitial      SnapshotMode = "initial"
 	SnapshotModeNever        SnapshotMode = "never"
 	SnapshotModeSnapshotOnly SnapshotMode = "snapshot_only"
+)
+
+type SnapshotChunkingMode string
+
+const (
+	SnapshotChunkingModeAuto   SnapshotChunkingMode = "auto"
+	SnapshotChunkingModeRange  SnapshotChunkingMode = "range"
+	SnapshotChunkingModeKeyset SnapshotChunkingMode = "keyset"
+	SnapshotChunkingModeOffset SnapshotChunkingMode = "offset"
 )

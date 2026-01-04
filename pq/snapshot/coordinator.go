@@ -288,6 +288,9 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				chunk_size BIGINT NOT NULL,
 				range_start BIGINT,
 				range_end BIGINT,
+				block_start BIGINT,
+				block_end BIGINT,
+				partition_strategy TEXT NOT NULL DEFAULT 'offset',
 				status TEXT NOT NULL DEFAULT 'pending',
 				claimed_by TEXT,
 				claimed_at TIMESTAMP,
@@ -413,9 +416,21 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 }
 
 func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+	switch chunk.PartitionStrategy {
+	case PartitionStrategyIntegerRange:
+		return s.buildIntegerRangeQuery(chunk, orderByClause, pkColumns)
+	case PartitionStrategyCTIDBlock:
+		return s.buildCTIDBlockQuery(chunk)
+	case PartitionStrategyOffset:
+		fallthrough
+	default:
+		return s.buildOffsetQuery(chunk, orderByClause)
+	}
+}
+
+func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
-
 		return fmt.Sprintf(
 			"SELECT * FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
 			chunk.TableSchema,
@@ -428,7 +443,29 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 			chunk.ChunkSize,
 		)
 	}
+	// Fallback to offset
+	return s.buildOffsetQuery(chunk, orderByClause)
+}
 
+func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk) string {
+	if !chunk.hasCTIDBlocks() {
+		// Empty table or single chunk - select all
+		return fmt.Sprintf("SELECT * FROM %s.%s", chunk.TableSchema, chunk.TableName)
+	}
+
+	// Use CTID range for block-based selection
+	// ctid format: (block_number, tuple_index)
+	// We select all tuples in block range [BlockStart, BlockEnd)
+	return fmt.Sprintf(
+		"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid",
+		chunk.TableSchema,
+		chunk.TableName,
+		*chunk.BlockStart,
+		*chunk.BlockEnd,
+	)
+}
+
+func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string) string {
 	return fmt.Sprintf(
 		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
 		chunk.TableSchema,
@@ -508,8 +545,12 @@ func cloneStringSlice(in []string) []string {
 	return out
 }
 
-// createTableChunks divides a table into chunks
+// createTableChunks divides a table into chunks using the most efficient strategy
+// Priority: 1. Integer Range (fastest for integer PKs)
+//  2. CTID Block (fast for any table)
+//  3. Offset (slow fallback)
 func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
+	// Strategy 1: Single integer PK - use range partitioning (fastest for integer PKs)
 	pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
 	if err != nil {
 		logger.Warn("[chunk] failed to inspect primary key", "table", table.Name, "error", err)
@@ -519,9 +560,16 @@ func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, ta
 		if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
 			return rangeChunks
 		}
-		logger.Warn("[chunk] range chunking unavailable, falling back to OFFSET", "table", table.Name)
+		logger.Warn("[chunk] range chunking unavailable, trying CTID", "table", table.Name)
 	}
 
+	// Strategy 2: CTID block partitioning (works for any table, very fast)
+	if ctidChunks := s.createCTIDBlockChunks(ctx, slotName, table); len(ctidChunks) > 0 {
+		return ctidChunks
+	}
+
+	// Strategy 3: Fallback to offset-based (slow but always works)
+	logger.Warn("[chunk] CTID partitioning unavailable, falling back to OFFSET", "table", table.Name)
 	return s.createOffsetChunks(ctx, slotName, table)
 }
 
@@ -536,13 +584,14 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		// Empty table, create single chunk to keep accounting simple
 		return []*Chunk{
 			{
-				SlotName:    slotName,
-				TableSchema: table.Schema,
-				TableName:   table.Name,
-				ChunkIndex:  0,
-				ChunkStart:  0,
-				ChunkSize:   s.config.ChunkSize,
-				Status:      ChunkStatusPending,
+				SlotName:          slotName,
+				TableSchema:       table.Schema,
+				TableName:         table.Name,
+				ChunkIndex:        0,
+				ChunkStart:        0,
+				ChunkSize:         s.config.ChunkSize,
+				Status:            ChunkStatusPending,
+				PartitionStrategy: PartitionStrategyIntegerRange,
 			},
 		}
 	}
@@ -563,20 +612,21 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		endValue := rangeEnd
 
 		chunk := &Chunk{
-			SlotName:    slotName,
-			TableSchema: table.Schema,
-			TableName:   table.Name,
-			ChunkIndex:  int(i),
-			ChunkStart:  i * chunkSize,
-			ChunkSize:   chunkSize,
-			Status:      ChunkStatusPending,
-			RangeStart:  &startValue,
-			RangeEnd:    &endValue,
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        int(i),
+			ChunkStart:        i * chunkSize,
+			ChunkSize:         chunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyIntegerRange,
+			RangeStart:        &startValue,
+			RangeEnd:          &endValue,
 		}
 		chunks = append(chunks, chunk)
 	}
 
-	logger.Debug("[chunk] range chunks created",
+	logger.Info("[chunk] range chunks created",
 		"table", table.Name,
 		"chunkSize", chunkSize,
 		"numChunks", numChunks,
@@ -584,6 +634,119 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		"rangeMax", maxValue,
 	)
 	return chunks
+}
+
+// createCTIDBlockChunks creates chunks based on PostgreSQL physical block locations
+// This is efficient for any table type and doesn't require a primary key
+func (s *Snapshotter) createCTIDBlockChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
+	// Get total blocks in table
+	query := fmt.Sprintf(
+		"SELECT COALESCE((pg_relation_size(to_regclass('%s.%s')) / current_setting('block_size')::int)::bigint, 0)",
+		table.Schema, table.Name,
+	)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		logger.Warn("[chunk] failed to get block count", "table", table.Name, "error", err)
+		return nil
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return nil
+	}
+
+	totalBlocks, err := strconv.ParseInt(string(results[0].Rows[0][0]), 10, 64)
+	if err != nil {
+		logger.Warn("[chunk] failed to parse block count", "table", table.Name, "error", err)
+		return nil
+	}
+
+	// Empty table - create single chunk
+	if totalBlocks == 0 {
+		return []*Chunk{{
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        0,
+			ChunkStart:        0,
+			ChunkSize:         s.config.ChunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyCTIDBlock,
+		}}
+	}
+
+	// Estimate rows per block to calculate blocks per chunk
+	estimatedRowsPerBlock := s.estimateRowsPerBlock(ctx, table)
+	if estimatedRowsPerBlock < 1 {
+		estimatedRowsPerBlock = 100 // Safe default
+	}
+
+	blocksPerChunk := s.config.ChunkSize / estimatedRowsPerBlock
+	if blocksPerChunk < 1 {
+		blocksPerChunk = 1
+	}
+
+	numChunks := (totalBlocks + blocksPerChunk - 1) / blocksPerChunk
+	chunks := make([]*Chunk, 0, numChunks)
+
+	for i := int64(0); i < numChunks; i++ {
+		blockStart := i * blocksPerChunk
+		blockEnd := blockStart + blocksPerChunk
+		if blockEnd > totalBlocks {
+			blockEnd = totalBlocks
+		}
+
+		chunk := &Chunk{
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        int(i),
+			ChunkStart:        blockStart, // Store block start for ordering
+			ChunkSize:         s.config.ChunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyCTIDBlock,
+			BlockStart:        &blockStart,
+			BlockEnd:          &blockEnd,
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	logger.Info("[chunk] CTID block chunks created",
+		"table", table.Name,
+		"totalBlocks", totalBlocks,
+		"blocksPerChunk", blocksPerChunk,
+		"numChunks", len(chunks),
+		"estimatedRowsPerBlock", estimatedRowsPerBlock,
+	)
+	return chunks
+}
+
+// estimateRowsPerBlock estimates average rows per block using pg_class statistics
+func (s *Snapshotter) estimateRowsPerBlock(ctx context.Context, table publication.Table) int64 {
+	query := fmt.Sprintf(`
+		SELECT CASE 
+			WHEN relpages > 0 THEN (reltuples / relpages)::bigint
+			ELSE 100
+		END
+		FROM pg_class
+		WHERE oid = '%s.%s'::regclass
+	`, table.Schema, table.Name)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return 100 // Default estimate
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return 100
+	}
+
+	rowsPerBlock, err := strconv.ParseInt(string(results[0].Rows[0][0]), 10, 64)
+	if err != nil || rowsPerBlock < 1 {
+		return 100
+	}
+
+	return rowsPerBlock
 }
 
 func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
@@ -599,13 +762,14 @@ func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, t
 	if rowCount == 0 {
 		return []*Chunk{
 			{
-				SlotName:    slotName,
-				TableSchema: table.Schema,
-				TableName:   table.Name,
-				ChunkIndex:  0,
-				ChunkStart:  0,
-				ChunkSize:   chunkSize,
-				Status:      ChunkStatusPending,
+				SlotName:          slotName,
+				TableSchema:       table.Schema,
+				TableName:         table.Name,
+				ChunkIndex:        0,
+				ChunkStart:        0,
+				ChunkSize:         chunkSize,
+				Status:            ChunkStatusPending,
+				PartitionStrategy: PartitionStrategyOffset,
 			},
 		}
 	}
@@ -617,13 +781,14 @@ func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, t
 	for i := int64(0); i < numChunks; i++ {
 		// Last chunk may have fewer rows (handles estimate vs actual difference)
 		chunk := &Chunk{
-			SlotName:    slotName,
-			TableSchema: table.Schema,
-			TableName:   table.Name,
-			ChunkIndex:  int(i),
-			ChunkStart:  i * chunkSize,
-			ChunkSize:   chunkSize,
-			Status:      ChunkStatusPending,
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        int(i),
+			ChunkStart:        i * chunkSize,
+			ChunkSize:         chunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyOffset,
 		}
 		chunks = append(chunks, chunk)
 	}
@@ -766,11 +931,27 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
 		}
 
+		blockStart := "NULL"
+		if chunk.BlockStart != nil {
+			blockStart = fmt.Sprintf("%d", *chunk.BlockStart)
+		}
+
+		blockEnd := "NULL"
+		if chunk.BlockEnd != nil {
+			blockEnd = fmt.Sprintf("%d", *chunk.BlockEnd)
+		}
+
+		partitionStrategy := string(chunk.PartitionStrategy)
+		if partitionStrategy == "" {
+			partitionStrategy = string(PartitionStrategyOffset)
+		}
+
 		query := fmt.Sprintf(`
 			INSERT INTO %s (
 				slot_name, table_schema, table_name, chunk_index, 
-				chunk_start, chunk_size, range_start, range_end, status
-			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, '%s')
+				chunk_start, chunk_size, range_start, range_end,
+				block_start, block_end, partition_strategy, status
+			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, '%s', '%s')
 		`, chunksTableName,
 			chunk.SlotName,
 			chunk.TableSchema,
@@ -780,6 +961,9 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			chunk.ChunkSize,
 			rangeStart,
 			rangeEnd,
+			blockStart,
+			blockEnd,
+			partitionStrategy,
 			string(chunk.Status),
 		)
 

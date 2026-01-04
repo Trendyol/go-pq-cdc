@@ -132,8 +132,7 @@ func handleSnapshot(s *format.Snapshot) {
 			s.ServerTime.Format("15:04:05"))
 
 	case format.SnapshotEventTypeData:
-		// Log every 100th row to avoid flooding
-		slog.Debug("snapshot data", "table", s.Table, "data", s.Data)
+		slog.Info("snapshot data", "table", s.Table, "data", s.Data)
 
 	case format.SnapshotEventTypeEnd:
 		log.Printf("📸 SNAPSHOT END | LSN: %s | Time: %s",

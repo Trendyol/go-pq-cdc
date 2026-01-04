@@ -921,22 +921,23 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) m
 // saveChunk saves a chunk to the database (only INSERT, coordinator creates once)
 func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 	return s.retryDBOperation(ctx, func() error {
-		rangeStart := "NULL"
+		const NULL = "NULL"
+		rangeStart := NULL
 		if chunk.RangeStart != nil {
 			rangeStart = fmt.Sprintf("%d", *chunk.RangeStart)
 		}
 
-		rangeEnd := "NULL"
+		rangeEnd := NULL
 		if chunk.RangeEnd != nil {
 			rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
 		}
 
-		blockStart := "NULL"
+		blockStart := NULL
 		if chunk.BlockStart != nil {
 			blockStart = fmt.Sprintf("%d", *chunk.BlockStart)
 		}
 
-		blockEnd := "NULL"
+		blockEnd := NULL
 		if chunk.BlockEnd != nil {
 			blockEnd = fmt.Sprintf("%d", *chunk.BlockEnd)
 		}

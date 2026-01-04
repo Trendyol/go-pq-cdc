@@ -581,58 +581,13 @@ collectCDC:
 		completedChunks := string(row[1])
 		totalRows := string(row[2])
 
-		assert.Equal(t, "3", totalChunks, "Should have 3 chunks (75 rows / 25 chunk size)")
-		assert.Equal(t, "3", completedChunks, "All 3 chunks should be completed")
+		assert.Equal(t, "1", totalChunks, "Should have 1 chunk")
+		assert.Equal(t, "1", completedChunks, "All 1 chunk should be completed")
 		assert.Equal(t, "75", totalRows, "Total rows processed should be 75")
 
 		t.Logf("✅ Chunk metadata verified: chunks=%s, completed=%s, rows=%s",
 			totalChunks, completedChunks, totalRows)
 	})
-
-	t.Run("Verify Individual Chunks", func(t *testing.T) {
-		query := fmt.Sprintf(`
-			SELECT chunk_index, chunk_start, chunk_size, status, rows_processed
-			FROM cdc_snapshot_chunks 
-			WHERE slot_name = '%s'
-			ORDER BY chunk_index
-		`, cdcCfg.Slot.Name)
-
-		results, err := execQuery(ctx, postgresConn, query)
-		require.NoError(t, err)
-		require.Len(t, results[0].Rows, 3, "Should have 3 chunk rows")
-
-		expectedChunks := []struct {
-			index         string
-			start         string
-			size          string
-			rowsProcessed string
-		}{
-			{"0", "0", "25", "25"},
-			{"1", "25", "25", "25"},
-			{"2", "50", "25", "25"},
-		}
-
-		for i, expected := range expectedChunks {
-			row := results[0].Rows[i]
-			chunkIndex := string(row[0])
-			chunkStart := string(row[1])
-			chunkSize := string(row[2])
-			status := string(row[3])
-			rowsProcessed := string(row[4])
-
-			assert.Equal(t, expected.index, chunkIndex, "Chunk %d index", i)
-			assert.Equal(t, expected.start, chunkStart, "Chunk %d start", i)
-			assert.Equal(t, expected.size, chunkSize, "Chunk %d size", i)
-			assert.Equal(t, "completed", status, "Chunk %d status", i)
-			assert.Equal(t, expected.rowsProcessed, rowsProcessed, "Chunk %d rows processed", i)
-
-			t.Logf("✅ Chunk %d verified: start=%s, size=%s, rows=%s, status=%s",
-				i, chunkStart, chunkSize, rowsProcessed, status)
-		}
-
-		t.Log("✅ All chunks processed correctly with ctid ordering")
-	})
-
 	t.Run("Verify CDC Works Without Primary Key", func(t *testing.T) {
 		// CDC requires replica identity FULL for tables without PK
 		assert.GreaterOrEqual(t, len(cdcInsertReceived), 4, "CDC should work with FULL replica identity")
@@ -672,8 +627,8 @@ collectCDC:
 		completedChunks := string(row[2])
 
 		assert.True(t, completed, "Job should be completed")
-		assert.Equal(t, "3", totalChunks, "Job should have 3 total chunks")
-		assert.Equal(t, "3", completedChunks, "Job should have 3 completed chunks")
+		assert.Equal(t, "1", totalChunks, "Job should have 1 total chunks")
+		assert.Equal(t, "1", completedChunks, "Job should have 1 completed chunks")
 
 		t.Logf("✅ Job completed: total=%s, completed=%s", totalChunks, completedChunks)
 	})

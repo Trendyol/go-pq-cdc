@@ -450,3 +450,243 @@ func TestSnapshotIntegerPKStillUsesRange(t *testing.T) {
 		}
 	})
 }
+
+// TestSnapshotExplicitCTIDOverride tests that users can explicitly force CTID
+// partitioning even for tables with integer PKs (useful for hash-based PKs)
+func TestSnapshotExplicitCTIDOverride(t *testing.T) {
+	ctx := context.Background()
+
+	// Setup: Create table with INTEGER PK but force CTID partitioning
+	tableName := "snapshot_explicit_ctid_test"
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_snapshot_explicit_ctid"
+	cdcCfg.Publication.Name = "pub_snapshot_explicit_ctid"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{
+			Name:            tableName,
+			Schema:          "public",
+			ReplicaIdentity: publication.ReplicaIdentityFull,
+			// EXPLICITLY force CTID partitioning even though table has integer PK
+			SnapshotPartitionStrategy: publication.SnapshotPartitionStrategyCTIDBlock,
+		},
+	}
+	cdcCfg.Snapshot.Enabled = true
+	cdcCfg.Snapshot.Mode = "initial"
+	cdcCfg.Snapshot.ChunkSize = 25
+	cdcCfg.Snapshot.HeartbeatInterval = 30 * time.Second
+	cdcCfg.Snapshot.ClaimTimeout = 30 * time.Second
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	// Create table with INTEGER primary key
+	err = createTestTable(ctx, postgresConn, tableName)
+	require.NoError(t, err)
+
+	t.Log("📝 Inserting 100 rows with INTEGER PKs (but forcing CTID strategy)...")
+	for i := 1; i <= 100; i++ {
+		query := fmt.Sprintf("INSERT INTO %s(id, name, age) VALUES(%d, 'User_%d', %d)",
+			tableName, i, i, 20+i%50)
+		err = pgExec(ctx, postgresConn, query)
+		require.NoError(t, err)
+	}
+	t.Log("✅ 100 rows inserted")
+
+	// Setup
+	snapshotDataReceived := []map[string]any{}
+	snapshotEndReceived := false
+	messageCh := make(chan any, 200)
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Snapshot:
+			messageCh <- msg
+		}
+		_ = ctx.Ack()
+	}
+
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		postgresConn.Close(ctx)
+		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+	})
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err = connector.WaitUntilReady(waitCtx)
+	require.NoError(t, err)
+
+	// Collect snapshot events
+	timeout := time.After(30 * time.Second)
+	for !snapshotEndReceived {
+		select {
+		case msg := <-messageCh:
+			if m, ok := msg.(*format.Snapshot); ok {
+				switch m.EventType {
+				case format.SnapshotEventTypeData:
+					snapshotDataReceived = append(snapshotDataReceived, m.Data)
+				case format.SnapshotEventTypeEnd:
+					snapshotEndReceived = true
+				}
+			}
+		case <-timeout:
+			t.Fatalf("Timeout. Received %d DATA events", len(snapshotDataReceived))
+		}
+	}
+
+	// === Assertions ===
+
+	t.Run("Verify All Rows Captured", func(t *testing.T) {
+		assert.Len(t, snapshotDataReceived, 100, "Should receive 100 DATA events")
+	})
+
+	t.Run("Verify CTID Override for Integer PK Table", func(t *testing.T) {
+		// The key test: even though table has integer PK, CTID should be used
+		// because we explicitly set SnapshotPartitionStrategy: "ctid_block"
+		query := fmt.Sprintf(`
+			SELECT partition_strategy
+			FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s'
+			LIMIT 1
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0, "Should have chunk metadata")
+
+		strategy := string(results[0].Rows[0][0])
+		assert.Equal(t, string(snapshot.PartitionStrategyCTIDBlock), strategy,
+			"Explicit CTID override should be respected for integer PK table")
+		t.Logf("✅ Explicit CTID override works: integer PK table uses '%s' instead of 'integer_range'", strategy)
+	})
+
+	t.Run("Verify Block Ranges Set (not Range bounds)", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT block_start, block_end, range_start, range_end
+			FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s'
+			LIMIT 1
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0, "Should have chunk metadata")
+
+		row := results[0].Rows[0]
+		blockStart := string(row[0])
+		blockEnd := string(row[1])
+		rangeStart := string(row[2])
+		rangeEnd := string(row[3])
+
+		// CTID chunks should have block_start/block_end set, not range_start/range_end
+		assert.NotEmpty(t, blockStart, "block_start should be set for CTID chunks")
+		assert.NotEmpty(t, blockEnd, "block_end should be set for CTID chunks")
+		assert.Empty(t, rangeStart, "range_start should NOT be set for CTID chunks")
+		assert.Empty(t, rangeEnd, "range_end should NOT be set for CTID chunks")
+		t.Log("✅ Block ranges correctly set for explicitly overridden CTID chunks")
+	})
+}
+
+// TestSnapshotExplicitOffsetStrategy tests that users can force OFFSET strategy
+func TestSnapshotExplicitOffsetStrategy(t *testing.T) {
+	ctx := context.Background()
+
+	tableName := "snapshot_explicit_offset_test"
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_snapshot_explicit_offset"
+	cdcCfg.Publication.Name = "pub_snapshot_explicit_offset"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{
+			Name:            tableName,
+			Schema:          "public",
+			ReplicaIdentity: publication.ReplicaIdentityFull,
+			// Force OFFSET strategy (slow but deterministic ordering)
+			SnapshotPartitionStrategy: publication.SnapshotPartitionStrategyOffset,
+		},
+	}
+	cdcCfg.Snapshot.Enabled = true
+	cdcCfg.Snapshot.Mode = "initial"
+	cdcCfg.Snapshot.ChunkSize = 25
+	cdcCfg.Snapshot.HeartbeatInterval = 30 * time.Second
+	cdcCfg.Snapshot.ClaimTimeout = 30 * time.Second
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	// Create table with INTEGER primary key
+	err = createTestTable(ctx, postgresConn, tableName)
+	require.NoError(t, err)
+
+	t.Log("📝 Inserting 50 rows...")
+	for i := 1; i <= 50; i++ {
+		query := fmt.Sprintf("INSERT INTO %s(id, name, age) VALUES(%d, 'User_%d', %d)",
+			tableName, i, i, 20+i%50)
+		err = pgExec(ctx, postgresConn, query)
+		require.NoError(t, err)
+	}
+	t.Log("✅ 50 rows inserted")
+
+	// Setup
+	snapshotEndReceived := false
+	messageCh := make(chan any, 100)
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Snapshot:
+			messageCh <- msg
+		}
+		_ = ctx.Ack()
+	}
+
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		postgresConn.Close(ctx)
+		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+	})
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err = connector.WaitUntilReady(waitCtx)
+	require.NoError(t, err)
+
+	// Wait for snapshot to complete
+	timeout := time.After(30 * time.Second)
+	for !snapshotEndReceived {
+		select {
+		case msg := <-messageCh:
+			if m, ok := msg.(*format.Snapshot); ok && m.EventType == format.SnapshotEventTypeEnd {
+				snapshotEndReceived = true
+			}
+		case <-timeout:
+			t.Fatal("Timeout waiting for snapshot")
+		}
+	}
+
+	// === Assertions ===
+
+	t.Run("Verify Offset Strategy Override", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT partition_strategy
+			FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s'
+			LIMIT 1
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0, "Should have chunk metadata")
+
+		strategy := string(results[0].Rows[0][0])
+		assert.Equal(t, string(snapshot.PartitionStrategyOffset), strategy,
+			"Explicit OFFSET strategy should be used")
+		t.Logf("✅ Explicit OFFSET strategy works: '%s'", strategy)
+	})
+}

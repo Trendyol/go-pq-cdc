@@ -545,12 +545,67 @@ func cloneStringSlice(in []string) []string {
 	return out
 }
 
-// createTableChunks divides a table into chunks using the most efficient strategy
-// Priority: 1. Integer Range (fastest for integer PKs)
-//  2. CTID Block (fast for any table)
-//  3. Offset (slow fallback)
+// createTableChunks divides a table into chunks using the most efficient strategy.
+// If user specified a SnapshotPartitionStrategy in table config, use that directly.
+// Otherwise, auto-detect:
+//   - Priority 1: Integer Range (fastest for sequential integer PKs)
+//   - Priority 2: CTID Block (fast for any table)
+//   - Priority 3: Offset (slow fallback)
 func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
-	// Strategy 1: Single integer PK - use range partitioning (fastest for integer PKs)
+	// Check if user explicitly specified a partition strategy
+	if table.SnapshotPartitionStrategy != publication.SnapshotPartitionStrategyAuto {
+		return s.createChunksWithStrategy(ctx, slotName, table, table.SnapshotPartitionStrategy)
+	}
+
+	// Auto-detect strategy based on PK type
+	return s.createChunksAutoDetect(ctx, slotName, table)
+}
+
+// createChunksWithStrategy creates chunks using the user-specified strategy
+func (s *Snapshotter) createChunksWithStrategy(ctx context.Context, slotName string, table publication.Table, strategy publication.SnapshotPartitionStrategy) []*Chunk {
+	logger.Info("[chunk] using user-specified partition strategy",
+		"table", table.Name,
+		"strategy", string(strategy))
+
+	switch strategy {
+	case publication.SnapshotPartitionStrategyIntegerRange:
+		pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
+		if err != nil {
+			logger.Warn("[chunk] failed to inspect primary key for integer_range strategy",
+				"table", table.Name, "error", err)
+			return s.createOffsetChunks(ctx, slotName, table)
+		}
+		if !ok {
+			logger.Warn("[chunk] integer_range strategy requested but no single integer PK found, falling back to CTID",
+				"table", table.Name)
+			return s.createCTIDBlockChunks(ctx, slotName, table)
+		}
+		if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
+			return rangeChunks
+		}
+		logger.Warn("[chunk] integer_range failed, falling back to CTID", "table", table.Name)
+		return s.createCTIDBlockChunks(ctx, slotName, table)
+
+	case publication.SnapshotPartitionStrategyCTIDBlock:
+		if ctidChunks := s.createCTIDBlockChunks(ctx, slotName, table); len(ctidChunks) > 0 {
+			return ctidChunks
+		}
+		logger.Warn("[chunk] ctid_block strategy failed, falling back to OFFSET", "table", table.Name)
+		return s.createOffsetChunks(ctx, slotName, table)
+
+	case publication.SnapshotPartitionStrategyOffset:
+		return s.createOffsetChunks(ctx, slotName, table)
+
+	default:
+		logger.Warn("[chunk] unknown partition strategy, using auto-detect",
+			"table", table.Name, "strategy", string(strategy))
+		return s.createChunksAutoDetect(ctx, slotName, table)
+	}
+}
+
+// createChunksAutoDetect auto-detects the best strategy based on PK type
+func (s *Snapshotter) createChunksAutoDetect(ctx context.Context, slotName string, table publication.Table) []*Chunk {
+	// Strategy 1: Single integer PK - use range partitioning (fastest for sequential integer PKs)
 	pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
 	if err != nil {
 		logger.Warn("[chunk] failed to inspect primary key", "table", table.Name, "error", err)

@@ -79,6 +79,7 @@ func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, curre
 
 		// Save chunks
 		for _, chunk := range chunks {
+			// TODO: save chunk INSERT INTO
 			if err := s.saveChunk(ctx, chunk); err != nil {
 				return errors.Wrap(err, "save chunk")
 			}
@@ -290,6 +291,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				range_end BIGINT,
 				block_start BIGINT,
 				block_end BIGINT,
+				is_last_chunk BOOLEAN NOT NULL DEFAULT FALSE,
 				partition_strategy TEXT NOT NULL DEFAULT 'offset',
 				status TEXT NOT NULL DEFAULT 'pending',
 				claimed_by TEXT,
@@ -448,14 +450,24 @@ func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string,
 }
 
 func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk) string {
-	if !chunk.hasCTIDBlocks() {
-		// Empty table or single chunk - select all
+	// Empty table or single chunk without block info - select all
+	if chunk.BlockStart == nil {
 		return fmt.Sprintf("SELECT * FROM %s.%s", chunk.TableSchema, chunk.TableName)
 	}
 
-	// Use CTID range for block-based selection
+	// Last chunk (BlockEnd is nil): no upper bound to catch rows added after metadata creation
+	// This prevents missing rows that were inserted between chunk creation and snapshot export
+	if chunk.BlockEnd == nil || chunk.IsLastChunk {
+		return fmt.Sprintf(
+			"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid",
+			chunk.TableSchema,
+			chunk.TableName,
+			*chunk.BlockStart,
+		)
+	}
+
+	// Normal chunk: use bounded CTID range [BlockStart, BlockEnd)
 	// ctid format: (block_number, tuple_index)
-	// We select all tuples in block range [BlockStart, BlockEnd)
 	return fmt.Sprintf(
 		"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid",
 		chunk.TableSchema,
@@ -747,9 +759,19 @@ func (s *Snapshotter) createCTIDBlockChunks(ctx context.Context, slotName string
 	for i := int64(0); i < numChunks; i++ {
 		blockStart := i * blocksPerChunk
 		blockEnd := blockStart + blocksPerChunk
-		if blockEnd > totalBlocks {
-			blockEnd = totalBlocks
+		isLastChunk := (i == numChunks-1)
+
+		// For the last chunk, we set BlockEnd to nil to avoid missing rows
+		// that were added between metadata creation and snapshot export.
+		// Query will be: ctid >= '(blockStart,0)'::tid (no upper bound)
+		var blockEndPtr *int64
+		if !isLastChunk {
+			if blockEnd > totalBlocks {
+				blockEnd = totalBlocks
+			}
+			blockEndPtr = &blockEnd
 		}
+		// For last chunk, blockEndPtr remains nil
 
 		chunk := &Chunk{
 			SlotName:          slotName,
@@ -761,7 +783,8 @@ func (s *Snapshotter) createCTIDBlockChunks(ctx context.Context, slotName string
 			Status:            ChunkStatusPending,
 			PartitionStrategy: PartitionStrategyCTIDBlock,
 			BlockStart:        &blockStart,
-			BlockEnd:          &blockEnd,
+			BlockEnd:          blockEndPtr,
+			IsLastChunk:       isLastChunk,
 		}
 		chunks = append(chunks, chunk)
 	}
@@ -772,6 +795,7 @@ func (s *Snapshotter) createCTIDBlockChunks(ctx context.Context, slotName string
 		"blocksPerChunk", blocksPerChunk,
 		"numChunks", len(chunks),
 		"estimatedRowsPerBlock", estimatedRowsPerBlock,
+		"lastChunkHasNoUpperBound", true,
 	)
 	return chunks
 }
@@ -1006,8 +1030,8 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			INSERT INTO %s (
 				slot_name, table_schema, table_name, chunk_index, 
 				chunk_start, chunk_size, range_start, range_end,
-				block_start, block_end, partition_strategy, status
-			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, '%s', '%s')
+				block_start, block_end, is_last_chunk, partition_strategy, status
+			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, %t, '%s', '%s')
 		`, chunksTableName,
 			chunk.SlotName,
 			chunk.TableSchema,
@@ -1019,6 +1043,7 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 			rangeEnd,
 			blockStart,
 			blockEnd,
+			chunk.IsLastChunk,
 			partitionStrategy,
 			string(chunk.Status),
 		)

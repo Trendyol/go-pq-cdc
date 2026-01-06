@@ -185,26 +185,35 @@ func TestSnapshotCTIDPartitioning(t *testing.T) {
 	})
 
 	t.Run("Verify Block Ranges Set", func(t *testing.T) {
-		// Verify that block_start and block_end are set for CTID chunks
+		// Verify that block_start is set for all CTID chunks
+		// Note: block_end is NULL for the LAST chunk (no upper bound to capture all rows)
 		query := fmt.Sprintf(`
-			SELECT block_start, block_end 
+			SELECT block_start, block_end, is_last_chunk
 			FROM cdc_snapshot_chunks 
 			WHERE slot_name = '%s' AND partition_strategy = 'ctid_block'
-			LIMIT 5
+			ORDER BY chunk_index
 		`, cdcCfg.Slot.Name)
 
 		results, err := execQuery(ctx, postgresConn, query)
 		require.NoError(t, err)
 
 		if len(results) > 0 && len(results[0].Rows) > 0 {
-			for _, row := range results[0].Rows {
+			for i, row := range results[0].Rows {
 				blockStart := string(row[0])
 				blockEnd := string(row[1])
-				// Block values should be set (not NULL)
-				assert.NotEmpty(t, blockStart, "block_start should be set")
-				assert.NotEmpty(t, blockEnd, "block_end should be set")
+				isLastChunk := string(row[2])
+
+				// block_start should always be set
+				assert.NotEmpty(t, blockStart, "block_start should be set for chunk %d", i)
+
+				// Last chunk has block_end = NULL (no upper bound for safety)
+				if isLastChunk == "t" || isLastChunk == "true" {
+					assert.Empty(t, blockEnd, "block_end should be NULL for last chunk (no upper bound)")
+				} else {
+					assert.NotEmpty(t, blockEnd, "block_end should be set for non-last chunk %d", i)
+				}
 			}
-			t.Log("✅ Block ranges are properly set for CTID chunks")
+			t.Log("✅ Block ranges are properly set for CTID chunks (last chunk has no upper bound)")
 		}
 	})
 }
@@ -566,7 +575,7 @@ func TestSnapshotExplicitCTIDOverride(t *testing.T) {
 
 	t.Run("Verify Block Ranges Set (not Range bounds)", func(t *testing.T) {
 		query := fmt.Sprintf(`
-			SELECT block_start, block_end, range_start, range_end
+			SELECT block_start, block_end, range_start, range_end, is_last_chunk
 			FROM cdc_snapshot_chunks 
 			WHERE slot_name = '%s'
 			LIMIT 1
@@ -581,10 +590,16 @@ func TestSnapshotExplicitCTIDOverride(t *testing.T) {
 		blockEnd := string(row[1])
 		rangeStart := string(row[2])
 		rangeEnd := string(row[3])
+		isLastChunk := string(row[4])
 
-		// CTID chunks should have block_start/block_end set, not range_start/range_end
+		// CTID chunks should have block_start set, not range_start/range_end
 		assert.NotEmpty(t, blockStart, "block_start should be set for CTID chunks")
-		assert.NotEmpty(t, blockEnd, "block_end should be set for CTID chunks")
+		// Note: Last chunk has block_end = NULL (no upper bound for safety)
+		if isLastChunk == "t" || isLastChunk == "true" {
+			t.Log("📝 Single chunk is also the last chunk, block_end is NULL (expected)")
+		} else {
+			assert.NotEmpty(t, blockEnd, "block_end should be set for non-last CTID chunks")
+		}
 		assert.Empty(t, rangeStart, "range_start should NOT be set for CTID chunks")
 		assert.Empty(t, rangeEnd, "range_end should NOT be set for CTID chunks")
 		t.Log("✅ Block ranges correctly set for explicitly overridden CTID chunks")
@@ -688,5 +703,337 @@ func TestSnapshotExplicitOffsetStrategy(t *testing.T) {
 		assert.Equal(t, string(snapshot.PartitionStrategyOffset), strategy,
 			"Explicit OFFSET strategy should be used")
 		t.Logf("✅ Explicit OFFSET strategy works: '%s'", strategy)
+	})
+}
+
+// TestSnapshotCTIDConsistency verifies that CTID partitioning uses snapshot-consistent
+// block counts. The pg_relation_size call happens WITHIN the snapshot transaction,
+// ensuring chunk boundaries match what workers see.
+func TestSnapshotCTIDConsistency(t *testing.T) {
+	ctx := context.Background()
+
+	tableName := "snapshot_ctid_consistency_test"
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_ctid_consistency"
+	cdcCfg.Publication.Name = "pub_ctid_consistency"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{
+			Name:                      tableName,
+			Schema:                    "public",
+			ReplicaIdentity:           publication.ReplicaIdentityFull,
+			SnapshotPartitionStrategy: publication.SnapshotPartitionStrategyCTIDBlock,
+		},
+	}
+	cdcCfg.Snapshot.Enabled = true
+	cdcCfg.Snapshot.Mode = "initial"
+	cdcCfg.Snapshot.ChunkSize = 100
+	cdcCfg.Snapshot.HeartbeatInterval = 30 * time.Second
+	cdcCfg.Snapshot.ClaimTimeout = 30 * time.Second
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	// Create table with TEXT primary key
+	err = createTextPrimaryKeyTable(ctx, postgresConn, tableName)
+	require.NoError(t, err)
+
+	// Insert a known number of rows
+	initialRows := 500
+	t.Logf("📝 Inserting %d rows...", initialRows)
+	for i := 1; i <= initialRows; i++ {
+		query := fmt.Sprintf("INSERT INTO %s(id, payload) VALUES('CONSIST-%08d', 'Consistency test %d')",
+			tableName, i, i)
+		err = pgExec(ctx, postgresConn, query)
+		require.NoError(t, err)
+	}
+	t.Logf("✅ %d rows inserted", initialRows)
+
+	// Setup snapshot handler
+	snapshotDataReceived := []map[string]any{}
+	snapshotEndReceived := false
+	messageCh := make(chan any, 1000)
+
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Snapshot:
+			messageCh <- msg
+		}
+		_ = ctx.Ack()
+	}
+
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		postgresConn.Close(ctx)
+		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+	})
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err = connector.WaitUntilReady(waitCtx)
+	require.NoError(t, err)
+
+	// Collect snapshot events
+	timeout := time.After(60 * time.Second)
+	for !snapshotEndReceived {
+		select {
+		case msg := <-messageCh:
+			if m, ok := msg.(*format.Snapshot); ok {
+				switch m.EventType {
+				case format.SnapshotEventTypeData:
+					snapshotDataReceived = append(snapshotDataReceived, m.Data)
+				case format.SnapshotEventTypeEnd:
+					snapshotEndReceived = true
+				}
+			}
+		case <-timeout:
+			t.Fatalf("Timeout. Received %d DATA events", len(snapshotDataReceived))
+		}
+	}
+
+	// === Assertions ===
+
+	t.Run("Verify All Rows Captured", func(t *testing.T) {
+		assert.Equal(t, initialRows, len(snapshotDataReceived),
+			"Should capture exactly the number of inserted rows")
+		t.Logf("✅ Captured %d/%d rows", len(snapshotDataReceived), initialRows)
+	})
+
+	t.Run("Verify CTID Strategy Used", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT partition_strategy, COUNT(*) as chunk_count
+			FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s'
+			GROUP BY partition_strategy
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0, "Should have chunk metadata")
+
+		strategy := string(results[0].Rows[0][0])
+		assert.Equal(t, string(snapshot.PartitionStrategyCTIDBlock), strategy,
+			"CTID block strategy should be used")
+		t.Logf("✅ CTID strategy confirmed: %s", strategy)
+	})
+
+	t.Run("Verify Chunks Have Block Boundaries", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT chunk_index, block_start, block_end, is_last_chunk
+			FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s'
+			ORDER BY chunk_index
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0, "Should have chunks")
+
+		chunks := results[0].Rows
+		t.Logf("📊 Found %d chunks", len(chunks))
+
+		for i, chunk := range chunks {
+			chunkIndex := string(chunk[0])
+			blockStart := string(chunk[1])
+			blockEnd := string(chunk[2])
+			isLast := string(chunk[3])
+
+			t.Logf("  Chunk %s: block_start=%s, block_end=%s, is_last=%s",
+				chunkIndex, blockStart, blockEnd, isLast)
+
+			// All chunks should have block_start
+			assert.NotEmpty(t, blockStart, "Chunk %d should have block_start", i)
+
+			// Last chunk should have is_last_chunk=true and block_end=NULL
+			if i == len(chunks)-1 {
+				assert.True(t, isLast == "t" || isLast == "true",
+					"Last chunk should have is_last_chunk=true")
+				assert.Empty(t, blockEnd,
+					"Last chunk should have block_end=NULL (no upper bound)")
+			}
+		}
+		t.Log("✅ Chunk block boundaries verified")
+	})
+
+	t.Run("Verify Job Completed Successfully", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT completed, total_chunks, completed_chunks
+			FROM cdc_snapshot_job 
+			WHERE slot_name = '%s'
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0)
+
+		row := results[0].Rows[0]
+		completed := string(row[0])
+		totalChunks := string(row[1])
+		completedChunks := string(row[2])
+
+		assert.True(t, completed == "t" || completed == "true", "Job should be completed")
+		assert.Equal(t, totalChunks, completedChunks, "All chunks should be processed")
+		t.Logf("✅ Job completed: total=%s, completed=%s", totalChunks, completedChunks)
+	})
+}
+
+// TestSnapshotCTIDNoDataLoss specifically tests that no rows are lost
+// when using CTID partitioning, especially for the last chunk.
+func TestSnapshotCTIDNoDataLoss(t *testing.T) {
+	ctx := context.Background()
+
+	tableName := "snapshot_ctid_no_loss_test"
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_ctid_no_loss"
+	cdcCfg.Publication.Name = "pub_ctid_no_loss"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{
+			Name:                      tableName,
+			Schema:                    "public",
+			ReplicaIdentity:           publication.ReplicaIdentityFull,
+			SnapshotPartitionStrategy: publication.SnapshotPartitionStrategyCTIDBlock,
+		},
+	}
+	cdcCfg.Snapshot.Enabled = true
+	cdcCfg.Snapshot.Mode = "initial"
+	cdcCfg.Snapshot.ChunkSize = 50 // Small chunk to create multiple chunks
+	cdcCfg.Snapshot.HeartbeatInterval = 30 * time.Second
+	cdcCfg.Snapshot.ClaimTimeout = 30 * time.Second
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	// Create table with TEXT primary key
+	err = createTextPrimaryKeyTable(ctx, postgresConn, tableName)
+	require.NoError(t, err)
+
+	// Insert rows that will span multiple blocks
+	// PostgreSQL block size is typically 8KB, so we need enough data to span blocks
+	rowCount := 300
+	t.Logf("📝 Inserting %d rows...", rowCount)
+	for i := 1; i <= rowCount; i++ {
+		// Larger payload to ensure we span multiple blocks
+		payload := fmt.Sprintf("Large payload for row %d - padding data to ensure block spanning: %s",
+			i, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+		query := fmt.Sprintf("INSERT INTO %s(id, payload) VALUES('NOLOSS-%08d', '%s')",
+			tableName, i, payload)
+		err = pgExec(ctx, postgresConn, query)
+		require.NoError(t, err)
+	}
+	t.Logf("✅ %d rows inserted", rowCount)
+
+	// Get actual row count from database for comparison
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
+	countResults, err := execQuery(ctx, postgresConn, countQuery)
+	require.NoError(t, err)
+	var dbRowCount int
+	fmt.Sscanf(string(countResults[0].Rows[0][0]), "%d", &dbRowCount)
+	t.Logf("📊 Database row count: %d", dbRowCount)
+
+	// Setup snapshot handler
+	receivedIDs := make(map[string]bool)
+	snapshotEndReceived := false
+	messageCh := make(chan any, 1000)
+
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Snapshot:
+			messageCh <- msg
+		}
+		_ = ctx.Ack()
+	}
+
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		postgresConn.Close(ctx)
+		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+	})
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err = connector.WaitUntilReady(waitCtx)
+	require.NoError(t, err)
+
+	// Collect snapshot events
+	timeout := time.After(90 * time.Second)
+	for !snapshotEndReceived {
+		select {
+		case msg := <-messageCh:
+			if m, ok := msg.(*format.Snapshot); ok {
+				switch m.EventType {
+				case format.SnapshotEventTypeData:
+					if id, ok := m.Data["id"].(string); ok {
+						receivedIDs[id] = true
+					}
+				case format.SnapshotEventTypeEnd:
+					snapshotEndReceived = true
+				}
+			}
+		case <-timeout:
+			t.Fatalf("Timeout. Received %d unique IDs", len(receivedIDs))
+		}
+	}
+
+	// === Assertions ===
+
+	t.Run("Verify No Data Loss", func(t *testing.T) {
+		assert.Equal(t, dbRowCount, len(receivedIDs),
+			"Snapshot should capture exactly %d rows, got %d", dbRowCount, len(receivedIDs))
+
+		// Verify all expected IDs are present
+		missingIDs := []string{}
+		for i := 1; i <= rowCount; i++ {
+			expectedID := fmt.Sprintf("NOLOSS-%08d", i)
+			if !receivedIDs[expectedID] {
+				missingIDs = append(missingIDs, expectedID)
+			}
+		}
+
+		if len(missingIDs) > 0 {
+			t.Logf("❌ Missing IDs (first 10): %v", missingIDs[:min(10, len(missingIDs))])
+		}
+		assert.Empty(t, missingIDs, "No rows should be missing")
+		t.Logf("✅ All %d rows captured without data loss", len(receivedIDs))
+	})
+
+	t.Run("Verify Multiple Chunks Used", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT COUNT(*) FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s'
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+
+		var chunkCount int
+		fmt.Sscanf(string(results[0].Rows[0][0]), "%d", &chunkCount)
+
+		assert.Greater(t, chunkCount, 1, "Should have multiple chunks for proper CTID testing")
+		t.Logf("✅ Used %d chunks", chunkCount)
+	})
+
+	t.Run("Verify Last Chunk Processed", func(t *testing.T) {
+		query := fmt.Sprintf(`
+			SELECT chunk_index, status, rows_processed
+			FROM cdc_snapshot_chunks 
+			WHERE slot_name = '%s' AND is_last_chunk = true
+		`, cdcCfg.Slot.Name)
+
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.True(t, len(results) > 0 && len(results[0].Rows) > 0, "Should have last chunk")
+
+		status := string(results[0].Rows[0][1])
+		assert.Equal(t, "completed", status, "Last chunk should be completed")
+		t.Log("✅ Last chunk (with no upper bound) processed successfully")
 	})
 }

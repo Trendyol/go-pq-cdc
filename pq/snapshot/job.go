@@ -56,10 +56,6 @@ func (c *Chunk) hasRangeBounds() bool {
 	return c.RangeStart != nil && c.RangeEnd != nil
 }
 
-func (c *Chunk) hasCTIDBlocks() bool {
-	return c.BlockStart != nil && c.BlockEnd != nil
-}
-
 // Job represents the overall snapshot job metadata
 type Job struct {
 	StartedAt       time.Time

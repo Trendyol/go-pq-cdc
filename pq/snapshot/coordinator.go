@@ -77,11 +77,9 @@ func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, curre
 	for _, table := range s.tables {
 		chunks := s.createTableChunksWithConn(ctx, s.exportSnapshotConn, slotName, table)
 
-		// Save chunks
-		for _, chunk := range chunks {
-			if err := s.saveChunk(ctx, chunk); err != nil {
-				return errors.Wrap(err, "save chunk")
-			}
+		// Save chunks using batch insert for performance (critical for 100k+ chunks)
+		if err := s.saveChunksBatch(ctx, chunks); err != nil {
+			return errors.Wrap(err, "save chunks batch")
 		}
 
 		totalChunks += len(chunks)
@@ -975,33 +973,42 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) m
 	return rowData
 }
 
-// saveChunk saves a chunk to the database (only INSERT, coordinator creates once)
-func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
+// chunkBatchSize defines how many chunks to insert in a single batch INSERT
+const chunkBatchSize = 1000
+
+// saveChunksBatch saves multiple chunks to the database using batch INSERT for better performance.
+// This is critical when there are 100k+ chunks - individual INSERTs would be too slow.
+func (s *Snapshotter) saveChunksBatch(ctx context.Context, chunks []*Chunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	// Process chunks in batches
+	for i := 0; i < len(chunks); i += chunkBatchSize {
+		end := i + chunkBatchSize
+		if end > len(chunks) {
+			end = len(chunks)
+		}
+		batch := chunks[i:end]
+
+		if err := s.insertChunkBatch(ctx, batch); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("insert chunk batch %d-%d", i, end))
+		}
+	}
+
+	return nil
+}
+
+// insertChunkBatch inserts a batch of chunks using multi-row INSERT
+func (s *Snapshotter) insertChunkBatch(ctx context.Context, chunks []*Chunk) error {
 	return s.retryDBOperation(ctx, func() error {
-		const NULL = "NULL"
-		rangeStart := NULL
-		if chunk.RangeStart != nil {
-			rangeStart = fmt.Sprintf("%d", *chunk.RangeStart)
+		if len(chunks) == 0 {
+			return nil
 		}
 
-		rangeEnd := NULL
-		if chunk.RangeEnd != nil {
-			rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
-		}
-
-		blockStart := NULL
-		if chunk.BlockStart != nil {
-			blockStart = fmt.Sprintf("%d", *chunk.BlockStart)
-		}
-
-		blockEnd := NULL
-		if chunk.BlockEnd != nil {
-			blockEnd = fmt.Sprintf("%d", *chunk.BlockEnd)
-		}
-
-		partitionStrategy := string(chunk.PartitionStrategy)
-		if partitionStrategy == "" {
-			partitionStrategy = string(PartitionStrategyOffset)
+		var valueStrings []string
+		for _, chunk := range chunks {
+			valueStrings = append(valueStrings, s.buildChunkValueString(chunk))
 		}
 
 		query := fmt.Sprintf(`
@@ -1009,26 +1016,58 @@ func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
 				slot_name, table_schema, table_name, chunk_index, 
 				chunk_start, chunk_size, range_start, range_end,
 				block_start, block_end, is_last_chunk, partition_strategy, status
-			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, %t, '%s', '%s')
-		`, chunksTableName,
-			chunk.SlotName,
-			chunk.TableSchema,
-			chunk.TableName,
-			chunk.ChunkIndex,
-			chunk.ChunkStart,
-			chunk.ChunkSize,
-			rangeStart,
-			rangeEnd,
-			blockStart,
-			blockEnd,
-			chunk.IsLastChunk,
-			partitionStrategy,
-			string(chunk.Status),
-		)
+			) VALUES %s
+		`, chunksTableName, strings.Join(valueStrings, ","))
 
 		_, err := s.execQuery(ctx, s.metadataConn, query)
 		return err
 	})
+}
+
+// buildChunkValueString builds a single VALUES(...) string for a chunk
+func (s *Snapshotter) buildChunkValueString(chunk *Chunk) string {
+	const NULL = "NULL"
+
+	rangeStart := NULL
+	if chunk.RangeStart != nil {
+		rangeStart = fmt.Sprintf("%d", *chunk.RangeStart)
+	}
+
+	rangeEnd := NULL
+	if chunk.RangeEnd != nil {
+		rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
+	}
+
+	blockStart := NULL
+	if chunk.BlockStart != nil {
+		blockStart = fmt.Sprintf("%d", *chunk.BlockStart)
+	}
+
+	blockEnd := NULL
+	if chunk.BlockEnd != nil {
+		blockEnd = fmt.Sprintf("%d", *chunk.BlockEnd)
+	}
+
+	partitionStrategy := string(chunk.PartitionStrategy)
+	if partitionStrategy == "" {
+		partitionStrategy = string(PartitionStrategyOffset)
+	}
+
+	return fmt.Sprintf("('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, %t, '%s', '%s')",
+		chunk.SlotName,
+		chunk.TableSchema,
+		chunk.TableName,
+		chunk.ChunkIndex,
+		chunk.ChunkStart,
+		chunk.ChunkSize,
+		rangeStart,
+		rangeEnd,
+		blockStart,
+		blockEnd,
+		chunk.IsLastChunk,
+		partitionStrategy,
+		string(chunk.Status),
+	)
 }
 
 func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Connection, schema, table string) (int64, error) {

@@ -18,6 +18,15 @@ const (
 	ChunkStatusCompleted  ChunkStatus = "completed"
 )
 
+// PartitionStrategy defines how a table is partitioned for snapshot
+type PartitionStrategy string
+
+const (
+	PartitionStrategyIntegerRange PartitionStrategy = "integer_range" // Single integer PK - MIN/MAX range
+	PartitionStrategyCTIDBlock    PartitionStrategy = "ctid_block"    // Physical block-based partitioning
+	PartitionStrategyOffset       PartitionStrategy = "offset"        // Fallback - LIMIT/OFFSET
+)
+
 // Chunk represents a unit of work for snapshot processing
 type Chunk struct {
 	ClaimedAt   *time.Time
@@ -25,15 +34,22 @@ type Chunk struct {
 	CompletedAt *time.Time
 	RangeEnd    *int64
 	RangeStart  *int64
-	Status      ChunkStatus
-	TableName   string
-	ClaimedBy   string
-	TableSchema string
-	SlotName    string
-	ID          int64
-	ChunkIndex  int
-	ChunkStart  int64
-	ChunkSize   int64
+
+	// CTID block partitioning fields
+	BlockStart *int64
+	BlockEnd   *int64 // nil for last chunk (no upper bound to catch new rows)
+
+	Status            ChunkStatus
+	PartitionStrategy PartitionStrategy
+	TableName         string
+	ClaimedBy         string
+	TableSchema       string
+	SlotName          string
+	ID                int64
+	ChunkIndex        int
+	ChunkStart        int64
+	ChunkSize         int64
+	IsLastChunk       bool // True for the last chunk of a table (no upper bound for CTID)
 }
 
 func (c *Chunk) hasRangeBounds() bool {

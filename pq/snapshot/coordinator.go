@@ -45,14 +45,15 @@ func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string
 		// Fall through to create fresh metadata
 	}
 
-	// Create metadata and chunks (committed to DB)
-	if err := s.createMetadata(ctx, slotName, currentLSN); err != nil {
-		return errors.Wrap(err, "create metadata")
-	}
-
-	// Export snapshot (keeps transaction open for workers)
+	// IMPORTANT: Export snapshot FIRST, then create chunks within same snapshot view
 	if err := s.exportSnapshotTransaction(ctx); err != nil {
 		return errors.Wrap(err, "export snapshot")
+	}
+
+	// Create metadata and chunks using the snapshot connection
+	// This guarantees chunk boundaries match the exported snapshot
+	if err := s.createMetadata(ctx, slotName, currentLSN); err != nil {
+		return errors.Wrap(err, "create metadata")
 	}
 
 	logger.Debug("[coordinator] initialization complete")
@@ -63,25 +64,22 @@ func (s *Snapshotter) initializeCoordinator(ctx context.Context, slotName string
 func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, currentLSN pq.LSN) error {
 	logger.Info("[coordinator] creating metadata and chunks")
 
-	// Create job metadata with placeholder snapshot ID
 	job := &Job{
 		SlotName:    slotName,
-		SnapshotID:  "PENDING", // Will be updated after snapshot export
+		SnapshotID:  s.cachedSnapshotID,
 		SnapshotLSN: currentLSN,
 		StartedAt:   time.Now().UTC(),
 		Completed:   false,
 	}
 
-	// Create chunks for each table
+	// Create chunks for each table using snapshot-consistent connection
 	totalChunks := 0
 	for _, table := range s.tables {
-		chunks := s.createTableChunks(ctx, slotName, table)
+		chunks := s.createTableChunksWithConn(ctx, s.exportSnapshotConn, slotName, table)
 
-		// Save chunks
-		for _, chunk := range chunks {
-			if err := s.saveChunk(ctx, chunk); err != nil {
-				return errors.Wrap(err, "save chunk")
-			}
+		// Save chunks using batch insert for performance (critical for 100k+ chunks)
+		if err := s.saveChunksBatch(ctx, chunks); err != nil {
+			return errors.Wrap(err, "save chunks batch")
 		}
 
 		totalChunks += len(chunks)
@@ -103,6 +101,7 @@ func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, curre
 
 // exportSnapshotTransaction begins a REPEATABLE READ transaction and exports snapshot ID
 // This transaction is kept OPEN for workers to use the same snapshot
+// The snapshot ID is cached and will be used when creating job metadata
 func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 	exportSnapshotConn, err := pq.NewConnection(ctx, s.dsn)
 	if err != nil {
@@ -128,21 +127,17 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 
 	go s.snapshotTransactionKeepalive(ctx, exportSnapshotConn)
 
-	// Export snapshot
+	// Export snapshot and cache the ID for later use in createMetadata
 	snapshotID, err := s.exportSnapshot(ctx, exportSnapshotConn)
 	if err != nil {
 		_ = s.execSQL(ctx, exportSnapshotConn, "ROLLBACK")
 		return errors.Wrap(err, "export snapshot")
 	}
 
+	// Cache snapshot ID - will be used when creating job metadata
+	s.cachedSnapshotID = snapshotID
+
 	logger.Info("[coordinator] snapshot exported", "snapshotID", snapshotID)
-
-	// Update job with real snapshot ID
-	if err := s.updateJobSnapshotID(ctx, snapshotID); err != nil {
-		_ = s.execSQL(ctx, exportSnapshotConn, "ROLLBACK")
-		return errors.Wrap(err, "update job snapshot ID")
-	}
-
 	logger.Info("[coordinator] snapshot transaction ready for workers")
 	return nil
 }
@@ -186,24 +181,6 @@ func (s *Snapshotter) cleanupJob(ctx context.Context, slotName string) error {
 		}
 
 		logger.Info("[metadata] job cleaned up", "slotName", slotName)
-		return nil
-	})
-}
-
-// updateJobSnapshotID updates the snapshot ID in the job metadata (for initial creation)
-func (s *Snapshotter) updateJobSnapshotID(ctx context.Context, snapshotID string) error {
-	return s.retryDBOperation(ctx, func() error {
-		query := fmt.Sprintf(`
-			UPDATE %s
-			SET snapshot_id = '%s'
-			WHERE snapshot_id = 'PENDING'
-		`, jobTableName, snapshotID)
-
-		if _, err := s.execQuery(ctx, s.metadataConn, query); err != nil {
-			return errors.Wrap(err, "update snapshot ID")
-		}
-
-		logger.Debug("[metadata] snapshot ID updated", "snapshotID", snapshotID)
 		return nil
 	})
 }
@@ -288,6 +265,10 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				chunk_size BIGINT NOT NULL,
 				range_start BIGINT,
 				range_end BIGINT,
+				block_start BIGINT,
+				block_end BIGINT,
+				is_last_chunk BOOLEAN NOT NULL DEFAULT FALSE,
+				partition_strategy TEXT NOT NULL DEFAULT 'offset',
 				status TEXT NOT NULL DEFAULT 'pending',
 				claimed_by TEXT,
 				claimed_at TIMESTAMP,
@@ -413,9 +394,21 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 }
 
 func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+	switch chunk.PartitionStrategy {
+	case PartitionStrategyIntegerRange:
+		return s.buildIntegerRangeQuery(chunk, orderByClause, pkColumns)
+	case PartitionStrategyCTIDBlock:
+		return s.buildCTIDBlockQuery(chunk)
+	case PartitionStrategyOffset:
+		fallthrough
+	default:
+		return s.buildOffsetQuery(chunk, orderByClause)
+	}
+}
+
+func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
-
 		return fmt.Sprintf(
 			"SELECT * FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
 			chunk.TableSchema,
@@ -428,7 +421,39 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 			chunk.ChunkSize,
 		)
 	}
+	// Fallback to offset
+	return s.buildOffsetQuery(chunk, orderByClause)
+}
 
+func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk) string {
+	// Empty table or single chunk without block info - select all
+	if chunk.BlockStart == nil {
+		return fmt.Sprintf("SELECT * FROM %s.%s", chunk.TableSchema, chunk.TableName)
+	}
+
+	// Last chunk (BlockEnd is nil): no upper bound to catch rows added after metadata creation
+	// This prevents missing rows that were inserted between chunk creation and snapshot export
+	if chunk.BlockEnd == nil || chunk.IsLastChunk {
+		return fmt.Sprintf(
+			"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid",
+			chunk.TableSchema,
+			chunk.TableName,
+			*chunk.BlockStart,
+		)
+	}
+
+	// Normal chunk: use bounded CTID range [BlockStart, BlockEnd)
+	// ctid format: (block_number, tuple_index)
+	return fmt.Sprintf(
+		"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid",
+		chunk.TableSchema,
+		chunk.TableName,
+		*chunk.BlockStart,
+		*chunk.BlockEnd,
+	)
+}
+
+func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string) string {
 	return fmt.Sprintf(
 		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
 		chunk.TableSchema,
@@ -508,25 +533,93 @@ func cloneStringSlice(in []string) []string {
 	return out
 }
 
-// createTableChunks divides a table into chunks
-func (s *Snapshotter) createTableChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
+// createTableChunksWithConn divides a table into chunks using the specified connection.
+// If user specified a SnapshotPartitionStrategy in table config, use that directly.
+// Otherwise, auto-detect:
+//   - Priority 1: Integer Range (fastest for sequential integer PKs)
+//   - Priority 2: CTID Block (fast for any table)
+//   - Priority 3: Offset (slow fallback)
+func (s *Snapshotter) createTableChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
+	// Check if user explicitly specified a partition strategy
+	if table.SnapshotPartitionStrategy != publication.SnapshotPartitionStrategyAuto {
+		return s.createChunksWithStrategyConn(ctx, conn, slotName, table, table.SnapshotPartitionStrategy)
+	}
+
+	// Auto-detect strategy based on PK type
+	return s.createChunksAutoDetectConn(ctx, conn, slotName, table)
+}
+
+// createChunksWithStrategyConn creates chunks using the user-specified strategy with given connection
+func (s *Snapshotter) createChunksWithStrategyConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table, strategy publication.SnapshotPartitionStrategy) []*Chunk {
+	logger.Info("[chunk] using user-specified partition strategy",
+		"table", table.Name,
+		"strategy", string(strategy))
+
+	switch strategy {
+	case publication.SnapshotPartitionStrategyIntegerRange:
+		pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
+		if err != nil {
+			logger.Warn("[chunk] failed to inspect primary key for integer_range strategy",
+				"table", table.Name, "error", err)
+			return s.createOffsetChunksWithConn(ctx, conn, slotName, table)
+		}
+		if !ok {
+			logger.Warn("[chunk] integer_range strategy requested but no single integer PK found, falling back to CTID",
+				"table", table.Name)
+			return s.createCTIDBlockChunksWithConn(ctx, conn, slotName, table)
+		}
+		if rangeChunks := s.createRangeChunksWithConn(ctx, conn, slotName, table, pkColumn); len(rangeChunks) > 0 {
+			return rangeChunks
+		}
+		logger.Warn("[chunk] integer_range failed, falling back to CTID", "table", table.Name)
+		return s.createCTIDBlockChunksWithConn(ctx, conn, slotName, table)
+
+	case publication.SnapshotPartitionStrategyCTIDBlock:
+		if ctidChunks := s.createCTIDBlockChunksWithConn(ctx, conn, slotName, table); len(ctidChunks) > 0 {
+			return ctidChunks
+		}
+		logger.Warn("[chunk] ctid_block strategy failed, falling back to OFFSET", "table", table.Name)
+		return s.createOffsetChunksWithConn(ctx, conn, slotName, table)
+
+	case publication.SnapshotPartitionStrategyOffset:
+		return s.createOffsetChunksWithConn(ctx, conn, slotName, table)
+
+	case publication.SnapshotPartitionStrategyAuto:
+		fallthrough
+	default:
+		logger.Warn("[chunk] unknown partition strategy, using auto-detect",
+			"table", table.Name, "strategy", string(strategy))
+		return s.createChunksAutoDetectConn(ctx, conn, slotName, table)
+	}
+}
+
+// createChunksAutoDetectConn auto-detects the best strategy based on PK type with given connection
+func (s *Snapshotter) createChunksAutoDetectConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
+	// Strategy 1: Single integer PK - use range partitioning (fastest for sequential integer PKs)
 	pkColumn, ok, err := s.getSingleIntegerPrimaryKey(ctx, table)
 	if err != nil {
 		logger.Warn("[chunk] failed to inspect primary key", "table", table.Name, "error", err)
 	}
 
 	if ok {
-		if rangeChunks := s.createRangeChunks(ctx, slotName, table, pkColumn); len(rangeChunks) > 0 {
+		if rangeChunks := s.createRangeChunksWithConn(ctx, conn, slotName, table, pkColumn); len(rangeChunks) > 0 {
 			return rangeChunks
 		}
-		logger.Warn("[chunk] range chunking unavailable, falling back to OFFSET", "table", table.Name)
+		logger.Warn("[chunk] range chunking unavailable, trying CTID", "table", table.Name)
 	}
 
-	return s.createOffsetChunks(ctx, slotName, table)
+	// Strategy 2: CTID block partitioning (works for any table, very fast)
+	if ctidChunks := s.createCTIDBlockChunksWithConn(ctx, conn, slotName, table); len(ctidChunks) > 0 {
+		return ctidChunks
+	}
+
+	// Strategy 3: Fallback to offset-based (slow but always works)
+	logger.Warn("[chunk] CTID partitioning unavailable, falling back to OFFSET", "table", table.Name)
+	return s.createOffsetChunksWithConn(ctx, conn, slotName, table)
 }
 
-func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, table publication.Table, pkColumn string) []*Chunk {
-	minValue, maxValue, ok, err := s.getPrimaryKeyBounds(ctx, table, pkColumn)
+func (s *Snapshotter) createRangeChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table, pkColumn string) []*Chunk {
+	minValue, maxValue, ok, err := s.getPrimaryKeyBoundsWithConn(ctx, conn, table, pkColumn)
 	if err != nil {
 		logger.Warn("[chunk] failed to read primary key bounds", "table", table.Name, "error", err)
 		return nil
@@ -536,13 +629,14 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		// Empty table, create single chunk to keep accounting simple
 		return []*Chunk{
 			{
-				SlotName:    slotName,
-				TableSchema: table.Schema,
-				TableName:   table.Name,
-				ChunkIndex:  0,
-				ChunkStart:  0,
-				ChunkSize:   s.config.ChunkSize,
-				Status:      ChunkStatusPending,
+				SlotName:          slotName,
+				TableSchema:       table.Schema,
+				TableName:         table.Name,
+				ChunkIndex:        0,
+				ChunkStart:        0,
+				ChunkSize:         s.config.ChunkSize,
+				Status:            ChunkStatusPending,
+				PartitionStrategy: PartitionStrategyIntegerRange,
 			},
 		}
 	}
@@ -563,20 +657,21 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 		endValue := rangeEnd
 
 		chunk := &Chunk{
-			SlotName:    slotName,
-			TableSchema: table.Schema,
-			TableName:   table.Name,
-			ChunkIndex:  int(i),
-			ChunkStart:  i * chunkSize,
-			ChunkSize:   chunkSize,
-			Status:      ChunkStatusPending,
-			RangeStart:  &startValue,
-			RangeEnd:    &endValue,
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        int(i),
+			ChunkStart:        i * chunkSize,
+			ChunkSize:         chunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyIntegerRange,
+			RangeStart:        &startValue,
+			RangeEnd:          &endValue,
 		}
 		chunks = append(chunks, chunk)
 	}
 
-	logger.Debug("[chunk] range chunks created",
+	logger.Info("[chunk] range chunks created",
 		"table", table.Name,
 		"chunkSize", chunkSize,
 		"numChunks", numChunks,
@@ -586,8 +681,133 @@ func (s *Snapshotter) createRangeChunks(ctx context.Context, slotName string, ta
 	return chunks
 }
 
-func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, table publication.Table) []*Chunk {
-	rowCount, err := s.getTableRawCount(ctx, table.Schema, table.Name)
+// createCTIDBlockChunksWithConn creates chunks based on PostgreSQL physical block locations
+func (s *Snapshotter) createCTIDBlockChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
+	// Get total blocks in table using the provided connection
+	// When using snapshot connection, this sees the same data that workers will process
+	query := fmt.Sprintf(
+		"SELECT COALESCE((pg_relation_size(to_regclass('%s.%s')) / current_setting('block_size')::int)::bigint, 0)",
+		table.Schema, table.Name,
+	)
+
+	results, err := s.execQuery(ctx, conn, query)
+	if err != nil {
+		logger.Warn("[chunk] failed to get block count", "table", table.Name, "error", err)
+		return nil
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return nil
+	}
+
+	totalBlocks, err := strconv.ParseInt(string(results[0].Rows[0][0]), 10, 64)
+	if err != nil {
+		logger.Warn("[chunk] failed to parse block count", "table", table.Name, "error", err)
+		return nil
+	}
+
+	// Empty table - create single chunk
+	if totalBlocks == 0 {
+		return []*Chunk{{
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        0,
+			ChunkStart:        0,
+			ChunkSize:         s.config.ChunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyCTIDBlock,
+		}}
+	}
+
+	// Estimate rows per block to calculate blocks per chunk
+	estimatedRowsPerBlock := s.estimateRowsPerBlockWithConn(ctx, conn, table)
+	if estimatedRowsPerBlock < 1 {
+		estimatedRowsPerBlock = 100 // Safe default
+	}
+
+	blocksPerChunk := s.config.ChunkSize / estimatedRowsPerBlock
+	if blocksPerChunk < 1 {
+		blocksPerChunk = 1
+	}
+
+	numChunks := (totalBlocks + blocksPerChunk - 1) / blocksPerChunk
+	chunks := make([]*Chunk, 0, numChunks)
+
+	for i := int64(0); i < numChunks; i++ {
+		blockStart := i * blocksPerChunk
+		blockEnd := blockStart + blocksPerChunk
+		isLastChunk := (i == numChunks-1)
+
+		// For the last chunk, we set BlockEnd to nil to avoid missing rows
+		// that were added between metadata creation and snapshot export.
+		// Query will be: ctid >= '(blockStart,0)'::tid (no upper bound)
+		var blockEndPtr *int64
+		if !isLastChunk {
+			if blockEnd > totalBlocks {
+				blockEnd = totalBlocks
+			}
+			blockEndPtr = &blockEnd
+		}
+		// For last chunk, blockEndPtr remains nil
+
+		chunk := &Chunk{
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        int(i),
+			ChunkStart:        blockStart, // Store block start for ordering
+			ChunkSize:         s.config.ChunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyCTIDBlock,
+			BlockStart:        &blockStart,
+			BlockEnd:          blockEndPtr,
+			IsLastChunk:       isLastChunk,
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	logger.Info("[chunk] CTID block chunks created",
+		"table", table.Name,
+		"totalBlocks", totalBlocks,
+		"blocksPerChunk", blocksPerChunk,
+		"numChunks", len(chunks),
+		"estimatedRowsPerBlock", estimatedRowsPerBlock,
+		"lastChunkHasNoUpperBound", true,
+	)
+	return chunks
+}
+
+// estimateRowsPerBlockWithConn estimates average rows per block using specified connection
+func (s *Snapshotter) estimateRowsPerBlockWithConn(ctx context.Context, conn pq.Connection, table publication.Table) int64 {
+	query := fmt.Sprintf(`
+		SELECT CASE 
+			WHEN relpages > 0 THEN (reltuples / relpages)::bigint
+			ELSE 100
+		END
+		FROM pg_class
+		WHERE oid = '%s.%s'::regclass
+	`, table.Schema, table.Name)
+
+	results, err := s.execQuery(ctx, conn, query)
+	if err != nil {
+		return 100 // Default estimate
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return 100
+	}
+
+	rowsPerBlock, err := strconv.ParseInt(string(results[0].Rows[0][0]), 10, 64)
+	if err != nil || rowsPerBlock < 1 {
+		return 100
+	}
+
+	return rowsPerBlock
+}
+
+func (s *Snapshotter) createOffsetChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
+	rowCount, err := s.getTableRawCountWithConn(ctx, conn, table.Schema, table.Name)
 	if err != nil {
 		logger.Warn("[chunk] failed to estimate row count, using single chunk", "table", table.Name, "error", err)
 		rowCount = 0
@@ -599,13 +819,14 @@ func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, t
 	if rowCount == 0 {
 		return []*Chunk{
 			{
-				SlotName:    slotName,
-				TableSchema: table.Schema,
-				TableName:   table.Name,
-				ChunkIndex:  0,
-				ChunkStart:  0,
-				ChunkSize:   chunkSize,
-				Status:      ChunkStatusPending,
+				SlotName:          slotName,
+				TableSchema:       table.Schema,
+				TableName:         table.Name,
+				ChunkIndex:        0,
+				ChunkStart:        0,
+				ChunkSize:         chunkSize,
+				Status:            ChunkStatusPending,
+				PartitionStrategy: PartitionStrategyOffset,
 			},
 		}
 	}
@@ -617,13 +838,14 @@ func (s *Snapshotter) createOffsetChunks(ctx context.Context, slotName string, t
 	for i := int64(0); i < numChunks; i++ {
 		// Last chunk may have fewer rows (handles estimate vs actual difference)
 		chunk := &Chunk{
-			SlotName:    slotName,
-			TableSchema: table.Schema,
-			TableName:   table.Name,
-			ChunkIndex:  int(i),
-			ChunkStart:  i * chunkSize,
-			ChunkSize:   chunkSize,
-			Status:      ChunkStatusPending,
+			SlotName:          slotName,
+			TableSchema:       table.Schema,
+			TableName:         table.Name,
+			ChunkIndex:        int(i),
+			ChunkStart:        i * chunkSize,
+			ChunkSize:         chunkSize,
+			Status:            ChunkStatusPending,
+			PartitionStrategy: PartitionStrategyOffset,
 		}
 		chunks = append(chunks, chunk)
 	}
@@ -689,13 +911,13 @@ func isIntegerType(dataType string) bool {
 	}
 }
 
-func (s *Snapshotter) getPrimaryKeyBounds(ctx context.Context, table publication.Table, pkColumn string) (int64, int64, bool, error) {
+func (s *Snapshotter) getPrimaryKeyBoundsWithConn(ctx context.Context, conn pq.Connection, table publication.Table, pkColumn string) (int64, int64, bool, error) {
 	query := fmt.Sprintf(`
 		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
 		FROM %s.%s
 	`, pkColumn, pkColumn, table.Schema, table.Name)
 
-	results, err := s.execQuery(ctx, s.metadataConn, query)
+	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
 		return 0, 0, false, errors.Wrap(err, "query primary key bounds")
 	}
@@ -753,46 +975,108 @@ func (s *Snapshotter) parseRow(fields []pgconn.FieldDescription, row [][]byte) m
 	return rowData
 }
 
-// saveChunk saves a chunk to the database (only INSERT, coordinator creates once)
-func (s *Snapshotter) saveChunk(ctx context.Context, chunk *Chunk) error {
+// chunkBatchSize defines how many chunks to insert in a single batch INSERT
+const chunkBatchSize = 1000
+
+// saveChunksBatch saves multiple chunks to the database using batch INSERT for better performance.
+// This is critical when there are 100k+ chunks - individual INSERTs would be too slow.
+func (s *Snapshotter) saveChunksBatch(ctx context.Context, chunks []*Chunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	// Process chunks in batches
+	for i := 0; i < len(chunks); i += chunkBatchSize {
+		end := i + chunkBatchSize
+		if end > len(chunks) {
+			end = len(chunks)
+		}
+		batch := chunks[i:end]
+
+		if err := s.insertChunkBatch(ctx, batch); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("insert chunk batch %d-%d", i, end))
+		}
+	}
+
+	return nil
+}
+
+// insertChunkBatch inserts a batch of chunks using multi-row INSERT
+func (s *Snapshotter) insertChunkBatch(ctx context.Context, chunks []*Chunk) error {
 	return s.retryDBOperation(ctx, func() error {
-		rangeStart := "NULL"
-		if chunk.RangeStart != nil {
-			rangeStart = fmt.Sprintf("%d", *chunk.RangeStart)
+		if len(chunks) == 0 {
+			return nil
 		}
 
-		rangeEnd := "NULL"
-		if chunk.RangeEnd != nil {
-			rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
+		var valueStrings []string
+		for _, chunk := range chunks {
+			valueStrings = append(valueStrings, s.buildChunkValueString(chunk))
 		}
 
 		query := fmt.Sprintf(`
 			INSERT INTO %s (
 				slot_name, table_schema, table_name, chunk_index, 
-				chunk_start, chunk_size, range_start, range_end, status
-			) VALUES ('%s', '%s', '%s', %d, %d, %d, %s, %s, '%s')
-		`, chunksTableName,
-			chunk.SlotName,
-			chunk.TableSchema,
-			chunk.TableName,
-			chunk.ChunkIndex,
-			chunk.ChunkStart,
-			chunk.ChunkSize,
-			rangeStart,
-			rangeEnd,
-			string(chunk.Status),
-		)
+				chunk_start, chunk_size, range_start, range_end,
+				block_start, block_end, is_last_chunk, partition_strategy, status
+			) VALUES %s
+		`, chunksTableName, strings.Join(valueStrings, ","))
 
 		_, err := s.execQuery(ctx, s.metadataConn, query)
 		return err
 	})
 }
 
-func (s *Snapshotter) getTableRawCount(ctx context.Context, schema, table string) (int64, error) {
+// buildChunkValueString builds a single VALUES(...) string for a chunk
+func (s *Snapshotter) buildChunkValueString(chunk *Chunk) string {
+	const NULL = "NULL"
+
+	rangeStart := NULL
+	if chunk.RangeStart != nil {
+		rangeStart = fmt.Sprintf("%d", *chunk.RangeStart)
+	}
+
+	rangeEnd := NULL
+	if chunk.RangeEnd != nil {
+		rangeEnd = fmt.Sprintf("%d", *chunk.RangeEnd)
+	}
+
+	blockStart := NULL
+	if chunk.BlockStart != nil {
+		blockStart = fmt.Sprintf("%d", *chunk.BlockStart)
+	}
+
+	blockEnd := NULL
+	if chunk.BlockEnd != nil {
+		blockEnd = fmt.Sprintf("%d", *chunk.BlockEnd)
+	}
+
+	partitionStrategy := string(chunk.PartitionStrategy)
+	if partitionStrategy == "" {
+		partitionStrategy = string(PartitionStrategyOffset)
+	}
+
+	return fmt.Sprintf("('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, %t, '%s', '%s')",
+		chunk.SlotName,
+		chunk.TableSchema,
+		chunk.TableName,
+		chunk.ChunkIndex,
+		chunk.ChunkStart,
+		chunk.ChunkSize,
+		rangeStart,
+		rangeEnd,
+		blockStart,
+		blockEnd,
+		chunk.IsLastChunk,
+		partitionStrategy,
+		string(chunk.Status),
+	)
+}
+
+func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Connection, schema, table string) (int64, error) {
 	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
 
-	results, err := s.execQuery(ctx, s.metadataConn, query)
+	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
 		return 0, errors.Wrap(err, "table row count")
 	}

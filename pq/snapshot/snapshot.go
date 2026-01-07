@@ -32,11 +32,12 @@ type Snapshotter struct {
 	healthcheckConn    pq.Connection
 	exportSnapshotConn pq.Connection
 	metric             metric.Metric
-	connectionPool     *ConnectionPool
-	decoderCache       *DecoderCache
 	typeMap            *pgtype.Map
+	decoderCache       *DecoderCache
+	connectionPool     *ConnectionPool
 	orderByCache       map[string]orderByCacheEntry
 	dsn                string
+	cachedSnapshotID   string
 	tables             publication.Tables
 	config             config.SnapshotConfig
 	orderByMu          sync.RWMutex

@@ -14,6 +14,7 @@ ensuring low resource consumption and high performance.
 ✨ **Key Highlights:**
 - **Zero Data Loss**: Consistent point-in-time snapshot using PostgreSQL's `pg_export_snapshot()`
 - **Chunk-Based Processing**: Memory-efficient processing of large tables
+- **Smart Partitioning**: Auto-selects optimal strategy (Integer Range, CTID Block, or Offset)
 - **Multi-Instance Support**: Parallel processing across multiple instances
 - **Crash Recovery**: Automatic resume from failures
 - **No Duplicates**: Seamless transition from snapshot to CDC
@@ -24,20 +25,21 @@ ensuring low resource consumption and high performance.
 ### Contents
 
 - [go-pq-cdc   ](#go-pq-cdc---)
-	- [Snapshot Feature](#-new-snapshot-feature)
-    - [Contents](#contents)
-    - [Why?](#why)
-    - [Usage](#usage)
-    - [Examples](#examples)
-    - [Availability](#availability)
-    - [TOAST Handling](#toast-handling)
-    - [Heartbeat-based WAL Protection](#heartbeat-based-wal-protection)
-    - [Configuration](#configuration)
-    - [API](#api)
-    - [Exposed Metrics](#exposed-metrics)
-    - [Grafana Dashboard](#grafana-dashboard)
-    - [Compatibility](#compatibility)
-    - [Breaking Changes](#breaking-changes)
+	- [Snapshot Feature](#snapshot-feature)
+		- [Contents](#contents)
+		- [Why?](#why)
+		- [Usage](#usage)
+		- [Examples](#examples)
+		- [Availability](#availability)
+		- [TOAST Handling](#toast-handling)
+		- [Heartbeat-based WAL Protection](#heartbeat-based-wal-protection)
+			- [Replica Identity Requirement](#replica-identity-requirement)
+		- [Configuration](#configuration)
+		- [API](#api)
+		- [Exposed Metrics](#exposed-metrics)
+		- [Grafana Dashboard](#grafana-dashboard)
+		- [Compatibility](#compatibility)
+		- [Breaking Changes](#breaking-changes)
 
 ### Why?
 
@@ -226,6 +228,7 @@ This requires setting the table's replica identity to FULL:
 | `publication.tables[i].name`            |  string  |   yes    |    -    | Set the data change captured table name                                                               | Must be a valid table name in the specified database.                                                                                              |
 | `publication.tables[i].replicaIdentity` |  string  |   yes    |    -    | Set the data change captured table replica identity [`FULL`, `DEFAULT`]                               | **FULL:** Captures all columns when a row is updated or deleted. <br> **DEFAULT:** Captures only the primary key when a row is updated or deleted. |
 | `publication.tables[i].schema`          |  string  |    no    | public  | Set the data change captured table schema name                                                        | Must be a valid table name in the specified database.                                                                                              |
+| `publication.tables[i].snapshotPartitionStrategy` |  string  |    no    | auto  | Override partition strategy for snapshot                                                              | **auto:** Auto-detect best strategy. **integer_range:** Sequential integer PKs. **ctid_block:** String/UUID/hash PKs. **offset:** Slow fallback. |
 | `slot.createIfNotExists`                |   bool   |    no    |    -    | Create replication slot if not exists. Otherwise, return `replication slot is not exists` error.      |                                                                                                                                                    |
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive.                                                                                                                  |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |

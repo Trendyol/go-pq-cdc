@@ -584,6 +584,8 @@ func (s *Snapshotter) createChunksWithStrategyConn(ctx context.Context, conn pq.
 	case publication.SnapshotPartitionStrategyOffset:
 		return s.createOffsetChunksWithConn(ctx, conn, slotName, table)
 
+	case publication.SnapshotPartitionStrategyAuto:
+		fallthrough
 	default:
 		logger.Warn("[chunk] unknown partition strategy, using auto-detect",
 			"table", table.Name, "strategy", string(strategy))

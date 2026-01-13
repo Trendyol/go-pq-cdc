@@ -94,6 +94,15 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
+	// Create heartbeat table BEFORE publication setup (if configured)
+	// This ensures the table exists when publication tries to set replica identity
+	if cfg.IsHeartbeatEnabled() {
+		if err := ensureHeartbeatTableExists(ctx, conn, cfg); err != nil {
+			conn.Close(ctx)
+			return nil, errors.Wrap(err, "create heartbeat table")
+		}
+	}
+
 	publicationInfo, err := initializePublication(ctx, cfg, conn)
 	if err != nil {
 		return nil, err
@@ -120,7 +129,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	sl := slot.NewSlot(cfg.ReplicationDSN(), cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
 	var heartbeatConn pq.Connection
-	if cfg.Heartbeat.Enabled {
+	if cfg.IsHeartbeatEnabled() {
 		heartbeatConn, err = pq.NewConnection(ctx, cfg.DSN())
 		if err != nil {
 			return nil, errors.Wrap(err, "create heartbeat connection")
@@ -197,6 +206,46 @@ func initializePublication(ctx context.Context, cfg config.Config, conn pq.Conne
 		return nil, err
 	}
 	return pub.Create(ctx)
+}
+
+// ensureHeartbeatTableExists creates the heartbeat table if it doesn't exist.
+// This is called during connector initialization, before publication setup.
+func ensureHeartbeatTableExists(ctx context.Context, conn pq.Connection, cfg config.Config) error {
+	schema := cfg.Heartbeat.Table.Schema
+	table := cfg.Heartbeat.Table.Name
+
+	createTableSQL := fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.%s (
+			id INTEGER PRIMARY KEY DEFAULT 1,
+			last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT %s_single_row CHECK (id = 1)
+		)`, schema, table, table)
+
+	insertRowSQL := fmt.Sprintf(`
+		INSERT INTO %s.%s (id) VALUES (1) ON CONFLICT DO NOTHING`, schema, table)
+
+	// Execute CREATE TABLE
+	resultReader := conn.Exec(ctx, createTableSQL)
+	if _, err := resultReader.ReadAll(); err != nil {
+		_ = resultReader.Close()
+		return fmt.Errorf("create heartbeat table failed: %w", err)
+	}
+	if err := resultReader.Close(); err != nil {
+		return fmt.Errorf("close create table result: %w", err)
+	}
+
+	// Execute INSERT initial row
+	resultReader = conn.Exec(ctx, insertRowSQL)
+	if _, err := resultReader.ReadAll(); err != nil {
+		_ = resultReader.Close()
+		return fmt.Errorf("insert heartbeat row failed: %w", err)
+	}
+	if err := resultReader.Close(); err != nil {
+		return fmt.Errorf("close insert result: %w", err)
+	}
+
+	logger.Info("heartbeat table created", "table", schema+"."+table)
+	return nil
 }
 
 // initializeSnapshot creates snapshot if enabled
@@ -277,7 +326,7 @@ func (c *connector) Start(ctx context.Context) {
 	go c.slot.Metrics(ctx)
 
 	// Start heartbeat loop only for CDC mode when enabled
-	if c.cfg.Heartbeat.Enabled {
+	if c.cfg.IsHeartbeatEnabled() {
 		go c.runHeartbeat(ctx)
 	}
 
@@ -609,7 +658,7 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 func (c *connector) runHeartbeat(ctx context.Context) {
 	logger.Debug("heartbeat loop started",
 		"interval", c.cfg.Heartbeat.Interval,
-		"enabled", c.cfg.Heartbeat.Enabled)
+		"table", c.cfg.Heartbeat.Table.Schema+"."+c.cfg.Heartbeat.Table.Name)
 
 	ticker := time.NewTicker(c.cfg.Heartbeat.Interval)
 	defer ticker.Stop()
@@ -630,7 +679,7 @@ func (c *connector) runHeartbeat(ctx context.Context) {
 }
 
 // execHeartbeat ensures there's an open heartbeat connection and executes the
-// configured heartbeat query using that connection. It serializes all access to
+// auto-generated heartbeat UPDATE query. It serializes all access to
 // heartbeatConn so that Close() and runHeartbeat() never touch the same
 // pgx connection concurrently.
 func (c *connector) execHeartbeat(ctx context.Context) error {
@@ -646,7 +695,8 @@ func (c *connector) execHeartbeat(ctx context.Context) error {
 		c.heartbeatConn = conn
 	}
 
-	resultReader := c.heartbeatConn.Exec(ctx, c.cfg.Heartbeat.Query)
+	query := c.heartbeatQuery()
+	resultReader := c.heartbeatConn.Exec(ctx, query)
 	if resultReader == nil {
 		return fmt.Errorf("heartbeat exec returned nil resultReader")
 	}
@@ -665,6 +715,12 @@ func (c *connector) execHeartbeat(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// heartbeatQuery returns the auto-generated UPDATE query for heartbeat.
+func (c *connector) heartbeatQuery() string {
+	return fmt.Sprintf("UPDATE %s.%s SET last_heartbeat = NOW() WHERE id = 1",
+		c.cfg.Heartbeat.Table.Schema, c.cfg.Heartbeat.Table.Name)
 }
 
 // closeHeartbeatConn safely closes the heartbeat connection if it exists.

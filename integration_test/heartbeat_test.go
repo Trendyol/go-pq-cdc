@@ -33,16 +33,7 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Create heartbeat table in cdc database
-	createHeartbeatTableSQL := `
-		CREATE TABLE IF NOT EXISTS public.heartbeat_events (
-			id  bigserial PRIMARY KEY,
-			txt text,
-			ts  timestamptz DEFAULT now()
-		);`
-	if !assert.NoError(t, pgExec(ctx, postgresConn, createHeartbeatTableSQL)) {
-		t.FailNow()
-	}
+	// Note: heartbeat table is auto-created by the library, no need to create it manually
 
 	// Extend publication with heartbeat table so that heartbeat changes are part of CDC stream
 	cdcCfg.Publication.Tables = append(cdcCfg.Publication.Tables,
@@ -53,10 +44,12 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 		},
 	)
 
-	// Enable heartbeat to periodically insert into heartbeat_events
+	// Enable heartbeat by specifying the table (library auto-creates it)
 	cdcCfg.Heartbeat = config.HeartbeatConfig{
-		Enabled:  true,
-		Query:    `INSERT INTO public.heartbeat_events(txt) VALUES ('hb')`,
+		Table: publication.Table{
+			Name:   "heartbeat_events",
+			Schema: "public",
+		},
 		Interval: 2 * time.Second,
 	}
 

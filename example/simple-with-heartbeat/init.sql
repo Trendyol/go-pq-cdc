@@ -1,8 +1,4 @@
-CREATE TABLE public.test_heartbeat_table (
-    id   bigserial primary key,
-    txt  text,
-    ts   timestamptz default now()
-);
+-- Note: test_heartbeat_table is auto-created by the library
 
 CREATE TABLE public.users (
     id serial PRIMARY KEY,

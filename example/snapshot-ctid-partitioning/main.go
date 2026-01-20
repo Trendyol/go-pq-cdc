@@ -15,13 +15,21 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
 )
 
-// This example demonstrates CTID block partitioning for tables with string primary keys.
-// CTID partitioning is used when:
+// This example demonstrates CTID block partitioning and explicit partition strategy configuration.
+//
+// CTID partitioning is automatically used when:
 // 1. Table has non-integer primary key (string, UUID, composite)
 // 2. Table has no primary key
 //
-// CTID uses PostgreSQL's physical block locations for efficient partitioning,
-// avoiding slow OFFSET-based queries.
+// You can also EXPLICITLY specify the partition strategy using SnapshotPartitionStrategy:
+// - "ctid_block": Force CTID block partitioning (useful for hash-based integer PKs)
+// - "integer_range": Force integer range partitioning (default for sequential integer PKs)
+// - "offset": Force OFFSET-based partitioning (slow, but always works)
+// - "" (empty): Auto-detect based on PK type (default behavior)
+//
+// This is particularly useful when you have INTEGER PKs that are NOT sequential
+// (e.g., hash-based, random, or imported from external systems), where range
+// partitioning would create very uneven chunks.
 
 func main() {
 	ctx := context.Background()
@@ -42,15 +50,25 @@ func main() {
 				publication.OperationUpdate,
 			},
 			Tables: publication.Tables{
+				// Table with STRING PK - CTID will be auto-detected
 				{
 					Name:            "products",
 					ReplicaIdentity: publication.ReplicaIdentityFull,
 					Schema:          "public",
 				},
+				// Table with STRING PK - CTID will be auto-detected
 				{
 					Name:            "orders",
 					ReplicaIdentity: publication.ReplicaIdentityFull,
 					Schema:          "public",
+				},
+				// Table with INTEGER PK but using CTID explicitly
+				// Useful when integer PK is hash-based (not sequential)
+				{
+					Name:                      "events",
+					ReplicaIdentity:           publication.ReplicaIdentityFull,
+					Schema:                    "public",
+					SnapshotPartitionStrategy: publication.SnapshotPartitionStrategyCTIDBlock,
 				},
 			},
 		},
@@ -83,8 +101,8 @@ func main() {
 	defer connector.Close()
 
 	slog.Info("Starting CDC with CTID block partitioning example")
-	slog.Info("This example uses tables with STRING primary keys")
-	slog.Info("Snapshot will use CTID block partitioning instead of slow OFFSET-based queries")
+	slog.Info("Tables: products (STRING PK, auto CTID), orders (STRING PK, auto CTID), events (INT PK, forced CTID)")
+	slog.Info("The 'events' table demonstrates explicit SnapshotPartitionStrategy override")
 
 	connector.Start(ctx)
 }
@@ -114,8 +132,7 @@ func handleSnapshot(s *format.Snapshot) {
 			s.ServerTime.Format("15:04:05"))
 
 	case format.SnapshotEventTypeData:
-		// Log every 100th row to avoid flooding
-		slog.Debug("snapshot data", "table", s.Table, "data", s.Data)
+		slog.Info("snapshot data", "table", s.Table, "data", s.Data)
 
 	case format.SnapshotEventTypeEnd:
 		log.Printf("📸 SNAPSHOT END | LSN: %s | Time: %s",

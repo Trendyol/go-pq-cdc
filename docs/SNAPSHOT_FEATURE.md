@@ -15,10 +15,11 @@
 - [Configuration Reference](#configuration-reference)
 - [How It Works](#how-it-works)
   - [Phase 1: Coordinator Election](#phase-1-coordinator-election)
-  - [Phase 2: Metadata Creation](#phase-2-metadata-creation)
-  - [Phase 3: Snapshot Export](#phase-3-snapshot-export)
+  - [Phase 2: Snapshot Export](#phase-2-snapshot-export)
+  - [Phase 3: Metadata Creation](#phase-3-metadata-creation)
   - [Phase 4: Chunk Processing](#phase-4-chunk-processing)
   - [Phase 5: CDC Continuation](#phase-5-cdc-continuation)
+  - [Partitioning Strategies](#partitioning-strategies)
 - [Advanced Topics](#advanced-topics)
   - [Multi-Instance Deployment](#multi-instance-deployment)
   - [Crash Recovery](#crash-recovery)
@@ -43,6 +44,8 @@ Without snapshot support, CDC only captures changes that occur *after* the repli
 
 ✅ **Consistent Point-in-Time Snapshot**: Uses PostgreSQL's `pg_export_snapshot()` for transactional consistency  
 ✅ **Chunk-Based Processing**: Splits large tables into manageable chunks for memory efficiency  
+✅ **Smart Partitioning**: Auto-selects optimal strategy (Integer Range, CTID Block, or Offset) based on table structure  
+✅ **Snapshot-Consistent Chunk Creation**: All size queries (`pg_relation_size`) run within snapshot transaction for consistency  
 ✅ **Multi-Instance Support**: Multiple instances can collaborate to process chunks in parallel  
 ✅ **Crash Recovery**: Automatically resumes from where it left off after failures  
 ✅ **Zero Data Loss**: Ensures no data is missed between snapshot and CDC phases  
@@ -220,18 +223,19 @@ sequenceDiagram
     I2->>DB: pg_try_advisory_lock(slot_hash)
     DB-->>I2: Fail ❌ (Worker)
     
-    Note over I1,Meta: Phase 2: Metadata Creation
+    Note over I1,DB: Phase 2: Snapshot Export (FIRST!)
     I1->>DB: SELECT pg_current_wal_lsn()
     DB-->>I1: LSN: 0/12345678
-    I1->>Meta: INSERT INTO cdc_snapshot_job
-    I1->>Meta: INSERT INTO cdc_snapshot_chunks (100 chunks)
-    
-    Note over I1,DB: Phase 3: Snapshot Export
     I1->>DB: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ
     I1->>DB: SELECT pg_export_snapshot()
     DB-->>I1: snapshot_id: "00000003-00000002-1"
     Note right of I1: Transaction kept OPEN!
-    I1->>Meta: UPDATE job SET snapshot_id
+    
+    Note over I1,Meta: Phase 3: Metadata Creation (in snapshot transaction)
+    I1->>DB: SELECT pg_relation_size() (via snapshot conn)
+    Note right of I1: Size queries see same data as workers!
+    I1->>Meta: INSERT INTO cdc_snapshot_job (with snapshot_id)
+    I1->>Meta: INSERT INTO cdc_snapshot_chunks (using snapshot-consistent sizes)
     
     Note over I1,I2: Phase 4: Chunk Processing (Parallel)
     I2->>Meta: Wait for snapshot_id to be ready
@@ -241,8 +245,8 @@ sequenceDiagram
         I1->>Meta: Claim chunk 0 (SELECT FOR UPDATE SKIP LOCKED)
         Meta-->>I1: Chunk 0 claimed
         I1->>DB: BEGIN + SET TRANSACTION SNAPSHOT
-        I1->>DB: SELECT * FROM table LIMIT 10000 OFFSET 0
-        DB-->>I1: 10000 rows
+        I1->>DB: SELECT * FROM table WHERE ctid >= '(0,0)'::tid
+        DB-->>I1: rows from block 0
         I1->>I1: Send DATA events to handler
         I1->>DB: COMMIT
         I1->>Meta: Mark chunk 0 completed
@@ -250,8 +254,8 @@ sequenceDiagram
         I2->>Meta: Claim chunk 1 (SELECT FOR UPDATE SKIP LOCKED)
         Meta-->>I2: Chunk 1 claimed
         I2->>DB: BEGIN + SET TRANSACTION SNAPSHOT
-        I2->>DB: SELECT * FROM table LIMIT 10000 OFFSET 10000
-        DB-->>I2: 10000 rows
+        I2->>DB: SELECT * FROM table WHERE ctid >= '(1,0)'::tid
+        DB-->>I2: rows from block 1
         I2->>I2: Send DATA events to handler
         I2->>DB: COMMIT
         I2->>Meta: Mark chunk 1 completed
@@ -286,23 +290,26 @@ Phase 1: Coordinator Election
    └─────────┘
                     │
                     ▼
-Phase 2: Metadata Creation (Coordinator Only)
-──────────────────────────────────────────────
+Phase 2: Snapshot Export (Coordinator Only) ← FIRST!
+──────────────────────────────────────────────────────
    • Capture current LSN (e.g., 0/12345678)
-   • Create job metadata
-   • Split tables into chunks:
-       - Table 1: 1M rows → 10 chunks (100K each)
-       - Table 2: 500K rows → 5 chunks
-   • Save chunks to DB
-                    │
-                    ▼
-Phase 3: Snapshot Export (Coordinator Only)
-────────────────────────────────────────────
    • BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ
    • SELECT pg_export_snapshot() → "00000003-00000002-1"
    • Keep transaction OPEN (critical!)
-   • Update job with snapshot_id
-   • Workers can now join
+   • Cache snapshot_id for metadata creation
+                    │
+                    ▼
+Phase 3: Metadata Creation (in snapshot transaction)
+─────────────────────────────────────────────────────
+   • Query table sizes via snapshot connection
+     (pg_relation_size sees consistent data!)
+   • Create job metadata with snapshot_id
+   • Split tables into chunks using snapshot-consistent sizes
+   • Auto-select partitioning strategy:
+       - Integer Range: for sequential integer PKs
+       - CTID Block: for string/UUID/hash PKs
+       - Offset: fallback (slow)
+   • Save chunks to DB
                     │
                     ▼
 Phase 4: Chunk Processing (All Instances)
@@ -312,7 +319,10 @@ Phase 4: Chunk Processing (All Instances)
    │   │
    │   ├─► BEGIN TRANSACTION
    │   ├─► SET TRANSACTION SNAPSHOT 'snapshot_id'
-   │   ├─► SELECT * FROM table LIMIT X OFFSET Y
+   │   ├─► Execute chunk query (strategy-dependent):
+   │   │   • Integer Range: WHERE id >= X AND id <= Y
+   │   │   • CTID Block: WHERE ctid >= '(block,0)'::tid
+   │   │   • Offset: ORDER BY pk LIMIT X OFFSET Y
    │   ├─► Send DATA events to handler
    │   ├─► COMMIT
    │   ├─► Mark chunk completed
@@ -666,9 +676,9 @@ if acquired {
     // This instance becomes COORDINATOR
     // Responsibilities:
     //   1. Capture current LSN
-    //   2. Create job metadata
-    //   3. Split tables into chunks
-    //   4. Export snapshot transaction
+    //   2. Export snapshot transaction (FIRST!)
+    //   3. Create job metadata (using snapshot connection)
+    //   4. Split tables into chunks (using snapshot-consistent sizes)
     //   5. Participate in chunk processing (as worker)
 } else {
     // This instance becomes WORKER
@@ -684,75 +694,27 @@ if acquired {
 - Advisory locks are automatically released on connection close
 - Workers wait for coordinator by polling job metadata
 
-### Phase 2: Metadata Creation
+### Phase 2: Snapshot Export
 
-Coordinator creates job and chunk metadata:
+**IMPORTANT:** Snapshot export happens BEFORE metadata creation to ensure consistency.
+
+Coordinator exports a PostgreSQL snapshot:
 
 ```go
 // 1. Capture current LSN
 currentLSN := SELECT pg_current_wal_lsn()  // e.g., "0/12345678"
 
-// 2. Create job metadata
-INSERT INTO cdc_snapshot_job (
-    slot_name, snapshot_id, snapshot_lsn, started_at,
-    completed, total_chunks, completed_chunks
-) VALUES (
-    'cdc_slot', 'PENDING', '0/12345678', NOW(),
-    false, 0, 0
-)
-
-// 3. Split tables into chunks
-for each table in publication.tables {
-    rowCount := SELECT COUNT(*) FROM schema.table
-    numChunks := ceiling(rowCount / chunkSize)
-    
-    for i := 0 to numChunks-1 {
-        INSERT INTO cdc_snapshot_chunks (
-            slot_name, table_schema, table_name,
-            chunk_index, chunk_start, chunk_size, status
-        ) VALUES (
-            'cdc_slot', 'public', 'users',
-            i, i * chunkSize, chunkSize, 'pending'
-        )
-    }
-}
-```
-
-**Why Chunks?**
-
-Without chunking:
-```sql
--- ❌ Problem: Loads entire table into memory (OOM risk!)
-SELECT * FROM users;  -- 10M rows → 1GB+ memory
-```
-
-With chunking:
-```sql
--- ✅ Solution: Process in batches
-SELECT * FROM users ORDER BY id LIMIT 10000 OFFSET 0;      -- Chunk 0
-SELECT * FROM users ORDER BY id LIMIT 10000 OFFSET 10000;  -- Chunk 1
-...
-```
-
-### Phase 3: Snapshot Export
-
-Coordinator exports a PostgreSQL snapshot:
-
-```go
-// 1. Start transaction (REPEATABLE READ for consistency)
+// 2. Start transaction (REPEATABLE READ for consistency)
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ
 
-// 2. Export snapshot
+// 3. Export snapshot and cache the ID
 snapshotID := SELECT pg_export_snapshot()  
 // Returns: "00000003-00000002-1"
+cachedSnapshotID = snapshotID  // Cache for metadata creation
 
-// 3. Keep transaction OPEN!
+// 4. Keep transaction OPEN!
 // (Do NOT commit/rollback yet)
-
-// 4. Update job metadata
-UPDATE cdc_snapshot_job 
-SET snapshot_id = '00000003-00000002-1'
-WHERE slot_name = 'cdc_slot'
+// This connection will be used for pg_relation_size queries too!
 ```
 
 **Critical: Why Keep Transaction Open?**
@@ -763,6 +725,7 @@ WHERE slot_name = 'cdc_slot'
 │  ┌────────────────────────────────────────────────────┐    │
 │  │ BEGIN                                               │    │
 │  │ SELECT pg_export_snapshot() → 'snapshot_123'       │    │
+│  │ SELECT pg_relation_size(...) → consistent size!   │    │
 │  │ ... (transaction stays open) ...                   │    │
 │  │                                                     │    │
 │  │  ┌──────────────────────────────────────────────┐ │    │
@@ -783,6 +746,87 @@ If coordinator closed transaction early:
   ❌ Snapshot ID becomes invalid
   ❌ Workers can't use SET TRANSACTION SNAPSHOT
   ❌ Data inconsistency across chunks
+```
+
+### Phase 3: Metadata Creation
+
+**IMPORTANT:** Metadata creation happens AFTER snapshot export, using the snapshot connection for size queries.
+
+Coordinator creates job and chunk metadata:
+
+```go
+// 1. Create job metadata (with cached snapshot ID)
+INSERT INTO cdc_snapshot_job (
+    slot_name, snapshot_id, snapshot_lsn, started_at,
+    completed, total_chunks, completed_chunks
+) VALUES (
+    'cdc_slot', 'snapshot_123', '0/12345678', NOW(),
+    false, 0, 0
+)
+
+// 2. Split tables into chunks (using snapshot connection for size queries!)
+for each table in publication.tables {
+    // CRITICAL: Query size via snapshot connection for consistency
+    // This ensures pg_relation_size sees the same data as workers
+    totalBlocks := SELECT pg_relation_size(...) / block_size  // via snapshot conn!
+    
+    // Auto-select partitioning strategy
+    strategy := autoDetectStrategy(table)  // integer_range, ctid_block, or offset
+    
+    // Create chunks based on strategy
+    chunks := createChunks(table, strategy, totalBlocks)
+    
+    for chunk in chunks {
+        INSERT INTO cdc_snapshot_chunks (...)
+    }
+}
+```
+
+**Why Use Snapshot Connection for Size Queries?**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Without snapshot-consistent sizing (BUGGY):                │
+│                                                              │
+│  T0: pg_relation_size() → 1000 blocks (via normal conn)     │
+│  T1: pg_export_snapshot()                                   │
+│  T2: New rows added → 1050 blocks now                       │
+│  T3: Workers process blocks 0-999                           │
+│  ❌ 50 blocks MISSED! Data loss!                            │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  With snapshot-consistent sizing (CORRECT):                 │
+│                                                              │
+│  T0: pg_export_snapshot()                                   │
+│  T1: pg_relation_size() via snapshot conn → 1000 blocks    │
+│  T2: New rows added → 1050 blocks now (but snapshot sees   │
+│      only 1000!)                                            │
+│  T3: Workers process blocks 0-999 (within snapshot)        │
+│  T4: Last chunk has NO upper bound (safety net)            │
+│  ✅ All snapshot data captured!                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why Chunks?**
+
+Without chunking:
+```sql
+-- ❌ Problem: Loads entire table into memory (OOM risk!)
+SELECT * FROM users;  -- 10M rows → 1GB+ memory
+```
+
+With chunking:
+```sql
+-- ✅ Solution: Process in batches (strategy-dependent)
+
+-- Integer Range:
+SELECT * FROM users WHERE id >= 1 AND id <= 10000;
+
+-- CTID Block:
+SELECT * FROM users WHERE ctid >= '(0,0)'::tid AND ctid < '(100,0)'::tid;
+
+-- Offset (slow fallback):
+SELECT * FROM users ORDER BY id LIMIT 10000 OFFSET 0;
 ```
 
 ### Phase 4: Chunk Processing
@@ -930,6 +974,148 @@ Timeline:
          │◄───────────────────┤                    │
          No overlap!    CDC starts from snapshot LSN
 ```
+
+### Partitioning Strategies
+
+The snapshot feature automatically selects the most efficient partitioning strategy based on your table structure. You can also override this behavior per-table.
+
+#### Strategy Overview
+
+| Strategy | Best For | Performance | Query Pattern |
+|----------|----------|-------------|---------------|
+| **Integer Range** | Sequential integer PKs (id, serial) | ⚡ Fastest | `WHERE id >= X AND id <= Y` |
+| **CTID Block** | String/UUID PKs, hash-based PKs, any table | 🚀 Very Fast | `WHERE ctid >= '(block,0)'::tid` |
+| **Offset** | Fallback when others fail | 🐌 Slow | `ORDER BY pk LIMIT X OFFSET Y` |
+
+#### 1. Integer Range Partitioning
+
+**When Used:** Tables with a single, sequential integer primary key (e.g., `SERIAL`, `BIGSERIAL`).
+
+```sql
+-- Auto-detected for tables like:
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,  -- ✅ Sequential integer PK
+    name TEXT
+);
+
+-- Chunk queries:
+SELECT * FROM users WHERE id >= 1 AND id <= 10000;      -- Chunk 0
+SELECT * FROM users WHERE id >= 10001 AND id <= 20000;  -- Chunk 1
+```
+
+**Advantages:**
+- Uses index scan (very fast)
+- Predictable chunk sizes
+- No sorting overhead
+
+#### 2. CTID Block Partitioning
+
+**When Used:** Tables with string PKs, UUID PKs, composite PKs, hash-based integer PKs, or any table where integer range isn't optimal.
+
+```sql
+-- Auto-detected for tables like:
+CREATE TABLE documents (
+    id UUID PRIMARY KEY,  -- ✅ Non-integer PK → CTID
+    content TEXT
+);
+
+CREATE TABLE events (
+    id INT PRIMARY KEY,   -- Integer, but could be hash-based
+    data JSONB
+);
+-- User can force CTID for hash-based PKs via snapshotPartitionStrategy
+
+-- Chunk queries (using PostgreSQL physical blocks):
+SELECT * FROM documents WHERE ctid >= '(0,0)'::tid AND ctid < '(100,0)'::tid;   -- Block 0-99
+SELECT * FROM documents WHERE ctid >= '(100,0)'::tid AND ctid < '(200,0)'::tid; -- Block 100-199
+SELECT * FROM documents WHERE ctid >= '(200,0)'::tid;  -- Last chunk (no upper bound)
+```
+
+**Advantages:**
+- Works for any table type
+- Physical scan (no index needed)
+- Efficient for large tables with non-integer PKs
+- **10-100x faster** than OFFSET for string PKs
+
+**Critical Implementation Detail - Snapshot-Consistent Block Counts:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  IMPORTANT: pg_relation_size runs WITHIN snapshot transaction   │
+│                                                                  │
+│  Old approach (buggy):                                          │
+│    1. pg_relation_size() → 1000 blocks                          │
+│    2. pg_export_snapshot()                                      │
+│    3. Workers process blocks 0-999                              │
+│    4. ❌ New rows in block 1000+ are MISSED!                    │
+│                                                                  │
+│  New approach (correct):                         │
+│    1. pg_export_snapshot()                                      │
+│    2. pg_relation_size() via snapshot conn → 1000 blocks        │
+│    3. Workers process blocks 0-999                              │
+│    4. ✅ Snapshot sees consistent 1000 blocks                   │
+│    5. ✅ Last chunk has NO upper bound (safety)                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Last Chunk Safety:**
+
+The last CTID chunk has no upper bound (`block_end = NULL`), ensuring all rows from the starting block onwards are captured:
+
+```sql
+-- Regular chunk (has upper bound):
+SELECT * FROM table WHERE ctid >= '(0,0)'::tid AND ctid < '(100,0)'::tid;
+
+-- Last chunk (NO upper bound - captures everything from block 200+):
+SELECT * FROM table WHERE ctid >= '(200,0)'::tid;
+```
+
+#### 3. Offset Partitioning
+
+**When Used:** Fallback when other strategies fail (rare).
+
+```sql
+-- Chunk queries:
+SELECT * FROM table ORDER BY pk LIMIT 10000 OFFSET 0;      -- Chunk 0
+SELECT * FROM table ORDER BY pk LIMIT 10000 OFFSET 10000;  -- Chunk 1
+```
+
+**⚠️ Warning:** Offset-based queries are slow for large tables because PostgreSQL must scan and skip rows.
+
+#### Override Strategy Per-Table
+
+You can explicitly set the partitioning strategy for each table:
+
+```yaml
+publication:
+  tables:
+    # Auto-detect (default)
+    - name: users
+      schema: public
+      replicaIdentity: FULL
+      # snapshotPartitionStrategy: auto  # implicit default
+
+    # Force CTID for hash-based integer PK
+    - name: events
+      schema: public
+      replicaIdentity: FULL
+      snapshotPartitionStrategy: ctid_block  # Override: use CTID even for int PK
+
+    # Force integer range (not recommended unless you know PK is sequential)
+    - name: orders
+      schema: public
+      replicaIdentity: FULL
+      snapshotPartitionStrategy: integer_range
+```
+
+**When to Override:**
+
+| Scenario | Recommended Override |
+|----------|---------------------|
+| Integer PK but values are hash-based (non-sequential) | `ctid_block` |
+| UUID/string PK | Auto-detected as `ctid_block` |
+| Sequential integer PK | Auto-detected as `integer_range` |
+| Want maximum control | Explicit strategy per table |
 
 ---
 
@@ -1441,11 +1627,43 @@ psql -c "SELECT * FROM cdc_snapshot_chunks WHERE status = 'in_progress';"
 
 **A:** Minimal impact:
 - Read-only queries (no writes)
-- Uses `LIMIT/OFFSET` or indexed scans
+- Uses efficient scans (index for Integer Range, physical for CTID)
 - No table locks
 - Impact similar to a slow analytical query
 
 **Tip:** Run snapshot during off-peak hours for very large datasets.
+
+### Q: My table has string/UUID primary keys. Will snapshot be slow?
+
+**A:** No! The system automatically uses **CTID Block Partitioning** for non-integer PKs, which is 10-100x faster than offset-based queries.
+
+```yaml
+publication:
+  tables:
+    - name: documents
+      schema: public
+      replicaIdentity: FULL
+      # CTID is auto-detected for UUID/string PKs - no config needed!
+```
+
+### Q: Can I force a specific partitioning strategy?
+
+**A:** Yes! Use `snapshotPartitionStrategy` per-table:
+
+```yaml
+publication:
+  tables:
+    - name: events
+      schema: public
+      replicaIdentity: FULL
+      snapshotPartitionStrategy: ctid_block  # Force CTID even for integer PK
+```
+
+**Available strategies:**
+- `auto` (default): Auto-detect best strategy
+- `integer_range`: For sequential integer PKs
+- `ctid_block`: For string/UUID/hash PKs
+- `offset`: Slow fallback (not recommended)
 
 ### Q: What happens if I add a new table to publication during snapshot?
 
@@ -1528,6 +1746,8 @@ publication:
 The Snapshot Feature provides a robust, scalable solution for initial data capture in PostgreSQL CDC pipelines:
 
 ✅ **Zero Data Loss**: Consistent snapshot + CDC continuation  
+✅ **Smart Partitioning**: Auto-selects optimal strategy (Integer Range, CTID Block, Offset)  
+✅ **Snapshot-Consistent**: Size queries run within snapshot transaction
 ✅ **Scalable**: Chunk-based, multi-instance processing  
 ✅ **Resilient**: Automatic crash recovery and retry logic  
 ✅ **Observable**: Rich metrics and progress tracking  

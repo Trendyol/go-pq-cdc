@@ -434,8 +434,8 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 		}
 
 		row := results[0].Rows[0]
-		if len(row) < 12 {
-			return errors.New("invalid chunk row: expected 12 columns")
+		if len(row) < 13 {
+			return errors.New("invalid chunk row: expected 13 columns")
 		}
 
 		chunk, err = s.parseClaimedChunk(row, slotName, instanceID, now)
@@ -470,7 +470,7 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 		RETURNING c.id, c.table_schema, c.table_name, 
 		          c.chunk_index, c.chunk_start, c.chunk_size, 
 		          c.range_start, c.range_end, c.block_start, c.block_end,
-		          c.partition_strategy, c.rows_processed
+		          c.is_last_chunk, c.partition_strategy, c.rows_processed
 	`, chunksTableName,
 		slotName,
 		timeoutThreshold.Format(postgresTimestampFormat),
@@ -483,8 +483,8 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 
 // parseClaimedChunk parses the chunk row data
 func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID string, now time.Time) (*Chunk, error) {
-	if len(row) < 12 {
-		return nil, errors.New("invalid chunk row: expected 12 columns")
+	if len(row) < 13 {
+		return nil, errors.New("invalid chunk row: expected 13 columns")
 	}
 
 	chunk := &Chunk{
@@ -535,9 +535,14 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	chunk.BlockStart = blockStart
 	chunk.BlockEnd = blockEnd
 
-	// Parse partition strategy
+	// Parse is_last_chunk (boolean)
 	if row[10] != nil && len(row[10]) > 0 {
-		chunk.PartitionStrategy = PartitionStrategy(string(row[10]))
+		chunk.IsLastChunk = string(row[10]) == "t" || string(row[10]) == "true"
+	}
+
+	// Parse partition strategy
+	if row[11] != nil && len(row[11]) > 0 {
+		chunk.PartitionStrategy = PartitionStrategy(string(row[11]))
 	} else {
 		chunk.PartitionStrategy = PartitionStrategyOffset
 	}

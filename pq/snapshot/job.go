@@ -37,7 +37,7 @@ type Chunk struct {
 
 	// CTID block partitioning fields
 	BlockStart *int64
-	BlockEnd   *int64
+	BlockEnd   *int64 // nil for last chunk (no upper bound to catch new rows)
 
 	Status            ChunkStatus
 	PartitionStrategy PartitionStrategy
@@ -49,14 +49,11 @@ type Chunk struct {
 	ChunkIndex        int
 	ChunkStart        int64
 	ChunkSize         int64
+	IsLastChunk       bool // True for the last chunk of a table (no upper bound for CTID)
 }
 
 func (c *Chunk) hasRangeBounds() bool {
 	return c.RangeStart != nil && c.RangeEnd != nil
-}
-
-func (c *Chunk) hasCTIDBlocks() bool {
-	return c.BlockStart != nil && c.BlockEnd != nil
 }
 
 // Job represents the overall snapshot job metadata

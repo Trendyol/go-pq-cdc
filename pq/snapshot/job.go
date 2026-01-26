@@ -3,6 +3,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -71,6 +72,97 @@ const (
 	jobTableName    = "cdc_snapshot_job"
 	chunksTableName = "cdc_snapshot_chunks"
 )
+
+type columnDef struct {
+	Name       string
+	DataType   string
+	IsNullable bool
+	Default    string
+}
+
+type existingColumn struct {
+	Name     string
+	DataType string
+}
+
+type columnChangeType string
+
+const (
+	columnChangeTypeAdd       columnChangeType = "add"
+	columnChangeTypeAlterType columnChangeType = "alter_type"
+)
+
+type columnChange struct {
+	Column     columnDef
+	OldType    string
+	ChangeType columnChangeType
+}
+
+var typeNormalizationMap = map[string]string{
+	"INT":       "integer",
+	"INTEGER":   "integer",
+	"BIGINT":    "bigint",
+	"SMALLINT":  "smallint",
+	"TEXT":      "text",
+	"VARCHAR":   "character varying",
+	"CHAR":      "character",
+	"BOOLEAN":   "boolean",
+	"BOOL":      "boolean",
+	"TIMESTAMP": "timestamp without time zone",
+	"SERIAL":    "integer",
+	"BIGSERIAL": "bigint",
+	"REAL":      "real",
+	"FLOAT":     "double precision",
+	"DOUBLE":    "double precision",
+	"NUMERIC":   "numeric",
+	"DECIMAL":   "numeric",
+	"DATE":      "date",
+	"TIME":      "time without time zone",
+	"JSON":      "json",
+	"JSONB":     "jsonb",
+	"UUID":      "uuid",
+	"BYTEA":     "bytea",
+}
+
+func normalizeDataType(dataType string) string {
+	upper := strings.ToUpper(dataType)
+	if normalized, ok := typeNormalizationMap[upper]; ok {
+		return normalized
+	}
+	return strings.ToLower(dataType)
+}
+
+var jobTableColumns = []columnDef{
+	{Name: "slot_name", DataType: "TEXT", IsNullable: false, Default: ""},
+	{Name: "snapshot_id", DataType: "TEXT", IsNullable: false, Default: ""},
+	{Name: "snapshot_lsn", DataType: "TEXT", IsNullable: false, Default: ""},
+	{Name: "started_at", DataType: "TIMESTAMP", IsNullable: false, Default: ""},
+	{Name: "completed", DataType: "BOOLEAN", IsNullable: true, Default: "FALSE"},
+	{Name: "total_chunks", DataType: "INT", IsNullable: false, Default: "0"},
+	{Name: "completed_chunks", DataType: "INT", IsNullable: false, Default: "0"},
+}
+
+var chunksTableColumns = []columnDef{
+	{Name: "id", DataType: "SERIAL", IsNullable: false, Default: ""},
+	{Name: "slot_name", DataType: "TEXT", IsNullable: false, Default: ""},
+	{Name: "table_schema", DataType: "TEXT", IsNullable: false, Default: ""},
+	{Name: "table_name", DataType: "TEXT", IsNullable: false, Default: ""},
+	{Name: "chunk_index", DataType: "INT", IsNullable: false, Default: ""},
+	{Name: "chunk_start", DataType: "BIGINT", IsNullable: false, Default: ""},
+	{Name: "chunk_size", DataType: "BIGINT", IsNullable: false, Default: ""},
+	{Name: "range_start", DataType: "BIGINT", IsNullable: true, Default: ""},
+	{Name: "range_end", DataType: "BIGINT", IsNullable: true, Default: ""},
+	{Name: "block_start", DataType: "BIGINT", IsNullable: true, Default: ""},
+	{Name: "block_end", DataType: "BIGINT", IsNullable: true, Default: ""},
+	{Name: "is_last_chunk", DataType: "BOOLEAN", IsNullable: false, Default: "FALSE"},
+	{Name: "partition_strategy", DataType: "TEXT", IsNullable: false, Default: "'offset'"},
+	{Name: "status", DataType: "TEXT", IsNullable: false, Default: "'pending'"},
+	{Name: "claimed_by", DataType: "TEXT", IsNullable: true, Default: ""},
+	{Name: "claimed_at", DataType: "TIMESTAMP", IsNullable: true, Default: ""},
+	{Name: "heartbeat_at", DataType: "TIMESTAMP", IsNullable: true, Default: ""},
+	{Name: "completed_at", DataType: "TIMESTAMP", IsNullable: true, Default: ""},
+	{Name: "rows_processed", DataType: "BIGINT", IsNullable: true, Default: "0"},
+}
 
 // loadJob loads the job metadata
 func (s *Snapshotter) loadJob(ctx context.Context, slotName string) (*Job, error) {

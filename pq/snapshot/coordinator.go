@@ -244,7 +244,9 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 		}
 		logger.Debug("[metadata] job table created")
 	} else {
-		logger.Debug("[metadata] job table already exists, skipping creation")
+		if err := s.ensureTableSchema(ctx, jobTableName, jobTableColumns); err != nil {
+			return errors.Wrap(err, "ensure job table schema")
+		}
 	}
 
 	// Check if chunks table exists
@@ -284,7 +286,9 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 		}
 		logger.Debug("[metadata] chunks table created")
 	} else {
-		logger.Debug("[metadata] chunks table already exists, skipping creation")
+		if err := s.ensureTableSchema(ctx, chunksTableName, chunksTableColumns); err != nil {
+			return errors.Wrap(err, "ensure chunks table schema")
+		}
 	}
 
 	// Create indexes for efficient queries
@@ -1209,4 +1213,142 @@ func (s *Snapshotter) indexExists(ctx context.Context, indexName string) (bool, 
 	// PostgreSQL returns 't' for true, 'f' for false
 	exists := string(results[0].Rows[0][0]) == "t"
 	return exists, nil
+}
+
+// getTableColumnsWithTypes queries information_schema to get existing columns with their data types
+func (s *Snapshotter) getTableColumnsWithTypes(ctx context.Context, tableName string) ([]existingColumn, error) {
+	query := fmt.Sprintf(`
+		SELECT column_name, data_type
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = '%s'
+		ORDER BY ordinal_position
+	`, tableName)
+
+	results, err := s.execQuery(ctx, s.metadataConn, query)
+	if err != nil {
+		return nil, errors.Wrap(err, "query table columns")
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 {
+		return nil, nil
+	}
+
+	columns := make([]existingColumn, 0, len(results[0].Rows))
+	for _, row := range results[0].Rows {
+		if len(row) >= 2 {
+			columns = append(columns, existingColumn{
+				Name:     string(row[0]),
+				DataType: string(row[1]),
+			})
+		}
+	}
+
+	return columns, nil
+}
+
+// detectColumnChanges compares expected columns against existing columns
+// and returns changes needed (both missing columns and type mismatches)
+func detectColumnChanges(expected []columnDef, existing []existingColumn) []columnChange {
+	existingMap := make(map[string]existingColumn, len(existing))
+	for _, col := range existing {
+		existingMap[col.Name] = col
+	}
+
+	var changes []columnChange
+	for _, expectedCol := range expected {
+		existingCol, exists := existingMap[expectedCol.Name]
+		if !exists {
+			changes = append(changes, columnChange{
+				Column:     expectedCol,
+				ChangeType: columnChangeTypeAdd,
+			})
+			continue
+		}
+
+		expectedNormalized := normalizeDataType(expectedCol.DataType)
+		existingNormalized := strings.ToLower(existingCol.DataType)
+
+		if expectedCol.DataType == "SERIAL" || expectedCol.DataType == "BIGSERIAL" {
+			continue
+		}
+
+		if expectedNormalized != existingNormalized {
+			changes = append(changes, columnChange{
+				Column:     expectedCol,
+				OldType:    existingCol.DataType,
+				ChangeType: columnChangeTypeAlterType,
+			})
+		}
+	}
+
+	return changes
+}
+
+// addColumn adds a single column to a table using ALTER TABLE ADD COLUMN IF NOT EXISTS
+func (s *Snapshotter) addColumn(ctx context.Context, tableName string, col columnDef) error {
+	var queryBuilder strings.Builder
+	queryBuilder.WriteString(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", tableName, col.Name, col.DataType))
+
+	if col.Default != "" {
+		queryBuilder.WriteString(fmt.Sprintf(" DEFAULT %s", col.Default))
+	}
+
+	if !col.IsNullable && col.Default != "" {
+		queryBuilder.WriteString(" NOT NULL")
+	}
+
+	query := queryBuilder.String()
+
+	if err := s.execSQL(ctx, s.metadataConn, query); err != nil {
+		return errors.Wrap(err, fmt.Sprintf("add column %s to %s", col.Name, tableName))
+	}
+
+	return nil
+}
+
+// alterColumnType changes a column's data type using automatic casting
+func (s *Snapshotter) alterColumnType(ctx context.Context, tableName string, col columnDef, oldType string) error {
+	query := fmt.Sprintf(
+		"ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s::%s",
+		tableName, col.Name, col.DataType, col.Name, col.DataType,
+	)
+
+	if err := s.execSQL(ctx, s.metadataConn, query); err != nil {
+		return errors.Wrap(err, fmt.Sprintf("alter column %s type from %s to %s in %s", col.Name, oldType, col.DataType, tableName))
+	}
+
+	return nil
+}
+
+// ensureTableSchema checks for missing columns and type mismatches, then applies changes
+func (s *Snapshotter) ensureTableSchema(ctx context.Context, tableName string, expected []columnDef) error {
+	existing, err := s.getTableColumnsWithTypes(ctx, tableName)
+	if err != nil {
+		return errors.Wrap(err, "get existing columns")
+	}
+
+	changes := detectColumnChanges(expected, existing)
+	if len(changes) == 0 {
+		logger.Debug("[metadata] table schema is up to date", "table", tableName)
+		return nil
+	}
+
+	logger.Info("[metadata] applying schema changes", "table", tableName, "count", len(changes))
+
+	for _, change := range changes {
+		switch change.ChangeType {
+		case columnChangeTypeAdd:
+			if err := s.addColumn(ctx, tableName, change.Column); err != nil {
+				return err
+			}
+			logger.Info("[metadata] column added", "table", tableName, "column", change.Column.Name)
+		case columnChangeTypeAlterType:
+			if err := s.alterColumnType(ctx, tableName, change.Column, change.OldType); err != nil {
+				return err
+			}
+			logger.Info("[metadata] column type changed", "table", tableName, "column", change.Column.Name, "from", change.OldType, "to", change.Column.DataType)
+		}
+	}
+
+	return nil
 }

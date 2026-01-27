@@ -76,8 +76,8 @@ const (
 type columnDef struct {
 	Name       string
 	DataType   string
-	IsNullable bool
 	Default    string
+	IsNullable bool
 }
 
 type existingColumn struct {

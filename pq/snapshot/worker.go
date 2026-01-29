@@ -434,8 +434,8 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 		}
 
 		row := results[0].Rows[0]
-		if len(row) < 9 {
-			return errors.New("invalid chunk row")
+		if len(row) < 13 {
+			return errors.New("invalid chunk row: expected 13 columns")
 		}
 
 		chunk, err = s.parseClaimedChunk(row, slotName, instanceID, now)
@@ -468,7 +468,9 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 		FROM available_chunk
 		WHERE c.id = available_chunk.id
 		RETURNING c.id, c.table_schema, c.table_name, 
-		          c.chunk_index, c.chunk_start, c.chunk_size, c.range_start, c.range_end, c.rows_processed
+		          c.chunk_index, c.chunk_start, c.chunk_size, 
+		          c.range_start, c.range_end, c.block_start, c.block_end,
+		          c.is_last_chunk, c.partition_strategy, c.rows_processed
 	`, chunksTableName,
 		slotName,
 		timeoutThreshold.Format(postgresTimestampFormat),
@@ -481,6 +483,10 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 
 // parseClaimedChunk parses the chunk row data
 func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID string, now time.Time) (*Chunk, error) {
+	if len(row) < 13 {
+		return nil, errors.New("invalid chunk row: expected 13 columns")
+	}
+
 	chunk := &Chunk{
 		SlotName:    slotName,
 		Status:      ChunkStatusInProgress,
@@ -504,6 +510,8 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
 		return nil, errors.Wrap(err, "parse chunk size")
 	}
+
+	// Parse nullable int64 fields for range
 	rangeStart, err := parseNullableInt64(row[6])
 	if err != nil {
 		return nil, errors.Wrap(err, "parse range start")
@@ -514,6 +522,30 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	}
 	chunk.RangeStart = rangeStart
 	chunk.RangeEnd = rangeEnd
+
+	// Parse CTID block fields
+	blockStart, err := parseNullableInt64(row[8])
+	if err != nil {
+		return nil, errors.Wrap(err, "parse block start")
+	}
+	blockEnd, err := parseNullableInt64(row[9])
+	if err != nil {
+		return nil, errors.Wrap(err, "parse block end")
+	}
+	chunk.BlockStart = blockStart
+	chunk.BlockEnd = blockEnd
+
+	// Parse is_last_chunk (boolean)
+	if row[10] != nil && len(row[10]) > 0 {
+		chunk.IsLastChunk = string(row[10]) == "t" || string(row[10]) == "true"
+	}
+
+	// Parse partition strategy
+	if row[11] != nil && len(row[11]) > 0 {
+		chunk.PartitionStrategy = PartitionStrategy(string(row[11]))
+	} else {
+		chunk.PartitionStrategy = PartitionStrategyOffset
+	}
 
 	return chunk, nil
 }

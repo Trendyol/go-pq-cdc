@@ -144,12 +144,13 @@ func (c *Config) GetSnapshotTables(publicationInfo *publication.Config) (publica
 	}
 
 	// Mode 3: initial with no snapshot.tables specified
-	// Use all tables from publication (current behavior)
-	return publicationInfo.Tables, nil
+	// Use all tables from publication with merged user config (preserves SnapshotPartitionStrategy)
+	return c.mergePublicationTableConfig(publicationInfo.Tables), nil
 }
 
 // validateSnapshotSubset ensures snapshot.tables is a subset of publication tables
 // and returns the validated snapshot tables with publication metadata (like replica identity)
+// while preserving user's SnapshotPartitionStrategy from snapshot.tables config
 func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publication.Tables, error) {
 	if len(pubTables) == 0 {
 		return nil, errors.New("publication has no tables defined. Either specify tables in publication.tables or query an existing publication")
@@ -174,8 +175,11 @@ func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publicati
 				key, c.Publication.Name,
 			)
 		}
-		// Use publication table config (includes replica identity etc.)
-		validatedTables = append(validatedTables, pubTable)
+		mergedTable := pubTable
+		if st.SnapshotPartitionStrategy != "" {
+			mergedTable.SnapshotPartitionStrategy = st.SnapshotPartitionStrategy
+		}
+		validatedTables = append(validatedTables, mergedTable)
 	}
 
 	return validatedTables, nil
@@ -237,6 +241,30 @@ func (c *Config) Print() {
 
 func isEmpty(s string) bool {
 	return strings.TrimSpace(s) == ""
+}
+
+func (c *Config) mergePublicationTableConfig(pubInfoTables publication.Tables) publication.Tables {
+	if len(c.Publication.Tables) == 0 {
+		return pubInfoTables
+	}
+
+	userConfigMap := make(map[string]publication.Table)
+	for _, t := range c.Publication.Tables {
+		key := t.Schema + "." + t.Name
+		userConfigMap[key] = t
+	}
+
+	result := make(publication.Tables, len(pubInfoTables))
+	for i, t := range pubInfoTables {
+		result[i] = t
+		key := t.Schema + "." + t.Name
+		if userTable, exists := userConfigMap[key]; exists {
+			if userTable.SnapshotPartitionStrategy != "" {
+				result[i].SnapshotPartitionStrategy = userTable.SnapshotPartitionStrategy
+			}
+		}
+	}
+	return result
 }
 
 type SnapshotConfig struct {

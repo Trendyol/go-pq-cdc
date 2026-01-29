@@ -168,8 +168,6 @@ func (s *Slot) Metrics(ctx context.Context) {
 		s.metric.SetSlotRetainedWALSize(float64(slotInfo.RetainedWALSize))
 		s.metric.SetSlotLag(float64(slotInfo.Lag))
 
-		s.logUpdater.UpdateXLogPos(slotInfo.ConfirmedFlushLSN)
-
 		logger.Debug("slot metrics", "info", slotInfo)
 	}
 }

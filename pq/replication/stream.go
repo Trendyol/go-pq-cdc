@@ -76,9 +76,12 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		relation:     make(map[uint32]*format.Relation),
 		messageCH:    make(chan *Message, 1000),
 		listenerFunc: listenerFunc,
-		lastXLogPos:  10,
-		sinkEnd:      make(chan struct{}, 1),
-		mu:           &sync.RWMutex{},
+		// lastXLogPos:0 is not magical, 0 means, create replication starts with confirmed_flush_lsn
+		// https://github.com/postgres/postgres/blob/master/src/include/access/xlogdefs.h#L28
+		// https://github.com/postgres/postgres/blob/master/src/backend/replication/logical/logical.c#L540
+		lastXLogPos: 0,
+		sinkEnd:     make(chan struct{}, 1),
+		mu:          &sync.RWMutex{},
 	}
 }
 
@@ -125,7 +128,7 @@ func (s *stream) Open(ctx context.Context) error {
 func (s *stream) setup(ctx context.Context) error {
 	replication := New(s.conn)
 
-	replicationStartLsn := pq.LSN(2)
+	replicationStartLsn := s.lastXLogPos
 	if s.openFromSnapshotLSN {
 		snapshotLSN, err := s.fetchSnapshotLSN(ctx)
 		if err != nil {
@@ -143,9 +146,9 @@ func (s *stream) setup(ctx context.Context) error {
 	}
 
 	if s.openFromSnapshotLSN {
-		logger.Info("replication started from snapshot LSN", "slot", s.config.Slot.Name)
+		logger.Info("replication started from snapshot LSN", "slot", s.config.Slot.Name, "lsn", replicationStartLsn.String())
 	} else {
-		logger.Info("replication started from restart LSN", "slot", s.config.Slot.Name)
+		logger.Info("replication started from confirmed_flush_lsn", "slot", s.config.Slot.Name)
 	}
 
 	return nil
@@ -156,6 +159,13 @@ func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
 	var corruptedConn bool
+
+	// prevMessage holds the last data change message seen in the current transaction.
+	// We only need to retain a single message so that we can rewrite its WAL position
+	// to the transaction end LSN once the COMMIT is received. All other messages can
+	// be streamed to the listener immediately. This keeps memory usage constant even
+	// for very large transactions (e.g., COPY commands).
+	var prevMessage *Message
 
 	for {
 		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*300))
@@ -171,6 +181,7 @@ func (s *stream) sink(ctx context.Context) {
 				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 				if err != nil {
 					logger.Error("send stand by status update", "error", err)
+					corruptedConn = true
 					break
 				}
 				logger.Debug("send stand by status update")
@@ -189,7 +200,7 @@ func (s *stream) sink(ctx context.Context) {
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			logger.Warn(fmt.Sprintf("received undexpected message: %T", rawMsg))
+			logger.Warn(fmt.Sprintf("received unexpected message: %T", rawMsg))
 			continue
 		}
 
@@ -197,6 +208,19 @@ func (s *stream) sink(ctx context.Context) {
 
 		switch msg.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
+			pkm, errPKM := format.NewPrimaryKeepaliveMessage(msg.Data[1:])
+			if errPKM != nil {
+				logger.Error("decode primary keepalive message", "error", errPKM)
+				continue
+			}
+			if pkm.ReplyRequested {
+				if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
+					logger.Error("standby status update", "error", err)
+					corruptedConn = true
+					break
+				}
+				logger.Debug("standby status update sent on keepalive request")
+			}
 			continue
 		case message.XLogDataByteID:
 			xld, err = ParseXLogData(msg.Data[1:])
@@ -215,8 +239,28 @@ func (s *stream) sink(ctx context.Context) {
 				logger.Debug("wal data message parsing error", "error", err)
 				continue
 			}
+			if _, ok := decodedMsg.(*format.Begin); ok {
+				// Start of a new transaction – reset state
+				prevMessage = nil
+				continue
+			}
+			if commitMsg, ok := decodedMsg.(*format.Commit); ok {
+				// Emit the last buffered message (if any) rewriting its WAL position
+				if prevMessage != nil {
+					s.messageCH <- &Message{
+						message:  prevMessage.message,
+						walStart: int64(commitMsg.TransactionEndLSN),
+					}
+				}
+				prevMessage = nil
+				continue
+			}
 
-			s.messageCH <- &Message{
+			// For DML events we keep at most one message buffered. Older message is flushed.
+			if prevMessage != nil {
+				s.messageCH <- prevMessage
+			}
+			prevMessage = &Message{
 				message:  decodedMsg,
 				walStart: int64(xld.WALStart),
 			}
@@ -244,9 +288,9 @@ func (s *stream) process(ctx context.Context) {
 			Message: msg.message,
 			Ack: func() error {
 				pos := pq.LSN(msg.walStart)
-				s.system.UpdateXLogPos(pos)
-				logger.Debug("send stand by status update", "xLogPos", pos.String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.system.LoadXLogPos()))
+				s.UpdateXLogPos(pos)
+				logger.Debug("send stand by status update", "xLogPos", s.LoadXLogPos().String())
+				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
 			},
 		}
 

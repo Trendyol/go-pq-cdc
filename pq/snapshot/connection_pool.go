@@ -51,6 +51,14 @@ func NewConnectionPool(ctx context.Context, dsn string, size int) (*ConnectionPo
 func (p *ConnectionPool) Get(ctx context.Context) (pq.Connection, error) {
 	select {
 	case conn := <-p.pool:
+		if conn.IsClosed() {
+			logger.Debug("[snapshot-connection-pool] connection closed, reconnecting")
+			if err := conn.Connect(ctx); err != nil {
+				p.pool <- conn
+				return nil, errors.Wrap(err, "reconnect pool connection")
+			}
+			logger.Debug("[snapshot-connection-pool] connection reconnected successfully")
+		}
 		return conn, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()

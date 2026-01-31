@@ -310,9 +310,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 	}
 
 	// Apply schema migrations for backward compatibility
-	if err := s.migrateSchema(ctx); err != nil {
-		return errors.Wrap(err, "migrate schema")
-	}
+	s.migrateSchema(ctx)
 
 	logger.Debug("[metadata] snapshot tables initialized")
 	return nil
@@ -320,7 +318,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 
 // migrateSchema applies idempotent schema migrations to ensure backward compatibility
 // This allows seamless upgrades when new columns are added to metadata tables
-func (s *Snapshotter) migrateSchema(ctx context.Context) error {
+func (s *Snapshotter) migrateSchema(ctx context.Context) {
 	// These ALTER statements are idempotent (IF NOT EXISTS) and safe to run on every startup
 	migrations := []string{
 		// CTID block partitioning fields
@@ -343,7 +341,6 @@ func (s *Snapshotter) migrateSchema(ctx context.Context) error {
 	}
 
 	logger.Debug("[migration] schema migration completed")
-	return nil
 }
 
 // getCurrentLSN gets the current Write-Ahead Log LSN

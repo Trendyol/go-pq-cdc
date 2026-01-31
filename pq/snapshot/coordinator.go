@@ -157,6 +157,13 @@ func (s *Snapshotter) snapshotTransactionKeepalive(ctx context.Context, conn pq.
 	}
 }
 
+// CleanupJobForSlot is the public API to clean up job metadata for a specific slot
+// This is used by the forceResnapshot feature to allow reprocessing
+// IMPORTANT: Only deletes data for the specified slot, not affecting other connectors
+func (s *Snapshotter) CleanupJobForSlot(ctx context.Context, slotName string) error {
+	return s.cleanupJob(ctx, slotName)
+}
+
 // cleanupJob removes metadata for an incomplete snapshot job
 func (s *Snapshotter) cleanupJob(ctx context.Context, slotName string) error {
 	return s.retryDBOperation(ctx, func() error {

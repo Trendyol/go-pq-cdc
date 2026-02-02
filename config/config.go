@@ -275,6 +275,7 @@ type SnapshotConfig struct {
 	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
 	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
 	Enabled           bool               `json:"enabled" yaml:"enabled"`
+	Resnapshot        bool               `json:"resnapshot" yaml:"resnapshot"`
 }
 
 func (s *SnapshotConfig) Validate() error {

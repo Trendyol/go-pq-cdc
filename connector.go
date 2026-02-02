@@ -377,8 +377,11 @@ func (c *connector) executeSnapshotOnly(ctx context.Context) error {
 
 // getSnapshotOnlySlotName returns a consistent slot name for snapshot_only mode
 // This ensures multi-pod deployments work together instead of duplicating work
-// The slot name is based on the database name to ensure consistency across restarts
+// If user defines a custom snapshot ID, use it; otherwise generate one based on database name
 func (c *connector) getSnapshotOnlySlotName() string {
+	if c.cfg.Snapshot.ID != "" {
+		return c.cfg.Snapshot.ID
+	}
 	return fmt.Sprintf("snapshot_only_%s", c.cfg.Database)
 }
 

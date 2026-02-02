@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/stretchr/testify/assert"
@@ -253,6 +254,68 @@ func TestMergePublicationTableConfig(t *testing.T) {
 		assert.Equal(t, "public", result[0].Schema)
 		assert.Equal(t, "full", result[0].ReplicaIdentity)
 		assert.Equal(t, publication.SnapshotPartitionStrategyCTIDBlock, result[0].SnapshotPartitionStrategy)
+	})
+}
+
+func TestSnapshotConfigID(t *testing.T) {
+	t.Run("should store custom ID", func(t *testing.T) {
+		cfg := SnapshotConfig{
+			Enabled: true,
+			Mode:    SnapshotModeSnapshotOnly,
+			ID:      "my_custom_snapshot",
+			Tables: publication.Tables{
+				{Name: "events", Schema: "public"},
+			},
+		}
+
+		assert.Equal(t, "my_custom_snapshot", cfg.ID)
+	})
+
+	t.Run("should allow empty ID for default behavior", func(t *testing.T) {
+		cfg := SnapshotConfig{
+			Enabled: true,
+			Mode:    SnapshotModeSnapshotOnly,
+			ID:      "",
+			Tables: publication.Tables{
+				{Name: "events", Schema: "public"},
+			},
+		}
+
+		assert.Empty(t, cfg.ID)
+	})
+
+	t.Run("should pass validation with custom ID", func(t *testing.T) {
+		cfg := SnapshotConfig{
+			Enabled:           true,
+			Mode:              SnapshotModeSnapshotOnly,
+			ID:                "custom_snapshot_id",
+			ChunkSize:         1000,
+			ClaimTimeout:      30 * time.Second,
+			HeartbeatInterval: 5 * time.Second,
+			Tables: publication.Tables{
+				{Name: "events", Schema: "public"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("should pass validation without custom ID", func(t *testing.T) {
+		cfg := SnapshotConfig{
+			Enabled:           true,
+			Mode:              SnapshotModeSnapshotOnly,
+			ID:                "",
+			ChunkSize:         1000,
+			ClaimTimeout:      30 * time.Second,
+			HeartbeatInterval: 5 * time.Second,
+			Tables: publication.Tables{
+				{Name: "events", Schema: "public"},
+			},
+		}
+
+		err := cfg.Validate()
+		assert.NoError(t, err)
 	})
 }
 

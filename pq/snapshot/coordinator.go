@@ -157,6 +157,13 @@ func (s *Snapshotter) snapshotTransactionKeepalive(ctx context.Context, conn pq.
 	}
 }
 
+// CleanupJobForSlot is the public API to clean up job metadata for a specific slot
+// This is used by the forceResnapshot feature to allow reprocessing
+// IMPORTANT: Only deletes data for the specified slot, not affecting other connectors
+func (s *Snapshotter) CleanupJobForSlot(ctx context.Context, slotName string) error {
+	return s.cleanupJob(ctx, slotName)
+}
+
 // cleanupJob removes metadata for an incomplete snapshot job
 func (s *Snapshotter) cleanupJob(ctx context.Context, slotName string) error {
 	return s.retryDBOperation(ctx, func() error {
@@ -309,8 +316,38 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 		}
 	}
 
+	// Apply schema migrations for backward compatibility
+	s.migrateSchema(ctx)
+
 	logger.Debug("[metadata] snapshot tables initialized")
 	return nil
+}
+
+// migrateSchema applies idempotent schema migrations to ensure backward compatibility
+// This allows seamless upgrades when new columns are added to metadata tables
+func (s *Snapshotter) migrateSchema(ctx context.Context) {
+	// These ALTER statements are idempotent (IF NOT EXISTS) and safe to run on every startup
+	migrations := []string{
+		// CTID block partitioning fields
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS block_start BIGINT",
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS block_end BIGINT",
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS is_last_chunk BOOLEAN DEFAULT FALSE",
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS partition_strategy TEXT DEFAULT 'offset'",
+		// Integer range partitioning fields
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_start BIGINT",
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_end BIGINT",
+	}
+
+	for _, stmt := range migrations {
+		if err := s.execSQL(ctx, s.metadataConn, stmt); err != nil {
+			// Log but don't fail - column might already exist or other non-critical error
+			logger.Warn("[migration] failed to apply migration statement",
+				"statement", stmt,
+				"error", err)
+		}
+	}
+
+	logger.Debug("[migration] schema migration completed")
 }
 
 // getCurrentLSN gets the current Write-Ahead Log LSN

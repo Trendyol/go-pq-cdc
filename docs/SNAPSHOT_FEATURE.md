@@ -173,6 +173,8 @@ type Snapshotter struct {
 
 #### 4. **Metadata Tables**
 
+The snapshot feature uses two metadata tables to track progress. These tables are automatically created and migrated when needed.
+
 **Job Table** (`cdc_snapshot_job`):
 ```sql
 CREATE TABLE cdc_snapshot_job (
@@ -196,6 +198,14 @@ CREATE TABLE cdc_snapshot_chunks (
     chunk_index     INT NOT NULL,
     chunk_start     BIGINT NOT NULL,
     chunk_size      BIGINT NOT NULL,
+    -- Partitioning strategy fields (added via migration)
+    range_start     BIGINT,              -- For integer_range strategy
+    range_end       BIGINT,              -- For integer_range strategy
+    block_start     BIGINT,              -- For ctid_block strategy
+    block_end       BIGINT,              -- For ctid_block strategy
+    is_last_chunk   BOOLEAN DEFAULT FALSE,
+    partition_strategy TEXT DEFAULT 'offset',
+    -- Tracking fields
     status          TEXT NOT NULL DEFAULT 'pending',
     claimed_by      TEXT,
     claimed_at      TIMESTAMP,
@@ -518,11 +528,60 @@ INSERT: map[id:1001 name:Charlie]  <-- New data after snapshot
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable/disable snapshot feature |
-| `mode` | string | `never` | Snapshot mode: `initial` or `never` |
+| `mode` | string | `never` | Snapshot mode: `initial`, `never`, or `snapshot_only` |
 | `chunkSize` | int64 | `8000` | Number of rows per chunk |
 | `claimTimeout` | duration | `30s` | Timeout to reclaim stale chunks |
 | `heartbeatInterval` | duration | `5s` | Interval for worker heartbeat updates |
 | `instanceId` | string | `hostname-pid` | Custom instance identifier (optional) |
+
+#### Configuration
+
+```yaml
+snapshot:
+  enabled: true
+  mode: initial
+  forceResnapshot: true  # Clean metadata and reprocess snapshot
+  chunkSize: 10000
+```
+
+#### Use Cases
+
+- **Schema changes**: After adding/removing columns, reprocess to capture new structure
+- **Data corrections**: After fixing data issues in source, rebuild downstream
+- **Disaster recovery**: Rebuild downstream systems from scratch
+- **Testing**: Repeatedly test snapshot behavior during development
+
+#### Multi-Connector Safety
+
+If multiple teams use different connectors (slots) on the same database:
+
+```
+Database: shared_db
+├── Team A: slot_name = "team_a_slot"  ← forceResnapshot only affects this
+├── Team B: slot_name = "team_b_slot"  ← Unaffected
+└── Team C: slot_name = "team_c_slot"  ← Unaffected
+```
+
+**Important**: `forceResnapshot` only deletes metadata WHERE `slot_name = '<your_slot>'`. Other connectors' data remains intact.
+
+#### Example: Reprocessing After Data Fix
+
+```yaml
+# Step 1: Fix data in source database
+# Step 2: Deploy with forceResnapshot=true
+snapshot:
+  enabled: true
+  mode: initial
+  forceResnapshot: true
+
+# Step 3: After successful reprocessing, set back to false
+snapshot:
+  enabled: true
+  mode: initial
+  forceResnapshot: false  # Normal operation
+```
+
+---
 
 ### Snapshot Modes
 
@@ -1233,6 +1292,63 @@ On Restart:
      - Process pending chunks
   5. Continue until all done
 ```
+
+### Schema Migration & Backward Compatibility
+
+The snapshot feature includes **automatic schema migration** support to ensure seamless upgrades when new features are added.
+
+#### How It Works
+
+When the snapshot system initializes, it automatically applies idempotent schema migrations:
+
+```go
+// Applied on every startup - safe and idempotent
+ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS block_start BIGINT;
+ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS block_end BIGINT;
+ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS is_last_chunk BOOLEAN DEFAULT FALSE;
+ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS partition_strategy TEXT DEFAULT 'offset';
+ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_start BIGINT;
+ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_end BIGINT;
+```
+
+#### Benefits
+
+✅ **Zero-downtime upgrades**: Upgrade go-pq-cdc without manual schema changes  
+✅ **Backward compatible**: Old metadata tables work with new code  
+✅ **Idempotent**: Safe to run multiple times  
+✅ **Non-blocking**: Migrations run automatically on startup  
+
+#### Upgrade Scenario
+
+```
+Timeline:
+  T0: Running go-pq-cdc v1.0 (only offset partitioning)
+      - Metadata tables have basic schema
+      - Snapshot works fine
+  
+  T1: Upgrade to v1.1 (adds CTID block partitioning)
+      - On startup, migrations run automatically
+      - New columns added: block_start, block_end, is_last_chunk, partition_strategy
+      - Existing data preserved
+      - New snapshots can use CTID strategy
+  
+  T2: Upgrade to v1.2 (adds integer range partitioning)
+      - On startup, migrations run automatically
+      - New columns added: range_start, range_end
+      - All previous data still works
+      - New snapshots can use all 3 strategies
+```
+
+#### Migration Safety
+
+- **IF NOT EXISTS**: Columns are only added if they don't exist
+- **Non-destructive**: Never drops columns or data
+- **Logged**: Migration failures are logged but don't stop startup
+- **Tested**: All migrations are tested in integration tests
+
+**Note**: This feature was added in PR #76 to support seamless version upgrades.
+
+---
 
 ### Performance Tuning
 

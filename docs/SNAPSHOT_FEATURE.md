@@ -523,19 +523,19 @@ INSERT: map[id:1001 name:Charlie]  <-- New data after snapshot
 | `claimTimeout` | duration | `30s` | Timeout to reclaim stale chunks |
 | `heartbeatInterval` | duration | `5s` | Interval for worker heartbeat updates |
 | `instanceId` | string | `hostname-pid` | Custom instance identifier (optional) |
-| `forceResnapshot` | bool | `false` | Force reprocessing by cleaning metadata for this slot (see below) |
+| `resnapshot` | bool | `false` | Force reprocessing by cleaning metadata for this slot (see below) |
 
-### Force Resnapshot
+### Resnapshot
 
-Sometimes you need to reprocess all snapshot data again (e.g., after schema changes, data corrections, or to rebuild downstream systems). The `forceResnapshot` option allows you to do this safely.
+Sometimes you need to reprocess all snapshot data again (e.g., after schema changes, data corrections, or to rebuild downstream systems). The `resnapshot` option allows you to do this safely.
 
-#### Why Force Resnapshot?
+#### Why Resnapshot?
 
 By default, the library checks `cdc_snapshot_job.completed` field. If a snapshot was already completed, it skips to CDC mode. This is efficient but prevents reprocessing.
 
 #### How It Works
 
-When `forceResnapshot: true`:
+When `resnapshot: true`:
 1. **Cleans metadata for THIS slot only** - Deletes rows from `cdc_snapshot_job` and `cdc_snapshot_chunks` where `slot_name` matches
 2. **Does NOT affect other connectors** - Multiple teams can use different connectors in the same database safely
 3. **Preserves table structure** - Uses DELETE, not DROP TABLE, so indexes and schema remain intact
@@ -547,7 +547,7 @@ When `forceResnapshot: true`:
 snapshot:
   enabled: true
   mode: initial
-  forceResnapshot: true  # Clean metadata and reprocess snapshot
+  resnapshot: true  # Clean metadata and reprocess snapshot
   chunkSize: 10000
 ```
 
@@ -564,28 +564,28 @@ If multiple teams use different connectors (slots) on the same database:
 
 ```
 Database: shared_db
-├── Team A: slot_name = "team_a_slot"  ← forceResnapshot only affects this
+├── Team A: slot_name = "team_a_slot"  ← resnapshot only affects this
 ├── Team B: slot_name = "team_b_slot"  ← Unaffected
 └── Team C: slot_name = "team_c_slot"  ← Unaffected
 ```
 
-**Important**: `forceResnapshot` only deletes metadata WHERE `slot_name = '<your_slot>'`. Other connectors' data remains intact.
+**Important**: `resnapshot` only deletes metadata WHERE `slot_name = '<your_slot>'`. Other connectors' data remains intact.
 
 #### Example: Reprocessing After Data Fix
 
 ```yaml
 # Step 1: Fix data in source database
-# Step 2: Deploy with forceResnapshot=true
+# Step 2: Deploy with resnapshot=true
 snapshot:
   enabled: true
   mode: initial
-  forceResnapshot: true
+  resnapshot: true
 
 # Step 3: After successful reprocessing, set back to false
 snapshot:
   enabled: true
   mode: initial
-  forceResnapshot: false  # Normal operation
+  resnapshot: false  # Normal operation
 ```
 
 ---
@@ -601,7 +601,7 @@ snapshot:
 - Checks if job is already completed
 - If completed, skips snapshot and goes directly to CDC
 - **Recommended for production**
-- Use `forceResnapshot: true` to override and reprocess
+- Use `resnapshot: true` to override and reprocess
 
 #### `never` Mode
 ```yaml

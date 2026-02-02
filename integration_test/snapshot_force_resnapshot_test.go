@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestForceResnapshotCleansMetadataAndReprocesses tests the forceResnapshot feature:
+// TestForceResnapshotCleansMetadataAndReprocesses tests the resnapshot feature:
 // 1. Run initial snapshot and verify completion
 // 2. Add new data to the table
-// 3. Run with forceResnapshot=true and verify it reprocesses ALL data (including new)
+// 3. Run with resnapshot=true and verify it reprocesses ALL data (including new)
 // 4. Verify metadata was cleaned and recreated
 func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 	ctx := context.Background()
@@ -52,7 +52,7 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// === Phase 1: Initial snapshot (forceResnapshot=false) ===
+	// === Phase 1: Initial snapshot (resnapshot=false) ===
 	t.Log("=== Phase 1: Running initial snapshot ===")
 
 	cdcCfg := Config
@@ -64,7 +64,7 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 	cdcCfg.Snapshot.Enabled = true
 	cdcCfg.Snapshot.Mode = config.SnapshotModeInitial
 	cdcCfg.Snapshot.ChunkSize = 100
-	cdcCfg.Snapshot.ForceResnapshot = false // Normal mode
+	cdcCfg.Snapshot.Resnapshot = false // Normal mode
 
 	firstSnapshotData := []map[string]any{}
 	firstSnapshotComplete := false
@@ -123,11 +123,11 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 
 	t.Log("✅ Added 2 more rows to table (total: 5)")
 
-	// === Phase 3: Run with forceResnapshot=false (should skip) ===
-	t.Log("=== Phase 3: Running with forceResnapshot=false (should skip snapshot) ===")
+	// === Phase 3: Run with resnapshot=false (should skip) ===
+	t.Log("=== Phase 3: Running with resnapshot=false (should skip snapshot) ===")
 
 	cdcCfg2 := cdcCfg
-	cdcCfg2.Snapshot.ForceResnapshot = false
+	cdcCfg2.Snapshot.Resnapshot = false
 
 	secondSnapshotData := []map[string]any{}
 	secondSnapshotStarted := false
@@ -157,15 +157,15 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 
 	connector2.Close()
 
-	assert.False(t, secondSnapshotStarted, "Snapshot should NOT start when forceResnapshot=false and job is completed")
+	assert.False(t, secondSnapshotStarted, "Snapshot should NOT start when resnapshot=false and job is completed")
 	assert.Empty(t, secondSnapshotData, "No snapshot data should be received")
 	t.Log("✅ Snapshot was correctly skipped (job already completed)")
 
-	// === Phase 4: Run with forceResnapshot=true (should reprocess ALL data) ===
-	t.Log("=== Phase 4: Running with forceResnapshot=true (should reprocess all data) ===")
+	// === Phase 4: Run with resnapshot=true (should reprocess ALL data) ===
+	t.Log("=== Phase 4: Running with resnapshot=true (should reprocess all data) ===")
 
 	cdcCfg3 := cdcCfg
-	cdcCfg3.Snapshot.ForceResnapshot = true // Force resnapshot!
+	cdcCfg3.Snapshot.Resnapshot = true // Force resnapshot!
 
 	thirdSnapshotData := []map[string]any{}
 	thirdSnapshotComplete := false
@@ -200,11 +200,11 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 	t.Logf("✅ Force resnapshot completed with %d rows", len(thirdSnapshotData))
 
 	// === Assertions ===
-	t.Run("ForceResnapshot processes all data", func(t *testing.T) {
+	t.Run("Resnapshot processes all data", func(t *testing.T) {
 		assert.Len(t, thirdSnapshotData, 5, "Force resnapshot should process ALL 5 rows (3 original + 2 new)")
 	})
 
-	t.Run("ForceResnapshot includes new data", func(t *testing.T) {
+	t.Run("Resnapshot includes new data", func(t *testing.T) {
 		// Check that new IDs (4, 5) are in the snapshot
 		ids := make([]int32, 0)
 		for _, data := range thirdSnapshotData {
@@ -228,7 +228,7 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 	})
 }
 
-// TestForceResnapshotOnlyMode tests forceResnapshot with snapshot_only mode
+// TestForceResnapshotOnlyMode tests resnapshot with snapshot_only mode
 func TestForceResnapshotOnlyMode(t *testing.T) {
 	ctx := context.Background()
 
@@ -267,7 +267,7 @@ func TestForceResnapshotOnlyMode(t *testing.T) {
 	cdcCfg.Snapshot.Enabled = true
 	cdcCfg.Snapshot.Mode = config.SnapshotModeSnapshotOnly
 	cdcCfg.Snapshot.ChunkSize = 100
-	cdcCfg.Snapshot.ForceResnapshot = false
+	cdcCfg.Snapshot.Resnapshot = false
 	cdcCfg.Snapshot.Tables = publication.Tables{
 		{Name: tableName, Schema: "public"},
 	}
@@ -304,11 +304,11 @@ func TestForceResnapshotOnlyMode(t *testing.T) {
 	}
 	t.Log("✅ Added 2 more rows")
 
-	// === Phase 3: Run with forceResnapshot=true ===
-	t.Log("=== Phase 3: Running snapshot_only with forceResnapshot=true ===")
+	// === Phase 3: Run with resnapshot=true ===
+	t.Log("=== Phase 3: Running snapshot_only with resnapshot=true ===")
 
 	cdcCfg2 := cdcCfg
-	cdcCfg2.Snapshot.ForceResnapshot = true
+	cdcCfg2.Snapshot.Resnapshot = true
 
 	secondCount := 0
 	secondComplete := false
@@ -335,7 +335,7 @@ func TestForceResnapshotOnlyMode(t *testing.T) {
 	t.Logf("✅ Force resnapshot completed with %d rows", secondCount)
 }
 
-// TestForceResnapshotDoesNotAffectOtherSlots verifies that forceResnapshot
+// TestForceResnapshotDoesNotAffectOtherSlots verifies that resnapshot
 // only cleans metadata for the specific slot, not affecting other connectors
 func TestForceResnapshotDoesNotAffectOtherSlots(t *testing.T) {
 	ctx := context.Background()
@@ -384,7 +384,7 @@ func TestForceResnapshotDoesNotAffectOtherSlots(t *testing.T) {
 		cfg.Snapshot.Enabled = true
 		cfg.Snapshot.Mode = config.SnapshotModeInitial
 		cfg.Snapshot.ChunkSize = 100
-		cfg.Snapshot.ForceResnapshot = false
+		cfg.Snapshot.Resnapshot = false
 
 		complete := false
 		connector, err := cdc.NewConnector(ctx, cfg, func(ctx *replication.ListenerContext) {
@@ -423,7 +423,7 @@ func TestForceResnapshotDoesNotAffectOtherSlots(t *testing.T) {
 	t.Log("✅ Both slots have completed snapshots")
 
 	// === Force resnapshot on slot1 ONLY ===
-	t.Log("=== Running forceResnapshot on slot1 ONLY ===")
+	t.Log("=== Running resnapshot on slot1 ONLY ===")
 
 	cfg := Config
 	cfg.Slot.Name = slotName1
@@ -434,7 +434,7 @@ func TestForceResnapshotDoesNotAffectOtherSlots(t *testing.T) {
 	cfg.Snapshot.Enabled = true
 	cfg.Snapshot.Mode = config.SnapshotModeInitial
 	cfg.Snapshot.ChunkSize = 100
-	cfg.Snapshot.ForceResnapshot = true // Force!
+	cfg.Snapshot.Resnapshot = true // Force!
 
 	complete := false
 	connector, err := cdc.NewConnector(ctx, cfg, func(ctx *replication.ListenerContext) {

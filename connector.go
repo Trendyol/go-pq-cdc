@@ -302,11 +302,11 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 	case config.SnapshotModeNever:
 		return false
 	case config.SnapshotModeInitial:
-		// If forceResnapshot is enabled, clean metadata for THIS slot only and return true
-		if c.cfg.Snapshot.ForceResnapshot {
-			logger.Info("forceResnapshot enabled, cleaning metadata for slot", "slotName", c.cfg.Slot.Name)
+		// If resnapshot is enabled, clean metadata for THIS slot only and return true
+		if c.cfg.Snapshot.Resnapshot {
+			logger.Info("resnapshot enabled, cleaning metadata for slot", "slotName", c.cfg.Slot.Name)
 			if err := c.snapshotter.CleanupJobForSlot(ctx, c.cfg.Slot.Name); err != nil {
-				logger.Warn("failed to cleanup job for forceResnapshot", "error", err)
+				logger.Warn("failed to cleanup job for resnapshot", "error", err)
 			}
 			return true
 		}
@@ -396,11 +396,11 @@ func (c *connector) getSnapshotOnlySlotName() string {
 func (c *connector) shouldTakeSnapshotOnly(ctx context.Context) bool {
 	slotName := c.getSnapshotOnlySlotName()
 
-	// If forceResnapshot is enabled, clean metadata for THIS slot only
-	if c.cfg.Snapshot.ForceResnapshot {
-		logger.Info("forceResnapshot enabled, cleaning metadata for slot", "slotName", slotName)
+	// If resnapshot is enabled, clean metadata for THIS slot only
+	if c.cfg.Snapshot.Resnapshot {
+		logger.Info("resnapshot enabled, cleaning metadata for slot", "slotName", slotName)
 		if err := c.snapshotter.CleanupJobForSlot(ctx, slotName); err != nil {
-			logger.Warn("failed to cleanup job for forceResnapshot", "error", err)
+			logger.Warn("failed to cleanup job for resnapshot", "error", err)
 		}
 		return true
 	}

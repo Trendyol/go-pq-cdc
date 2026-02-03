@@ -14,6 +14,8 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
 )
 
+const defaultSchema = "public"
+
 type Config struct {
 	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
@@ -79,7 +81,7 @@ func (c *Config) SetDefault() {
 			c.Heartbeat.Interval = 100 * time.Millisecond
 		}
 		if c.Heartbeat.Table.Schema == "" {
-			c.Heartbeat.Table.Schema = "public"
+			c.Heartbeat.Table.Schema = defaultSchema
 		}
 	}
 
@@ -94,7 +96,7 @@ func (c *Config) SetDefault() {
 	// Set default schema names for tables
 	for tableID, table := range c.Publication.Tables {
 		if table.Schema == "" {
-			c.Publication.Tables[tableID].Schema = "public"
+			c.Publication.Tables[tableID].Schema = defaultSchema
 		}
 	}
 
@@ -116,7 +118,7 @@ func (c *Config) SetDefault() {
 		// Set default schema names for snapshot tables
 		for tableID, table := range c.Snapshot.Tables {
 			if table.Schema == "" {
-				c.Snapshot.Tables[tableID].Schema = "public"
+				c.Snapshot.Tables[tableID].Schema = defaultSchema
 			}
 		}
 	}

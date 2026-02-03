@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq/heartbeat"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/snapshot"
 
@@ -38,7 +39,7 @@ type Connector interface {
 }
 
 type connector struct {
-	heartbeatConn      pq.Connection
+	heartbeat          *heartbeat.Heartbeat
 	prometheusRegistry metric.Registry
 	server             http.Server
 	stream             replication.Streamer
@@ -50,7 +51,6 @@ type connector struct {
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
 	once               sync.Once
-	heartbeatMu        sync.Mutex
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
@@ -96,8 +96,10 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	// Create heartbeat table BEFORE publication setup (if configured)
 	// This ensures the table exists when publication tries to set replica identity
+	var hb *heartbeat.Heartbeat
 	if cfg.IsHeartbeatEnabled() {
-		if err := ensureHeartbeatTableExists(ctx, conn, cfg); err != nil {
+		hb = heartbeat.New(cfg.DSN(), cfg.Heartbeat)
+		if err := hb.EnsureTable(ctx, conn); err != nil {
 			conn.Close(ctx)
 			return nil, errors.Wrap(err, "create heartbeat table")
 		}
@@ -128,13 +130,6 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	stream := replication.NewStream(cfg.ReplicationDSN(), cfg, m, listenerFunc)
 
 	sl := slot.NewSlot(cfg.ReplicationDSN(), cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
-	var heartbeatConn pq.Connection
-	if cfg.IsHeartbeatEnabled() {
-		heartbeatConn, err = pq.NewConnection(ctx, cfg.DSN())
-		if err != nil {
-			return nil, errors.Wrap(err, "create heartbeat connection")
-		}
-	}
 
 	prometheusRegistry := metric.NewRegistry(m)
 
@@ -156,7 +151,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		prometheusRegistry: prometheusRegistry,
 		server:             http.NewServer(cfg, prometheusRegistry),
 		slot:               sl,
-		heartbeatConn:      heartbeatConn,
+		heartbeat:          hb,
 		timescaleDB:        tdb,
 		snapshotter:        snapshotter,
 		listenerFunc:       listenerFunc,
@@ -206,46 +201,6 @@ func initializePublication(ctx context.Context, cfg config.Config, conn pq.Conne
 		return nil, err
 	}
 	return pub.Create(ctx)
-}
-
-// ensureHeartbeatTableExists creates the heartbeat table if it doesn't exist.
-// This is called during connector initialization, before publication setup.
-func ensureHeartbeatTableExists(ctx context.Context, conn pq.Connection, cfg config.Config) error {
-	schema := cfg.Heartbeat.Table.Schema
-	table := cfg.Heartbeat.Table.Name
-
-	createTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s (
-			id INTEGER PRIMARY KEY DEFAULT 1,
-			last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			CONSTRAINT %s_single_row CHECK (id = 1)
-		)`, schema, table, table)
-
-	insertRowSQL := fmt.Sprintf(`
-		INSERT INTO %s.%s (id) VALUES (1) ON CONFLICT DO NOTHING`, schema, table)
-
-	// Execute CREATE TABLE
-	resultReader := conn.Exec(ctx, createTableSQL)
-	if _, err := resultReader.ReadAll(); err != nil {
-		_ = resultReader.Close()
-		return fmt.Errorf("create heartbeat table failed: %w", err)
-	}
-	if err := resultReader.Close(); err != nil {
-		return fmt.Errorf("close create table result: %w", err)
-	}
-
-	// Execute INSERT initial row
-	resultReader = conn.Exec(ctx, insertRowSQL)
-	if _, err := resultReader.ReadAll(); err != nil {
-		_ = resultReader.Close()
-		return fmt.Errorf("insert heartbeat row failed: %w", err)
-	}
-	if err := resultReader.Close(); err != nil {
-		return fmt.Errorf("close insert result: %w", err)
-	}
-
-	logger.Info("heartbeat table created", "table", schema+"."+table)
-	return nil
 }
 
 // initializeSnapshot creates snapshot if enabled
@@ -326,8 +281,8 @@ func (c *connector) Start(ctx context.Context) {
 	go c.slot.Metrics(ctx)
 
 	// Start heartbeat loop only for CDC mode when enabled
-	if c.cfg.IsHeartbeatEnabled() {
-		go c.runHeartbeat(ctx)
+	if c.heartbeat != nil {
+		go c.heartbeat.Run(ctx)
 	}
 
 	if c.timescaleDB != nil {
@@ -612,7 +567,9 @@ func (c *connector) Close() {
 	if c.slot != nil {
 		c.slot.Close(ctx)
 	}
-	c.closeHeartbeatConn(ctx)
+	if c.heartbeat != nil {
+		c.heartbeat.Close(ctx)
+	}
 	if c.stream != nil {
 		c.stream.Close(ctx)
 	}
@@ -648,90 +605,6 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 
 		logger.Debug("capture slot", "slotInfo", info)
 		break
-	}
-}
-
-// runHeartbeat executes the configured heartbeat.action.query-style SQL
-// on the source database at a fixed interval. This is used to generate
-// WAL activity for low-traffic databases so that logical replication
-// slots can advance confirmed_flush_lsn/restart_lsn and prevent WAL bloat.
-func (c *connector) runHeartbeat(ctx context.Context) {
-	logger.Debug("heartbeat loop started",
-		"interval", c.cfg.Heartbeat.Interval,
-		"table", c.cfg.Heartbeat.Table.Schema+"."+c.cfg.Heartbeat.Table.Name)
-
-	ticker := time.NewTicker(c.cfg.Heartbeat.Interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("heartbeat loop stopped", "reason", ctx.Err())
-			return
-		case <-ticker.C:
-			if err := c.execHeartbeat(ctx); err != nil {
-				logger.Error("heartbeat execution failed", "error", err)
-			} else {
-				logger.Debug("heartbeat query executed")
-			}
-		}
-	}
-}
-
-// execHeartbeat ensures there's an open heartbeat connection and executes the
-// auto-generated heartbeat UPDATE query. It serializes all access to
-// heartbeatConn so that Close() and runHeartbeat() never touch the same
-// pgx connection concurrently.
-func (c *connector) execHeartbeat(ctx context.Context) error {
-	c.heartbeatMu.Lock()
-	defer c.heartbeatMu.Unlock()
-
-	// Lazily (re)establish connection if needed
-	if c.heartbeatConn == nil {
-		conn, err := pq.NewConnection(ctx, c.cfg.DSN())
-		if err != nil {
-			return fmt.Errorf("heartbeat connection (re)establish failed: %w", err)
-		}
-		c.heartbeatConn = conn
-	}
-
-	query := c.heartbeatQuery()
-	resultReader := c.heartbeatConn.Exec(ctx, query)
-	if resultReader == nil {
-		return fmt.Errorf("heartbeat exec returned nil resultReader")
-	}
-	defer func() {
-		if err := resultReader.Close(); err != nil {
-			logger.Error("heartbeat result reader close failed", "error", err)
-		}
-	}()
-
-	if _, err := resultReader.ReadAll(); err != nil {
-		// On error, proactively close and nil the connection so that the next
-		// heartbeat tick will try to re-establish it.
-		_ = c.heartbeatConn.Close(ctx)
-		c.heartbeatConn = nil
-		return fmt.Errorf("heartbeat query failed: %w", err)
-	}
-
-	return nil
-}
-
-// heartbeatQuery returns the auto-generated UPDATE query for heartbeat.
-func (c *connector) heartbeatQuery() string {
-	return fmt.Sprintf("UPDATE %s.%s SET last_heartbeat = NOW() WHERE id = 1",
-		c.cfg.Heartbeat.Table.Schema, c.cfg.Heartbeat.Table.Name)
-}
-
-// closeHeartbeatConn safely closes the heartbeat connection if it exists.
-// It is used from Close() to avoid races with the heartbeat goroutine.
-func (c *connector) closeHeartbeatConn(ctx context.Context) {
-	c.heartbeatMu.Lock()
-	defer c.heartbeatMu.Unlock()
-
-	if c.heartbeatConn != nil {
-		_ = c.heartbeatConn.Close(ctx)
-		c.heartbeatConn = nil
 	}
 }
 

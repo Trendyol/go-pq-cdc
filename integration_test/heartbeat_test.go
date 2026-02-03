@@ -33,8 +33,6 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Note: heartbeat table is auto-created by the library, no need to create it manually
-
 	// Extend publication with heartbeat table so that heartbeat changes are part of CDC stream
 	cdcCfg.Publication.Tables = append(cdcCfg.Publication.Tables,
 		publication.Table{

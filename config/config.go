@@ -270,6 +270,7 @@ func (c *Config) mergePublicationTableConfig(pubInfoTables publication.Tables) p
 type SnapshotConfig struct {
 	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
 	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
+	ID                string             `json:"id" yaml:"id"`
 	Tables            publication.Tables `json:"tables" yaml:"tables"`
 	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
 	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`

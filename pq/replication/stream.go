@@ -178,13 +178,16 @@ func (s *stream) sink(ctx context.Context) {
 			}
 
 			if pgconn.Timeout(err) {
-				err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
-				if err != nil {
-					logger.Error("send stand by status update", "error", err)
-					corruptedConn = true
-					break
+				// Don't send status update if we haven't received any data yet
+				if s.LoadXLogPos() > 0 {
+					err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
+					if err != nil {
+						logger.Error("send stand by status update", "error", err)
+						corruptedConn = true
+						break
+					}
+					logger.Debug("send stand by status update")
 				}
-				logger.Debug("send stand by status update")
 				continue
 			}
 			logger.Error("receive message error", "error", err)

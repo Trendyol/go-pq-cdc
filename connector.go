@@ -302,6 +302,15 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 	case config.SnapshotModeNever:
 		return false
 	case config.SnapshotModeInitial:
+		// If resnapshot is enabled, clean metadata for THIS slot only and return true
+		if c.cfg.Snapshot.Resnapshot {
+			logger.Info("resnapshot enabled, cleaning metadata for slot", "slotName", c.cfg.Slot.Name)
+			if err := c.snapshotter.CleanupJobForSlot(ctx, c.cfg.Slot.Name); err != nil {
+				logger.Warn("failed to cleanup job for resnapshot", "error", err)
+			}
+			return true
+		}
+
 		job, err := c.snapshotter.LoadJob(ctx, c.cfg.Slot.Name)
 		if err != nil {
 			logger.Debug("failed to load snapshot job state, will take snapshot", "error", err)
@@ -377,8 +386,11 @@ func (c *connector) executeSnapshotOnly(ctx context.Context) error {
 
 // getSnapshotOnlySlotName returns a consistent slot name for snapshot_only mode
 // This ensures multi-pod deployments work together instead of duplicating work
-// The slot name is based on the database name to ensure consistency across restarts
+// If user defines a custom snapshot ID, use it; otherwise generate one based on database name
 func (c *connector) getSnapshotOnlySlotName() string {
+	if c.cfg.Snapshot.ID != "" {
+		return c.cfg.Snapshot.ID
+	}
 	return fmt.Sprintf("snapshot_only_%s", c.cfg.Database)
 }
 
@@ -386,6 +398,15 @@ func (c *connector) getSnapshotOnlySlotName() string {
 // Returns false if snapshot already completed (resume capability)
 func (c *connector) shouldTakeSnapshotOnly(ctx context.Context) bool {
 	slotName := c.getSnapshotOnlySlotName()
+
+	// If resnapshot is enabled, clean metadata for THIS slot only
+	if c.cfg.Snapshot.Resnapshot {
+		logger.Info("resnapshot enabled, cleaning metadata for slot", "slotName", slotName)
+		if err := c.snapshotter.CleanupJobForSlot(ctx, slotName); err != nil {
+			logger.Warn("failed to cleanup job for resnapshot", "error", err)
+		}
+		return true
+	}
 
 	job, err := c.snapshotter.LoadJob(ctx, slotName)
 	if err != nil {

@@ -213,6 +213,10 @@ func (s *stream) sink(ctx context.Context) {
 				logger.Error("decode primary keepalive message", "error", errPKM)
 				continue
 			}
+			if pkm.ServerWALEnd > 0 {
+				s.UpdateXLogPos(pkm.ServerWALEnd)
+				logger.Debug("updated xlog position from keepalive", "serverWALEnd", pkm.ServerWALEnd.String())
+			}
 			if pkm.ReplyRequested {
 				if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
 					logger.Error("standby status update", "error", err)

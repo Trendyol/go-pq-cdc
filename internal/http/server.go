@@ -26,9 +26,9 @@ type Server interface {
 }
 
 type server struct {
+	slotInfoProvider SlotInfoProvider
 	server           http.Server
 	cdcConfig        config.Config
-	slotInfoProvider SlotInfoProvider
 	closed           bool
 }
 

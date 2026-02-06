@@ -145,7 +145,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		cfg:                &cfg,
 		stream:             stream,
 		prometheusRegistry: prometheusRegistry,
-		server:             http.NewServer(cfg, prometheusRegistry),
+		server:             http.NewServer(cfg, prometheusRegistry, sl),
 		slot:               sl,
 		heartbeatConn:      heartbeatConn,
 		timescaleDB:        tdb,
@@ -181,7 +181,7 @@ func newSnapshotOnlyConnector(ctx context.Context, cfg config.Config, listenerFu
 	return &connector{
 		cfg:                &cfg,
 		prometheusRegistry: prometheusRegistry,
-		server:             http.NewServer(cfg, prometheusRegistry),
+		server:             http.NewServer(cfg, prometheusRegistry, nil),
 		snapshotter:        snapshotter,
 		listenerFunc:       listenerFunc,
 		cancelCh:           make(chan os.Signal, 1),

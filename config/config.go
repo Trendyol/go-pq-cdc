@@ -14,6 +14,8 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
 )
 
+const defaultSchema = "public"
+
 type Config struct {
 	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
@@ -44,9 +46,8 @@ type ExtensionSupport struct {
 }
 
 type HeartbeatConfig struct {
-	Query    string        `json:"query" yaml:"query"`
-	Interval time.Duration `json:"interval" yaml:"interval"`
-	Enabled  bool          `json:"enabled" yaml:"enabled"`
+	Table    publication.Table `json:"table" yaml:"table"`
+	Interval time.Duration     `json:"interval" yaml:"interval"`
 }
 
 // DSN returns a normal PostgreSQL connection string for regular database operations
@@ -74,9 +75,14 @@ func (c *Config) SetDefault() {
 		c.Metric.Port = 8080
 	}
 
-	// Default heartbeat interval if enabled but not set
-	if c.Heartbeat.Enabled && c.Heartbeat.Interval == 0 {
-		c.Heartbeat.Interval = 5 * time.Second
+	// Default heartbeat interval when table is configured
+	if c.Heartbeat.Table.Name != "" {
+		if c.Heartbeat.Interval == 0 {
+			c.Heartbeat.Interval = 100 * time.Millisecond
+		}
+		if c.Heartbeat.Table.Schema == "" {
+			c.Heartbeat.Table.Schema = defaultSchema
+		}
 	}
 
 	if c.Slot.SlotActivityCheckerInterval == 0 {
@@ -90,7 +96,7 @@ func (c *Config) SetDefault() {
 	// Set default schema names for tables
 	for tableID, table := range c.Publication.Tables {
 		if table.Schema == "" {
-			c.Publication.Tables[tableID].Schema = "public"
+			c.Publication.Tables[tableID].Schema = defaultSchema
 		}
 	}
 
@@ -112,7 +118,7 @@ func (c *Config) SetDefault() {
 		// Set default schema names for snapshot tables
 		for tableID, table := range c.Snapshot.Tables {
 			if table.Schema == "" {
-				c.Snapshot.Tables[tableID].Schema = "public"
+				c.Snapshot.Tables[tableID].Schema = defaultSchema
 			}
 		}
 	}
@@ -121,6 +127,11 @@ func (c *Config) SetDefault() {
 // IsSnapshotOnlyMode returns true if snapshot is enabled and mode is snapshot_only
 func (c *Config) IsSnapshotOnlyMode() bool {
 	return c.Snapshot.Enabled && c.Snapshot.Mode == SnapshotModeSnapshotOnly
+}
+
+// IsHeartbeatEnabled returns true if heartbeat table is configured
+func (c *Config) IsHeartbeatEnabled() bool {
+	return c.Heartbeat.Table.Name != ""
 }
 
 // GetSnapshotTables returns the tables to snapshot based on the configuration and publication info.
@@ -218,14 +229,10 @@ func (c *Config) Validate() error {
 		err = errors.Join(err, cErr)
 	}
 
-	// Heartbeat validation (applies to both CDC and snapshot_only configs;
-	// feature is only used in CDC mode but we validate config consistently)
-	if c.Heartbeat.Enabled {
+	// Heartbeat validation
+	if c.Heartbeat.Table.Name != "" {
 		if c.Heartbeat.Interval <= 0 {
-			err = errors.Join(err, errors.New("heartbeat.interval must be greater than 0 when heartbeat.enabled is true"))
-		}
-		if isEmpty(c.Heartbeat.Query) {
-			err = errors.Join(err, errors.New("heartbeat.query cannot be empty when heartbeat.enabled is true"))
+			err = errors.Join(err, errors.New("heartbeat.interval must be greater than 0 when heartbeat table is configured"))
 		}
 	}
 

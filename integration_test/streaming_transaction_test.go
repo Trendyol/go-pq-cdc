@@ -242,19 +242,4 @@ func TestStreamingInterleavedTransactions(t *testing.T) {
 
 	assert.Equal(t, expectedTotal, totalReceived.Load(),
 		"not all messages delivered – interleaved streaming likely dropped messages")
-
-	// Verify the interleaved row was among the received messages
-	foundInterleaved := false
-	close(msgCh)
-	for ins := range msgCh {
-		if id, ok := ins.Decoded["id"].(int32); ok && id == int32(smallRowID) {
-			foundInterleaved = true
-			break
-		}
-	}
-	// Note: the channel was already drained above, so we check totalReceived
-	// as the primary assertion. The interleaved message may have already been
-	// consumed from the channel above, which is fine – the total count is the
-	// definitive check.
-	_ = foundInterleaved
 }

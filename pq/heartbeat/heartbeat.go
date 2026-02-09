@@ -21,8 +21,8 @@ func quoteIdentifier(name string) string {
 // Heartbeat manages periodic heartbeat updates to prevent WAL bloat
 type Heartbeat struct {
 	conn   pq.Connection
-	cfg    config.HeartbeatConfig
 	dsn    string
+	cfg    config.HeartbeatConfig
 	mu     sync.Mutex
 	closed bool
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewData(t *testing.T) {
@@ -39,7 +40,7 @@ func TestNewData(t *testing.T) {
 
 	t.Run("should parse valid data", func(t *testing.T) {
 		d, err := NewData(buf, tupleDataType, len(skipBytes))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, d)
 		assert.Equal(t, uint16(2), d.ColumnNumber)
 		assert.Len(t, d.Columns, 2)
@@ -53,7 +54,7 @@ func TestNewData(t *testing.T) {
 
 	t.Run("should return error for invalid tuple data type", func(t *testing.T) {
 		_, err := NewData(buf, 'X', len(skipBytes)) // Expecting 'X', but got 'D'
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid tuple data type: D")
 	})
 }
@@ -87,7 +88,7 @@ func TestData_DecodeWithColumn(t *testing.T) {
 		}
 
 		decoded, err := d.DecodeWithColumn(relationColumns)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, decoded)
 		assert.Equal(t, int32(123), decoded["id"])
 		assert.Nil(t, decoded["description"])
@@ -100,7 +101,7 @@ func TestData_DecodeWithColumn(t *testing.T) {
 		}
 
 		decoded, err := d.DecodeWithColumn(relationColumns)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "123", decoded["unknown_col"]) // Fallback to string
 	})
 }

@@ -22,7 +22,7 @@ const rowCount = 500
 func main() {
 	ctx := context.Background()
 
-	// --- CDC Connector Konfigürasyonu -------------------------------------
+	// --- CDC Connector Configuration -------------------------------------
 	cfg := config.Config{
 		Host:      "127.0.0.1",
 		Port:      5433,
@@ -59,7 +59,7 @@ func main() {
 		},
 	}
 
-	// --- Mesaj Sayacı ve Handler ------------------------------------------
+	// --- Message Counter and Handler ------------------------------------------
 	var insertCount atomic.Int64
 	done := make(chan struct{})
 
@@ -67,7 +67,7 @@ func main() {
 		switch msg := lCtx.Message.(type) {
 		case *format.Insert:
 			n := insertCount.Add(1)
-			// İlk ve son birkaçını ve her 100'üncüyü loglayalım
+			// Log the first and last few, and every 100th message
 			if n <= 3 || n%100 == 0 || n >= int64(rowCount)-2 {
 				slog.Info("INSERT alındı",
 					"sayaç", n,
@@ -85,7 +85,7 @@ func main() {
 		}
 	}
 
-	// --- CDC Connector'ı Başlat -------------------------------------------
+	// --- Start the CDC Connector -------------------------------------------
 	connector, err := cdc.NewConnector(ctx, cfg, handler)
 	if err != nil {
 		slog.Error("connector oluşturulamadı", "error", err)
@@ -95,7 +95,7 @@ func main() {
 
 	go connector.Start(ctx)
 
-	// Connector hazır olana kadar bekle
+	// Wait until the connector is ready
 	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	if err := connector.WaitUntilReady(waitCtx); err != nil {
 		slog.Error("connector hazır olamadı", "error", err)
@@ -107,7 +107,7 @@ func main() {
 		"satırSayısı", rowCount,
 	)
 
-	// --- Büyük Transaction: 500 Satır Insert ------------------------------
+	// --- Large Transaction: Insert 500 Rows ------------------------------
 	pool, err := pgxpool.New(ctx, "postgres://cdc_user:cdc_pass@127.0.0.1:5433/cdc_db")
 	if err != nil {
 		slog.Error("pgxpool oluşturulamadı", "error", err)
@@ -138,7 +138,7 @@ func main() {
 
 	slog.Info("Transaction COMMIT edildi, mesajlar bekleniyor...")
 
-	// --- Sonuçları Bekle --------------------------------------------------
+	// --- Wait for the Results --------------------------------------------------
 	select {
 	case <-done:
 		slog.Info("BAŞARILI: Tüm mesajlar alındı!",

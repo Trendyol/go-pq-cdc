@@ -2,6 +2,9 @@ version: "3"
 services:
   postgres:
     image: postgres:16-alpine
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
     environment:
       POSTGRES_DB: cdc_db
       POSTGRES_USER: cdc_user
@@ -31,3 +34,10 @@ services:
       retries: 10
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+
+volumes:
+  postgres_data:

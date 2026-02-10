@@ -154,133 +154,216 @@ func (s *stream) setup(ctx context.Context) error {
 	return nil
 }
 
-//nolint:funlen
+// messageBuffer manages a one-message look-ahead buffer.
+//
+// The last DML message in each transaction is held back so its WAL position
+// can be rewritten to the transaction-end LSN (from COMMIT / STREAM COMMIT).
+// All preceding messages are emitted immediately with their original position.
+// This keeps memory usage O(1) regardless of transaction size.
+type messageBuffer struct {
+	pending *Message
+	outCh   chan<- *Message
+}
+
+// flush emits the pending message (if any) with its original WAL position.
+// Used at STREAM STOP boundaries where the final commit LSN is not yet known.
+func (b *messageBuffer) flush() {
+	if b.pending != nil {
+		b.outCh <- b.pending
+		b.pending = nil
+	}
+}
+
+// flushWithLSN emits the pending message (if any), rewriting its WAL position
+// to the given transaction-end LSN. Used at COMMIT and STREAM COMMIT.
+func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
+	if b.pending != nil {
+		b.outCh <- &Message{
+			message:  b.pending.message,
+			walStart: int64(lsn),
+		}
+		b.pending = nil
+	}
+}
+
+// discard drops the pending message without emitting.
+// Used at BEGIN (reset state) and STREAM ABORT (transaction rolled back).
+func (b *messageBuffer) discard() {
+	b.pending = nil
+}
+
+// buffer stores a new DML message, first flushing any previously pending one.
+func (b *messageBuffer) buffer(msg *Message) {
+	b.flush()
+	b.pending = msg
+}
+
 func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
-	var corruptedConn bool
+	buf := &messageBuffer{outCh: s.messageCH}
+	corrupted := s.sinkLoop(ctx, buf)
 
-	// prevMessage holds the last data change message seen in the current transaction.
-	// We only need to retain a single message so that we can rewrite its WAL position
-	// to the transaction end LSN once the COMMIT is received. All other messages can
-	// be streamed to the listener immediately. This keeps memory usage constant even
-	// for very large transactions (e.g., COPY commands).
-	var prevMessage *Message
+	s.sinkEnd <- struct{}{}
+	if !s.closed.Load() {
+		s.Close(ctx)
+		if corrupted {
+			panic("corrupted connection")
+		}
+	}
+}
 
+// sinkLoop reads raw replication messages and dispatches them until the
+// connection is closed or a fatal error occurs. It returns true when the
+// connection is in a corrupted state and the caller should panic.
+func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer) (corrupted bool) {
 	for {
-		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond*300))
+		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(300*time.Millisecond))
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
 		cancel()
+
 		if err != nil {
 			if s.closed.Load() {
 				logger.Info("stream stopped")
-				break
+				return false
 			}
-
 			if pgconn.Timeout(err) {
-				// Don't send status update if we haven't received any data yet
 				if s.LoadXLogPos() > 0 {
-					err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
-					if err != nil {
+					if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
 						logger.Error("send stand by status update", "error", err)
-						corruptedConn = true
-						break
+						return true
 					}
 					logger.Debug("send stand by status update")
 				}
 				continue
 			}
 			logger.Error("receive message error", "error", err)
-			corruptedConn = true
-			break
+			return true
 		}
 
-		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-			res, _ := errMsg.MarshalJSON()
-			logger.Error("receive postgres wal error: " + string(res))
-			continue
-		}
-
-		msg, ok := rawMsg.(*pgproto3.CopyData)
+		copyData, ok := s.extractCopyData(rawMsg)
 		if !ok {
-			logger.Warn(fmt.Sprintf("received unexpected message: %T", rawMsg))
 			continue
 		}
 
-		var xld XLogData
-
-		switch msg.Data[0] {
+		switch copyData.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
-			pkm, errPKM := format.NewPrimaryKeepaliveMessage(msg.Data[1:])
-			if errPKM != nil {
-				logger.Error("decode primary keepalive message", "error", errPKM)
-				continue
+			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
+				return true
 			}
-
-			if pkm.ServerWALEnd > 0 {
-				s.UpdateXLogPos(pkm.ServerWALEnd)
-				logger.Debug("updated xlog position from keepalive", "serverWALEnd", pkm.ServerWALEnd.String())
-			}
-
-			if pkm.ReplyRequested {
-				if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
-					logger.Error("standby status update", "error", err)
-					corruptedConn = true
-					break
-				}
-				logger.Debug("standby status update sent on keepalive request")
-			}
-			continue
 		case message.XLogDataByteID:
-			xld, err = ParseXLogData(msg.Data[1:])
-			if err != nil {
-				logger.Error("parse xLog data", "error", err)
-				continue
-			}
-
-			logger.Debug("wal received", "walData", string(xld.WALData), "walDataByte", slice.ConvertToInt(xld.WALData), "walStart", xld.WALStart, "walEnd", xld.ServerWALEnd, "serverTime", xld.ServerTime)
-
-			s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
-
-			var decodedMsg any
-			decodedMsg, err = message.New(xld.WALData, xld.ServerTime, s.relation)
-			if err != nil || decodedMsg == nil {
-				logger.Debug("wal data message parsing error", "error", err)
-				continue
-			}
-			if _, ok := decodedMsg.(*format.Begin); ok {
-				// Start of a new transaction – reset state
-				prevMessage = nil
-				continue
-			}
-			if commitMsg, ok := decodedMsg.(*format.Commit); ok {
-				// Emit the last buffered message (if any) rewriting its WAL position
-				if prevMessage != nil {
-					s.messageCH <- &Message{
-						message:  prevMessage.message,
-						walStart: int64(commitMsg.TransactionEndLSN),
-					}
-				}
-				prevMessage = nil
-				continue
-			}
-
-			// For DML events we keep at most one message buffered. Older message is flushed.
-			if prevMessage != nil {
-				s.messageCH <- prevMessage
-			}
-			prevMessage = &Message{
-				message:  decodedMsg,
-				walStart: int64(xld.WALStart),
-			}
+			s.handleXLogData(copyData.Data[1:], buf)
 		}
 	}
-	s.sinkEnd <- struct{}{}
-	if !s.closed.Load() {
-		s.Close(ctx)
-		if corruptedConn {
-			panic("corrupted connection")
+}
+
+// extractCopyData validates a raw backend message. It returns the CopyData
+// payload and true on success, or (nil, false) for protocol-level errors and
+// unexpected message types which are logged and skipped.
+func (s *stream) extractCopyData(rawMsg pgproto3.BackendMessage) (*pgproto3.CopyData, bool) {
+	if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
+		res, _ := errMsg.MarshalJSON()
+		logger.Error("receive postgres wal error: " + string(res))
+		return nil, false
+	}
+
+	msg, ok := rawMsg.(*pgproto3.CopyData)
+	if !ok {
+		logger.Warn(fmt.Sprintf("received unexpected message: %T", rawMsg))
+		return nil, false
+	}
+
+	return msg, true
+}
+
+// handleKeepalive processes a primary keepalive message, updating the WAL
+// position and responding with a standby status update when requested.
+// A non-nil return signals a corrupted connection.
+func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
+	pkm, err := format.NewPrimaryKeepaliveMessage(data)
+	if err != nil {
+		logger.Error("decode primary keepalive message", "error", err)
+		return nil // non-fatal, skip
+	}
+
+	if pkm.ServerWALEnd > 0 {
+		s.UpdateXLogPos(pkm.ServerWALEnd)
+		logger.Debug("updated xlog position from keepalive", "serverWALEnd", pkm.ServerWALEnd.String())
+	}
+
+	if pkm.ReplyRequested {
+		if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
+			logger.Error("standby status update", "error", err)
+			return err
 		}
+		logger.Debug("standby status update sent on keepalive request")
+	}
+
+	return nil
+}
+
+// handleXLogData parses a WAL data message, decodes the logical replication
+// event, and dispatches it through the message buffer.
+func (s *stream) handleXLogData(data []byte, buf *messageBuffer) {
+	xld, err := ParseXLogData(data)
+	if err != nil {
+		logger.Error("parse xLog data", "error", err)
+		return
+	}
+
+	logger.Debug("wal received",
+		"walData", string(xld.WALData),
+		"walDataByte", slice.ConvertToInt(xld.WALData),
+		"walStart", xld.WALStart,
+		"walEnd", xld.ServerWALEnd,
+		"serverTime", xld.ServerTime,
+	)
+
+	s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
+
+	decodedMsg, err := message.New(xld.WALData, xld.ServerTime, s.relation)
+	if err != nil || decodedMsg == nil {
+		logger.Debug("wal data message parsing error", "error", err)
+		return
+	}
+
+	s.dispatchMessage(decodedMsg, xld, buf)
+}
+
+// dispatchMessage routes a decoded logical replication event to the correct
+// buffer action.
+//
+// Transaction boundaries (BEGIN, COMMIT, STREAM COMMIT, STREAM STOP, STREAM ABORT)
+// control the buffer lifecycle. DML events (INSERT, UPDATE, DELETE) are buffered
+// with a one-message look-ahead so the last message in each transaction can have
+// its WAL position rewritten to the transaction-end LSN.
+func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffer) {
+	switch msg := decodedMsg.(type) {
+	case *format.Begin:
+		buf.discard()
+
+	case *format.Commit:
+		buf.flushWithLSN(msg.TransactionEndLSN)
+
+	case *format.StreamStop:
+		// End of a streaming chunk – flush so messages are not lost when
+		// other transactions are interleaved between chunks.
+		buf.flush()
+
+	case *format.StreamCommit:
+		// Final commit of a streamed transaction – rewrite LSN like Commit.
+		buf.flushWithLSN(msg.TransactionEndLSN)
+
+	case *format.StreamAbort:
+		// Streamed transaction rolled back – discard buffered message.
+		buf.discard()
+
+	default:
+		// DML event (Insert, Update, Delete, Relation, …)
+		buf.buffer(&Message{
+			message:  decodedMsg,
+			walStart: int64(xld.WALStart),
+		})
 	}
 }
 

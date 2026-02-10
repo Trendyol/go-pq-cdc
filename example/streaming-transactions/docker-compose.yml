@@ -1,0 +1,43 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:16-alpine
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    environment:
+      POSTGRES_DB: cdc_db
+      POSTGRES_USER: cdc_user
+      POSTGRES_PASSWORD: cdc_pass
+    ports:
+      - "5433:5432"
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=20
+      - -c
+      - max_wal_senders=25
+      # --------------------------------------------------------
+      # KEY SETTING: logical_decoding_work_mem controls when
+      # PostgreSQL starts streaming in-progress transactions.
+      # Default is 64MB. We set it to 64kB so even small
+      # transactions trigger the streaming protocol.
+      # --------------------------------------------------------
+      - -c
+      - logical_decoding_work_mem=64kB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdc_user -d cdc_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+
+volumes:
+  postgres_data:

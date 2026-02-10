@@ -376,14 +376,23 @@ func (s *stream) process(ctx context.Context) {
 			break
 		}
 
+		ackFunc := func() error {
+			pos := pq.LSN(msg.walStart)
+			s.UpdateXLogPos(pos)
+			logger.Debug("send stand by status update", "xLogPos", s.LoadXLogPos().String())
+			return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
+		}
+
+		if s.isHeartbeatMessage(msg.message) {
+			if err := ackFunc(); err != nil {
+				logger.Error("heartbeat auto-ack failed", "error", err)
+			}
+			continue
+		}
+
 		lCtx := &ListenerContext{
 			Message: msg.message,
-			Ack: func() error {
-				pos := pq.LSN(msg.walStart)
-				s.UpdateXLogPos(pos)
-				logger.Debug("send stand by status update", "xLogPos", s.LoadXLogPos().String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
-			},
+			Ack:     ackFunc,
 		}
 
 		switch lCtx.Message.(type) {
@@ -399,6 +408,26 @@ func (s *stream) process(ctx context.Context) {
 		s.listenerFunc(lCtx)
 		s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
 	}
+}
+
+func (s *stream) isHeartbeatMessage(msg any) bool {
+	if !s.config.IsHeartbeatEnabled() {
+		return false
+	}
+
+	hbSchema := s.config.Heartbeat.Table.Schema
+	hbTable := s.config.Heartbeat.Table.Name
+
+	switch m := msg.(type) {
+	case *format.Insert:
+		return m.TableNamespace == hbSchema && m.TableName == hbTable
+	case *format.Update:
+		return m.TableNamespace == hbSchema && m.TableName == hbTable
+	case *format.Delete:
+		return m.TableNamespace == hbSchema && m.TableName == hbTable
+	}
+
+	return false
 }
 
 func (s *stream) Close(ctx context.Context) {

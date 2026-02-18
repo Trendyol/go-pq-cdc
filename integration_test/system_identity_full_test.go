@@ -178,13 +178,12 @@ func TestReplicaIdentityNothing(t *testing.T) {
 		_ = ctx.Ack()
 	}
 
-	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
 
 	t.Cleanup(func() {
-		connector.Close()
 		assert.NoError(t, RestoreDB(ctx))
 		assert.NoError(t, postgresConn.Close(ctx))
 	})
@@ -220,13 +219,12 @@ func TestReplicaIdentityUsingIndex(t *testing.T) {
 		_ = ctx.Ack()
 	}
 
-	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
 
 	t.Cleanup(func() {
-		connector.Close()
 		assert.NoError(t, RestoreDB(ctx))
 		assert.NoError(t, postgresConn.Close(ctx))
 	})

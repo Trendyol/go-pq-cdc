@@ -9,19 +9,24 @@ import (
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq"
 )
 
 const (
-	ReplicaIdentityFull    = "FULL"
-	ReplicaIdentityDefault = "DEFAULT"
+	ReplicaIdentityFull       = "FULL"
+	ReplicaIdentityDefault    = "DEFAULT"
+	ReplicaIdentityNothing    = "NOTHING"
+	ReplicaIdentityUsingIndex = "USING INDEX"
 )
 
 var (
 	ErrorTablesNotExists   = goerrors.New("table does not exists")
-	ReplicaIdentityOptions = []string{ReplicaIdentityDefault, ReplicaIdentityFull}
+	ReplicaIdentityOptions = []string{ReplicaIdentityDefault, ReplicaIdentityFull, ReplicaIdentityNothing, ReplicaIdentityUsingIndex}
 	ReplicaIdentityMap     = map[string]string{
-		"d": ReplicaIdentityDefault, // primary key on old value
-		"f": ReplicaIdentityFull,    // full row on old value
+		"d": ReplicaIdentityDefault,    // primary key on old value
+		"f": ReplicaIdentityFull,       // full row on old value
+		"n": ReplicaIdentityNothing,    // nothing on old value
+		"i": ReplicaIdentityUsingIndex, // index columns on old value
 	}
 )
 
@@ -29,6 +34,8 @@ func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 	if !c.cfg.CreateIfNotExists {
 		return nil
 	}
+
+	c.warnNothingReplicaIdentityWithUpdateDelete()
 
 	tables, err := c.GetReplicaIdentities(ctx)
 	if err != nil {
@@ -46,8 +53,31 @@ func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 	return nil
 }
 
+func (c *Publication) warnNothingReplicaIdentityWithUpdateDelete() {
+	hasUpdateDelete := c.cfg.Operations.Contains(OperationUpdate) || c.cfg.Operations.Contains(OperationDelete)
+	if !hasUpdateDelete {
+		return
+	}
+
+	for _, table := range c.cfg.Tables {
+		if table.ReplicaIdentity == ReplicaIdentityNothing {
+			logger.Warn(
+				"table uses REPLICA IDENTITY NOTHING with UPDATE/DELETE publication operations",
+				"table", qualifiedTableName(table),
+				"note", "NOTHING is typically suitable for insert-only scenarios",
+			)
+		}
+	}
+}
+
 func (c *Publication) AlterTableReplicaIdentity(ctx context.Context, t Table) error {
-	resultReader := c.conn.Exec(ctx, fmt.Sprintf("ALTER TABLE %s.%s REPLICA IDENTITY %s;", t.Schema, t.Name, t.ReplicaIdentity))
+	tableName := fmt.Sprintf("%s.%s", pq.QuoteIdentifier(t.Schema), pq.QuoteIdentifier(t.Name))
+	query := fmt.Sprintf("ALTER TABLE %s REPLICA IDENTITY %s;", tableName, t.ReplicaIdentity)
+	if t.ReplicaIdentity == ReplicaIdentityUsingIndex {
+		query = fmt.Sprintf("ALTER TABLE %s REPLICA IDENTITY USING INDEX %s;", tableName, pq.QuoteIdentifier(t.ReplicaIdentityIndex))
+	}
+
+	resultReader := c.conn.Exec(ctx, query)
 	_, err := resultReader.ReadAll()
 	if err != nil {
 		return errors.Wrap(err, "table replica identity update result")
@@ -66,14 +96,21 @@ func (c *Publication) GetReplicaIdentities(ctx context.Context) ([]Table, error)
 	tableNames := make([]string, len(c.cfg.Tables))
 
 	for i, t := range c.cfg.Tables {
-		if t.Schema == "" && !strings.Contains(t.Name, ".") {
-			tableNames[i] = "'" + t.Name + "'"
-		} else {
-			tableNames[i] = "'" + t.Schema + "." + t.Name + "'"
-		}
+		tableNames[i] = quoteLiteral(qualifiedTableName(t))
 	}
 
-	query := fmt.Sprintf("SELECT relname AS table_name, n.nspname AS schema_name, relreplident AS replica_identity FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE concat(n.nspname, '.', c.relname) IN (%s)", strings.Join(tableNames, ", "))
+	query := fmt.Sprintf(`
+		SELECT
+			c.relname AS table_name,
+			n.nspname AS schema_name,
+			c.relreplident AS replica_identity,
+			idx.relname AS replica_identity_index
+		FROM pg_class c
+		JOIN pg_namespace n ON c.relnamespace = n.oid
+		LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisreplident
+		LEFT JOIN pg_class idx ON idx.oid = i.indexrelid
+		WHERE concat(n.nspname, '.', c.relname) IN (%s)
+	`, strings.Join(tableNames, ", "))
 
 	logger.Debug("executing query: ", query)
 
@@ -121,7 +158,9 @@ func decodeReplicaIdentitiesResult(results []*pgconn.Result) ([]Table, error) {
 				case "schema_name":
 					t.Schema = v.(string)
 				case "replica_identity":
-					t.ReplicaIdentity = ReplicaIdentityMap[string(v.(int32))]
+					t.ReplicaIdentity = mapReplicaIdentity(v)
+				case "replica_identity_index":
+					t.ReplicaIdentityIndex = v.(string)
 				}
 			}
 			res = append(res, t)
@@ -129,4 +168,39 @@ func decodeReplicaIdentitiesResult(results []*pgconn.Result) ([]Table, error) {
 	}
 
 	return res, nil
+}
+
+func mapReplicaIdentity(raw any) string {
+	var code string
+
+	switch v := raw.(type) {
+	case int32:
+		code = string(v)
+	case string:
+		code = v
+	default:
+		return ""
+	}
+
+	if identity, ok := ReplicaIdentityMap[code]; ok {
+		return identity
+	}
+
+	return code
+}
+
+func qualifiedTableName(t Table) string {
+	if t.Schema == "" {
+		parts := strings.SplitN(t.Name, ".", 2)
+		if len(parts) == 2 {
+			return parts[0] + "." + parts[1]
+		}
+		return "public." + t.Name
+	}
+
+	return t.Schema + "." + t.Name
+}
+
+func quoteLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }

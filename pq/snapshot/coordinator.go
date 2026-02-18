@@ -389,8 +389,11 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 		return 0, errors.Wrap(err, "get order by clause")
 	}
 
+	// Get query condition for this table
+	queryCondition := s.getQueryCondition(chunk.TableSchema, chunk.TableName)
+
 	// Build query for this chunk
-	query := s.buildChunkQuery(chunk, orderByClause, pkColumns)
+	query := s.buildChunkQuery(chunk, orderByClause, pkColumns, queryCondition)
 
 	logger.Debug("[chunk] executing query", "query", query)
 
@@ -430,67 +433,109 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 	return rowCount, nil
 }
 
-func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+func (s *Snapshotter) getQueryCondition(tableSchema, tableName string) string {
+	normalizedSchema := tableSchema
+	if normalizedSchema == "" {
+		normalizedSchema = "public"
+	}
+
+	for _, table := range s.tables {
+		tableSchema := table.Schema
+		if tableSchema == "" {
+			tableSchema = "public"
+		}
+		if tableSchema == normalizedSchema && table.Name == tableName {
+			if table.QueryCondition != "" {
+				return table.QueryCondition
+			}
+		}
+	}
+	return s.config.QueryCondition
+}
+
+func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string, queryCondition string) string {
 	switch chunk.PartitionStrategy {
 	case PartitionStrategyIntegerRange:
-		return s.buildIntegerRangeQuery(chunk, orderByClause, pkColumns)
+		return s.buildIntegerRangeQuery(chunk, orderByClause, pkColumns, queryCondition)
 	case PartitionStrategyCTIDBlock:
-		return s.buildCTIDBlockQuery(chunk)
+		return s.buildCTIDBlockQuery(chunk, queryCondition)
 	case PartitionStrategyOffset:
 		fallthrough
 	default:
-		return s.buildOffsetQuery(chunk, orderByClause)
+		return s.buildOffsetQuery(chunk, orderByClause, queryCondition)
 	}
 }
 
-func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
+func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string, queryCondition string) string {
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
+		whereClause := fmt.Sprintf("%s >= %d AND %s <= %d", pkColumn, *chunk.RangeStart, pkColumn, *chunk.RangeEnd)
+		if queryCondition != "" {
+			whereClause = fmt.Sprintf("%s AND %s", whereClause, queryCondition)
+		}
 		return fmt.Sprintf(
-			"SELECT * FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
+			"SELECT * FROM %s.%s WHERE %s ORDER BY %s LIMIT %d",
 			chunk.TableSchema,
 			chunk.TableName,
-			pkColumn,
-			*chunk.RangeStart,
-			pkColumn,
-			*chunk.RangeEnd,
+			whereClause,
 			orderByClause,
 			chunk.ChunkSize,
 		)
 	}
 	// Fallback to offset
-	return s.buildOffsetQuery(chunk, orderByClause)
+	return s.buildOffsetQuery(chunk, orderByClause, queryCondition)
 }
 
-func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk) string {
+func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) string {
 	// Empty table or single chunk without block info - select all
 	if chunk.BlockStart == nil {
+		if queryCondition != "" {
+			return fmt.Sprintf("SELECT * FROM %s.%s WHERE %s", chunk.TableSchema, chunk.TableName, queryCondition)
+		}
 		return fmt.Sprintf("SELECT * FROM %s.%s", chunk.TableSchema, chunk.TableName)
 	}
 
 	// Last chunk (BlockEnd is nil): no upper bound to catch rows added after metadata creation
 	// This prevents missing rows that were inserted between chunk creation and snapshot export
 	if chunk.BlockEnd == nil || chunk.IsLastChunk {
+		whereClause := fmt.Sprintf("ctid >= '(%d,0)'::tid", *chunk.BlockStart)
+		if queryCondition != "" {
+			whereClause = fmt.Sprintf("%s AND %s", whereClause, queryCondition)
+		}
 		return fmt.Sprintf(
-			"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid",
+			"SELECT * FROM %s.%s WHERE %s",
 			chunk.TableSchema,
 			chunk.TableName,
-			*chunk.BlockStart,
+			whereClause,
 		)
 	}
 
 	// Normal chunk: use bounded CTID range [BlockStart, BlockEnd)
 	// ctid format: (block_number, tuple_index)
+	whereClause := fmt.Sprintf("ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid", *chunk.BlockStart, *chunk.BlockEnd)
+	if queryCondition != "" {
+		whereClause = fmt.Sprintf("%s AND %s", whereClause, queryCondition)
+	}
 	return fmt.Sprintf(
-		"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid",
+		"SELECT * FROM %s.%s WHERE %s",
 		chunk.TableSchema,
 		chunk.TableName,
-		*chunk.BlockStart,
-		*chunk.BlockEnd,
+		whereClause,
 	)
 }
 
-func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string) string {
+func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string, queryCondition string) string {
+	if queryCondition != "" {
+		return fmt.Sprintf(
+			"SELECT * FROM %s.%s WHERE %s ORDER BY %s LIMIT %d OFFSET %d",
+			chunk.TableSchema,
+			chunk.TableName,
+			queryCondition,
+			orderByClause,
+			chunk.ChunkSize,
+			chunk.ChunkStart,
+		)
+	}
 	return fmt.Sprintf(
 		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
 		chunk.TableSchema,
@@ -1110,8 +1155,14 @@ func (s *Snapshotter) buildChunkValueString(chunk *Chunk) string {
 }
 
 func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Connection, schema, table string) (int64, error) {
+	// Get query condition for this table
+	queryCondition := s.getQueryCondition(schema, table)
+
 	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
+	if queryCondition != "" {
+		query = fmt.Sprintf("SELECT COUNT(*) FROM %s.%s WHERE %s", schema, table, queryCondition)
+	}
 
 	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {

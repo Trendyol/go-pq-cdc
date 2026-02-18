@@ -284,6 +284,7 @@ type SnapshotConfig struct {
 	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
 	Enabled           bool               `json:"enabled" yaml:"enabled"`
 	Resnapshot        bool               `json:"resnapshot" yaml:"resnapshot"`
+	QueryCondition    string             `json:"queryCondition" yaml:"queryCondition"`
 }
 
 func (s *SnapshotConfig) Validate() error {

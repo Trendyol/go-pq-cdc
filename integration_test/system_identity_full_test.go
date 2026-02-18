@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cdc "github.com/Trendyol/go-pq-cdc"
+	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
@@ -18,7 +19,7 @@ import (
 func TestReplicaIdentityDefault(t *testing.T) {
 	ctx := context.Background()
 
-	cdcCfg := Config
+	cdcCfg := cloneConnectorConfig()
 	cdcCfg.Slot.Name = "slot_test_replica_identity_default"
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityDefault
 
@@ -89,7 +90,7 @@ func TestReplicaIdentityDefault(t *testing.T) {
 func TestReplicaIdentityFull(t *testing.T) {
 	ctx := context.Background()
 
-	cdcCfg := Config
+	cdcCfg := cloneConnectorConfig()
 	cdcCfg.Slot.Name = "slot_test_replica_identity_full"
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityFull
 
@@ -160,7 +161,7 @@ func TestReplicaIdentityFull(t *testing.T) {
 func TestReplicaIdentityNothing(t *testing.T) {
 	ctx := context.Background()
 
-	cdcCfg := Config
+	cdcCfg := cloneConnectorConfig()
 	cdcCfg.Slot.Name = "slot_test_replica_identity_nothing"
 	cdcCfg.Publication.Operations = publication.Operations{publication.OperationInsert}
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityNothing
@@ -196,7 +197,7 @@ func TestReplicaIdentityNothing(t *testing.T) {
 func TestReplicaIdentityUsingIndex(t *testing.T) {
 	ctx := context.Background()
 
-	cdcCfg := Config
+	cdcCfg := cloneConnectorConfig()
 	cdcCfg.Slot.Name = "slot_test_replica_identity_using_index"
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityUsingIndex
 	cdcCfg.Publication.Tables[0].ReplicaIdentityIndex = "books_name_unique_idx"
@@ -237,7 +238,7 @@ func TestReplicaIdentityUsingIndex(t *testing.T) {
 func TestReplicaIdentityUsingIndexUpdateUsesKeyTuple(t *testing.T) {
 	ctx := context.Background()
 
-	cdcCfg := Config
+	cdcCfg := cloneConnectorConfig()
 	cdcCfg.Slot.Name = "slot_test_replica_identity_using_index_key_tuple"
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityUsingIndex
 	cdcCfg.Publication.Tables[0].ReplicaIdentityIndex = "books_name_unique_idx"
@@ -306,7 +307,7 @@ func TestReplicaIdentityUsingIndexUpdateUsesKeyTuple(t *testing.T) {
 func TestReplicaIdentityUsingIndexMissingIndexReturnsError(t *testing.T) {
 	ctx := context.Background()
 
-	cdcCfg := Config
+	cdcCfg := cloneConnectorConfig()
 	cdcCfg.Slot.Name = "slot_test_replica_identity_using_index_missing_index"
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityUsingIndex
 	cdcCfg.Publication.Tables[0].ReplicaIdentityIndex = "books_name_unique_idx_missing"
@@ -369,4 +370,11 @@ func getReplicaIdentity(ctx context.Context, t *testing.T, conn pq.Connection, s
 	}
 
 	return publication.ReplicaIdentityMap[string(row[0])], string(row[1])
+}
+
+func cloneConnectorConfig() config.Config {
+	cfg := Config
+	cfg.Publication.Operations = append(publication.Operations(nil), Config.Publication.Operations...)
+	cfg.Publication.Tables = append(publication.Tables(nil), Config.Publication.Tables...)
+	return cfg
 }

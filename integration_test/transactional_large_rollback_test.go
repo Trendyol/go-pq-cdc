@@ -24,63 +24,61 @@ func TestLargeTransactionalRollback(t *testing.T) {
 
 	ctx := context.Background()
 
-	// ---------- CDC connector setup ---------------------------------------
 	cdcCfg := Config
 	cdcCfg.Slot.Name = slotName
 
-	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
-
-	msgCh := make(chan any, 10) // expect 0
-	handler := func(lCtx *replication.ListenerContext) {
-		switch lCtx.Message.(type) {
-		case *format.Insert:
-			msgCh <- lCtx.Message
+	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
+		postgresConn, err := newPostgresConn()
+		if !assert.NoError(t, err) {
+			t.FailNow()
 		}
-		_ = lCtx.Ack()
-	}
+		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+			t.FailNow()
+		}
 
-	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+		msgCh := make(chan any, 10)
+		handler := func(lCtx *replication.ListenerContext) {
+			switch lCtx.Message.(type) {
+			case *format.Insert:
+				msgCh <- lCtx.Message
+			}
+			_ = lCtx.Ack()
+		}
 
-	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
-	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+		connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
 
-	t.Cleanup(func() {
-		connector.Close()
-		_ = RestoreDB(ctx)
-		pool.Close()
-	})
+		cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
+		pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
 
-	go connector.Start(ctx)
-	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
-	cancel()
+		t.Cleanup(func() {
+			connector.Close()
+			_ = RestoreDB(ctx)
+			pool.Close()
+		})
 
-	// ---------- Large transaction with ROLLBACK ---------------------------
-	tx, err := pool.Begin(ctx)
-	assert.NoError(t, err)
-	for i := 0; i < rowCount; i++ {
-		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, 'temp')", i+20000)
+		go connector.Start(ctx)
+		waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		assert.NoError(t, connector.WaitUntilReady(waitCtx))
+		cancel()
+
+		tx, err := pool.Begin(ctx)
 		assert.NoError(t, err)
-	}
-	assert.NoError(t, tx.Rollback(ctx))
+		for i := 0; i < rowCount; i++ {
+			_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, 'temp')", i+20000)
+			assert.NoError(t, err)
+		}
+		assert.NoError(t, tx.Rollback(ctx))
 
-	// ---------- Validate that no message is received ----------------------
-	select {
-	case <-msgCh:
-		t.Fatalf("unexpected message received after rollback")
-	case <-time.After(2 * time.Second):
-		// success, channel remained silent
-	}
+		select {
+		case <-msgCh:
+			t.Fatalf("unexpected message received after rollback")
+		case <-time.After(2 * time.Second):
+		}
+	})
 }

@@ -89,6 +89,10 @@ func (c *Config) SetDefault() {
 		c.Slot.SlotActivityCheckerInterval = 1000
 	}
 
+	if c.Slot.ProtoVersion == 0 {
+		c.Slot.ProtoVersion = 2
+	}
+
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
 	}

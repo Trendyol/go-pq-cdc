@@ -131,10 +131,10 @@ func main() {
 		}
 	}
 
-	if err = tx.Commit(ctx); err != nil {
+	/*if err = tx.Commit(ctx); err != nil {
 		slog.Error("commit hatası", "error", err)
 		os.Exit(1)
-	}
+	}*/
 
 	slog.Info("Transaction COMMIT edildi, mesajlar bekleniyor...")
 

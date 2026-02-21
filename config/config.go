@@ -90,7 +90,7 @@ func (c *Config) SetDefault() {
 	}
 
 	if c.Slot.ProtoVersion == 0 {
-		c.Slot.ProtoVersion = 1
+		c.Slot.ProtoVersion = 2
 	}
 
 	if c.Logger.Logger == nil {

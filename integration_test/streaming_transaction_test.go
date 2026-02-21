@@ -62,6 +62,7 @@ func TestStreamingLargeTransactionCommit(t *testing.T) {
 	// --- CDC setup --------------------------------------------------------
 	cdcCfg := Config
 	cdcCfg.Slot.Name = slotName
+	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
 	if !assert.NoError(t, err) {
@@ -161,6 +162,7 @@ func TestStreamingInterleavedTransactions(t *testing.T) {
 	// --- CDC setup --------------------------------------------------------
 	cdcCfg := Config
 	cdcCfg.Slot.Name = slotName
+	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
 	if !assert.NoError(t, err) {

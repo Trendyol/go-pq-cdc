@@ -9,6 +9,197 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewStreamStart(t *testing.T) {
+	t.Run("should decode stream start message successfully", func(t *testing.T) {
+		// Given
+		// StreamStart format:
+		// Byte1('S') + Int32(Xid) + Int8(FirstSegment)
+		data := []byte{
+			'S',         // Message type 'S' (StreamStart)
+			0, 0, 0, 42, // Xid: 42
+			1, // FirstSegment: true
+		}
+
+		// When
+		ss, err := NewStreamStart(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, ss)
+		assert.Equal(t, uint32(42), ss.Xid)
+		assert.True(t, ss.FirstSegment)
+	})
+
+	t.Run("should decode stream start with first_segment false", func(t *testing.T) {
+		// Given
+		data := []byte{
+			'S',         // Message type 'S'
+			0, 0, 0, 10, // Xid: 10
+			0, // FirstSegment: false
+		}
+
+		// When
+		ss, err := NewStreamStart(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, ss)
+		assert.Equal(t, uint32(10), ss.Xid)
+		assert.False(t, ss.FirstSegment)
+	})
+
+	t.Run("should return error when data is too short", func(t *testing.T) {
+		// Given
+		data := []byte{
+			'S',     // Message type 'S'
+			0, 0, 0, // Incomplete data
+		}
+
+		// When
+		ss, err := NewStreamStart(data)
+
+		// Then
+		require.Error(t, err)
+		assert.Nil(t, ss)
+		assert.Contains(t, err.Error(), "stream start message length must be at least 6 bytes")
+	})
+
+	t.Run("should return error for empty data", func(t *testing.T) {
+		// Given
+		data := []byte{}
+
+		// When
+		ss, err := NewStreamStart(data)
+
+		// Then
+		require.Error(t, err)
+		assert.Nil(t, ss)
+	})
+
+	t.Run("should decode with large xid", func(t *testing.T) {
+		// Given
+		data := []byte{
+			'S',                    // Message type 'S'
+			0xFF, 0xFF, 0xFF, 0xFF, // Xid: max uint32
+			1, // FirstSegment: true
+		}
+
+		// When
+		ss, err := NewStreamStart(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, ss)
+		assert.Equal(t, uint32(0xFFFFFFFF), ss.Xid)
+		assert.True(t, ss.FirstSegment)
+	})
+
+	t.Run("should decode stream start message with minimum valid length", func(t *testing.T) {
+		// Given - exactly 6 bytes
+		data := []byte{
+			'S',        // Message type 'S'
+			0, 0, 0, 1, // Xid: 1
+			0, // FirstSegment: false
+		}
+
+		// When
+		ss, err := NewStreamStart(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, ss)
+		assert.Equal(t, uint32(1), ss.Xid)
+		assert.False(t, ss.FirstSegment)
+	})
+}
+
+func TestNewStreamAbort(t *testing.T) {
+	t.Run("should decode stream abort message successfully", func(t *testing.T) {
+		// Given
+		// StreamAbort format:
+		// Byte1('A') + Int32(Xid) + Int32(SubXid)
+		data := []byte{
+			'A',         // Message type 'A' (StreamAbort)
+			0, 0, 0, 42, // Xid: 42
+			0, 0, 0, 7, // SubXid: 7
+		}
+
+		// When
+		sa, err := NewStreamAbort(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, sa)
+		assert.Equal(t, uint32(42), sa.Xid)
+		assert.Equal(t, uint32(7), sa.SubXid)
+	})
+
+	t.Run("should return error when data is too short", func(t *testing.T) {
+		// Given
+		data := []byte{
+			'A',         // Message type 'A'
+			0, 0, 0, 42, // Xid: 42
+			0, 0, // Incomplete SubXid
+		}
+
+		// When
+		sa, err := NewStreamAbort(data)
+
+		// Then
+		require.Error(t, err)
+		assert.Nil(t, sa)
+		assert.Contains(t, err.Error(), "stream abort message length must be at least 9 bytes")
+	})
+
+	t.Run("should return error for empty data", func(t *testing.T) {
+		// Given
+		data := []byte{}
+
+		// When
+		sa, err := NewStreamAbort(data)
+
+		// Then
+		require.Error(t, err)
+		assert.Nil(t, sa)
+	})
+
+	t.Run("should decode with large xid and subxid", func(t *testing.T) {
+		// Given
+		data := []byte{
+			'A',                    // Message type 'A'
+			0xFF, 0xFF, 0xFF, 0xFF, // Xid: max uint32
+			0xFF, 0xFF, 0xFF, 0xFE, // SubXid: max uint32 - 1
+		}
+
+		// When
+		sa, err := NewStreamAbort(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, sa)
+		assert.Equal(t, uint32(0xFFFFFFFF), sa.Xid)
+		assert.Equal(t, uint32(0xFFFFFFFE), sa.SubXid)
+	})
+
+	t.Run("should decode stream abort message with minimum valid length", func(t *testing.T) {
+		// Given - exactly 9 bytes
+		data := []byte{
+			'A',        // Message type 'A'
+			0, 0, 0, 1, // Xid: 1
+			0, 0, 0, 2, // SubXid: 2
+		}
+
+		// When
+		sa, err := NewStreamAbort(data)
+
+		// Then
+		require.NoError(t, err)
+		assert.NotNil(t, sa)
+		assert.Equal(t, uint32(1), sa.Xid)
+		assert.Equal(t, uint32(2), sa.SubXid)
+	})
+}
+
 func TestNewStreamCommit(t *testing.T) {
 	t.Run("should decode stream commit message successfully", func(t *testing.T) {
 		// Given

@@ -166,7 +166,6 @@ type messageBuffer struct {
 }
 
 // flush emits the pending message (if any) with its original WAL position.
-// Used at STREAM STOP boundaries where the final commit LSN is not yet known.
 func (b *messageBuffer) flush() {
 	if b.pending != nil {
 		b.outCh <- b.pending
@@ -175,7 +174,7 @@ func (b *messageBuffer) flush() {
 }
 
 // flushWithLSN emits the pending message (if any), rewriting its WAL position
-// to the given transaction-end LSN. Used at COMMIT and STREAM COMMIT.
+// to the given transaction-end LSN. Used at COMMIT.
 func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
 		b.outCh <- &Message{
@@ -187,7 +186,7 @@ func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 }
 
 // discard drops the pending message without emitting.
-// Used at BEGIN (reset state) and STREAM ABORT (transaction rolled back).
+// Used at BEGIN to reset state.
 func (b *messageBuffer) discard() {
 	b.pending = nil
 }
@@ -198,11 +197,75 @@ func (b *messageBuffer) buffer(msg *Message) {
 	b.pending = msg
 }
 
+// streamTxBuffer accumulates messages from streaming in-progress transactions.
+//
+// PostgreSQL streams large transactions in chunks (STREAM START / STREAM STOP)
+// before the transaction is committed. Chunks from different transactions may
+// be interleaved (e.g. TX-A chunk, TX-B chunk, TX-A chunk, …), so messages
+// are stored per-XID in a map.
+//
+// Messages must NOT be delivered to the consumer until STREAM COMMIT arrives,
+// because the transaction may still be rolled back (STREAM ABORT). This mirrors
+// how PostgreSQL's own logical replication worker handles streaming: it writes
+// to temporary storage and only applies on commit.
+type streamTxBuffer struct {
+	txns      map[uint32][]*Message
+	activeXid uint32
+	streaming bool
+}
+
+// startTx marks the beginning of a streaming chunk for the given XID.
+func (s *streamTxBuffer) startTx(xid uint32) {
+	if s.txns == nil {
+		s.txns = make(map[uint32][]*Message)
+	}
+	s.activeXid = xid
+	s.streaming = true
+}
+
+// append adds a message to the currently active streaming transaction.
+func (s *streamTxBuffer) append(msg *Message) {
+	if msg != nil {
+		s.txns[s.activeXid] = append(s.txns[s.activeXid], msg)
+	}
+}
+
+// stopTx marks the end of the current streaming chunk.
+func (s *streamTxBuffer) stopTx() {
+	s.streaming = false
+}
+
+// flushTx emits every accumulated message for the given XID through outCh.
+// The last message's WAL position is rewritten to the transaction-end LSN.
+func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LSN) {
+	s.streaming = false
+	msgs := s.txns[xid]
+	n := len(msgs)
+	for i, msg := range msgs {
+		if i == n-1 {
+			outCh <- &Message{
+				message:  msg.message,
+				walStart: int64(endLSN),
+			}
+		} else {
+			outCh <- msg
+		}
+	}
+	delete(s.txns, xid)
+}
+
+// discardTx drops all accumulated messages for the given XID without emitting.
+func (s *streamTxBuffer) discardTx(xid uint32) {
+	s.streaming = false
+	delete(s.txns, xid)
+}
+
 func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
 	buf := &messageBuffer{outCh: s.messageCH}
-	corrupted := s.sinkLoop(ctx, buf)
+	streamBuf := &streamTxBuffer{}
+	corrupted := s.sinkLoop(ctx, buf, streamBuf)
 
 	s.sinkEnd <- struct{}{}
 	if !s.closed.Load() {
@@ -216,7 +279,7 @@ func (s *stream) sink(ctx context.Context) {
 // sinkLoop reads raw replication messages and dispatches them until the
 // connection is closed or a fatal error occurs. It returns true when the
 // connection is in a corrupted state and the caller should panic.
-func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer) (corrupted bool) {
+func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer) (corrupted bool) {
 	for {
 		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(300*time.Millisecond))
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
@@ -252,7 +315,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer) (corrupted bo
 				return true
 			}
 		case message.XLogDataByteID:
-			s.handleXLogData(copyData.Data[1:], buf)
+			s.handleXLogData(copyData.Data[1:], buf, streamBuf)
 		}
 	}
 }
@@ -304,7 +367,7 @@ func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
 
 // handleXLogData parses a WAL data message, decodes the logical replication
 // event, and dispatches it through the message buffer.
-func (s *stream) handleXLogData(data []byte, buf *messageBuffer) {
+func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *streamTxBuffer) {
 	xld, err := ParseXLogData(data)
 	if err != nil {
 		logger.Error("parse xLog data", "error", err)
@@ -327,17 +390,21 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer) {
 		return
 	}
 
-	s.dispatchMessage(decodedMsg, xld, buf)
+	s.dispatchMessage(decodedMsg, xld, buf, streamBuf)
 }
 
 // dispatchMessage routes a decoded logical replication event to the correct
 // buffer action.
 //
-// Transaction boundaries (BEGIN, COMMIT, STREAM COMMIT, STREAM STOP, STREAM ABORT)
-// control the buffer lifecycle. DML events (INSERT, UPDATE, DELETE) are buffered
-// with a one-message look-ahead so the last message in each transaction can have
-// its WAL position rewritten to the transaction-end LSN.
-func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffer) {
+// For regular (non-streaming) transactions the messageBuffer provides a
+// one-message look-ahead so the last DML's WAL position can be rewritten to
+// the transaction-end LSN at COMMIT.
+//
+// For streaming transactions (proto v2) messages are accumulated in the
+// streamTxBuffer across STREAM START / STREAM STOP chunks. They are only
+// emitted to the consumer on STREAM COMMIT and discarded on STREAM ABORT.
+// This prevents uncommitted data from being delivered.
+func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffer, streamBuf *streamTxBuffer) {
 	switch msg := decodedMsg.(type) {
 	case *format.Begin:
 		buf.discard()
@@ -345,25 +412,34 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 	case *format.Commit:
 		buf.flushWithLSN(msg.TransactionEndLSN)
 
+	case *format.StreamStart:
+		// Beginning of a streaming chunk – DML events that follow belong
+		// to an in-progress transaction and must be buffered per-XID.
+		streamBuf.startTx(msg.Xid)
+
 	case *format.StreamStop:
-		// End of a streaming chunk – flush so messages are not lost when
-		// other transactions are interleaved between chunks.
-		buf.flush()
+		// End of a streaming chunk. Nothing is emitted to the consumer.
+		streamBuf.stopTx()
 
 	case *format.StreamCommit:
-		// Final commit of a streamed transaction – rewrite LSN like Commit.
-		buf.flushWithLSN(msg.TransactionEndLSN)
+		// Final commit of a streamed transaction – emit all messages for this XID.
+		streamBuf.flushTx(msg.Xid, buf.outCh, msg.TransactionEndLSN)
 
 	case *format.StreamAbort:
-		// Streamed transaction rolled back – discard buffered message.
-		buf.discard()
+		// Streamed transaction rolled back – discard messages for this XID.
+		streamBuf.discardTx(msg.Xid)
 
 	default:
 		// DML event (Insert, Update, Delete, Relation, …)
-		buf.buffer(&Message{
+		m := &Message{
 			message:  decodedMsg,
 			walStart: int64(xld.WALStart),
-		})
+		}
+		if streamBuf.streaming {
+			streamBuf.append(m)
+		} else {
+			buf.buffer(m)
+		}
 	}
 }
 

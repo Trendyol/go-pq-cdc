@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq/heartbeat"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/snapshot"
 
@@ -38,7 +39,7 @@ type Connector interface {
 }
 
 type connector struct {
-	heartbeatConn      pq.Connection
+	heartbeat          *heartbeat.Heartbeat
 	prometheusRegistry metric.Registry
 	server             http.Server
 	stream             replication.Streamer
@@ -50,7 +51,6 @@ type connector struct {
 	snapshotter        *snapshot.Snapshotter
 	listenerFunc       replication.ListenerFunc
 	once               sync.Once
-	heartbeatMu        sync.Mutex
 }
 
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
@@ -94,6 +94,17 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
+	// Create heartbeat table BEFORE publication setup (if configured)
+	// This ensures the table exists when publication tries to set replica identity
+	var hb *heartbeat.Heartbeat
+	if cfg.IsHeartbeatEnabled() {
+		hb = heartbeat.New(cfg.DSN(), cfg.Heartbeat)
+		if err := hb.EnsureTable(ctx, conn); err != nil {
+			conn.Close(ctx)
+			return nil, errors.Wrap(err, "create heartbeat table")
+		}
+	}
+
 	publicationInfo, err := initializePublication(ctx, cfg, conn)
 	if err != nil {
 		return nil, err
@@ -119,13 +130,6 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	stream := replication.NewStream(cfg.ReplicationDSN(), cfg, m, listenerFunc)
 
 	sl := slot.NewSlot(cfg.ReplicationDSN(), cfg.DSN(), cfg.Slot, m, stream.(slot.XLogUpdater))
-	var heartbeatConn pq.Connection
-	if cfg.Heartbeat.Enabled {
-		heartbeatConn, err = pq.NewConnection(ctx, cfg.DSN())
-		if err != nil {
-			return nil, errors.Wrap(err, "create heartbeat connection")
-		}
-	}
 
 	prometheusRegistry := metric.NewRegistry(m)
 
@@ -145,9 +149,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		cfg:                &cfg,
 		stream:             stream,
 		prometheusRegistry: prometheusRegistry,
-		server:             http.NewServer(cfg, prometheusRegistry),
+		server:             http.NewServer(cfg, prometheusRegistry, sl),
 		slot:               sl,
-		heartbeatConn:      heartbeatConn,
+		heartbeat:          hb,
 		timescaleDB:        tdb,
 		snapshotter:        snapshotter,
 		listenerFunc:       listenerFunc,
@@ -181,7 +185,7 @@ func newSnapshotOnlyConnector(ctx context.Context, cfg config.Config, listenerFu
 	return &connector{
 		cfg:                &cfg,
 		prometheusRegistry: prometheusRegistry,
-		server:             http.NewServer(cfg, prometheusRegistry),
+		server:             http.NewServer(cfg, prometheusRegistry, nil),
 		snapshotter:        snapshotter,
 		listenerFunc:       listenerFunc,
 		cancelCh:           make(chan os.Signal, 1),
@@ -277,8 +281,8 @@ func (c *connector) Start(ctx context.Context) {
 	go c.slot.Metrics(ctx)
 
 	// Start heartbeat loop only for CDC mode when enabled
-	if c.cfg.Heartbeat.Enabled {
-		go c.runHeartbeat(ctx)
+	if c.heartbeat != nil {
+		go c.heartbeat.Run(ctx)
 	}
 
 	if c.timescaleDB != nil {
@@ -302,6 +306,15 @@ func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
 	case config.SnapshotModeNever:
 		return false
 	case config.SnapshotModeInitial:
+		// If resnapshot is enabled, clean metadata for THIS slot only and return true
+		if c.cfg.Snapshot.Resnapshot {
+			logger.Info("resnapshot enabled, cleaning metadata for slot", "slotName", c.cfg.Slot.Name)
+			if err := c.snapshotter.CleanupJobForSlot(ctx, c.cfg.Slot.Name); err != nil {
+				logger.Warn("failed to cleanup job for resnapshot", "error", err)
+			}
+			return true
+		}
+
 		job, err := c.snapshotter.LoadJob(ctx, c.cfg.Slot.Name)
 		if err != nil {
 			logger.Debug("failed to load snapshot job state, will take snapshot", "error", err)
@@ -377,8 +390,11 @@ func (c *connector) executeSnapshotOnly(ctx context.Context) error {
 
 // getSnapshotOnlySlotName returns a consistent slot name for snapshot_only mode
 // This ensures multi-pod deployments work together instead of duplicating work
-// The slot name is based on the database name to ensure consistency across restarts
+// If user defines a custom snapshot ID, use it; otherwise generate one based on database name
 func (c *connector) getSnapshotOnlySlotName() string {
+	if c.cfg.Snapshot.ID != "" {
+		return c.cfg.Snapshot.ID
+	}
 	return fmt.Sprintf("snapshot_only_%s", c.cfg.Database)
 }
 
@@ -386,6 +402,15 @@ func (c *connector) getSnapshotOnlySlotName() string {
 // Returns false if snapshot already completed (resume capability)
 func (c *connector) shouldTakeSnapshotOnly(ctx context.Context) bool {
 	slotName := c.getSnapshotOnlySlotName()
+
+	// If resnapshot is enabled, clean metadata for THIS slot only
+	if c.cfg.Snapshot.Resnapshot {
+		logger.Info("resnapshot enabled, cleaning metadata for slot", "slotName", slotName)
+		if err := c.snapshotter.CleanupJobForSlot(ctx, slotName); err != nil {
+			logger.Warn("failed to cleanup job for resnapshot", "error", err)
+		}
+		return true
+	}
 
 	job, err := c.snapshotter.LoadJob(ctx, slotName)
 	if err != nil {
@@ -563,7 +588,9 @@ func (c *connector) Close() {
 	if c.slot != nil {
 		c.slot.Close(ctx)
 	}
-	c.closeHeartbeatConn(ctx)
+	if c.heartbeat != nil {
+		c.heartbeat.Close(ctx)
+	}
 	if c.stream != nil {
 		c.stream.Close(ctx)
 	}
@@ -599,83 +626,6 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 
 		logger.Debug("capture slot", "slotInfo", info)
 		break
-	}
-}
-
-// runHeartbeat executes the configured heartbeat.action.query-style SQL
-// on the source database at a fixed interval. This is used to generate
-// WAL activity for low-traffic databases so that logical replication
-// slots can advance confirmed_flush_lsn/restart_lsn and prevent WAL bloat.
-func (c *connector) runHeartbeat(ctx context.Context) {
-	logger.Debug("heartbeat loop started",
-		"interval", c.cfg.Heartbeat.Interval,
-		"enabled", c.cfg.Heartbeat.Enabled)
-
-	ticker := time.NewTicker(c.cfg.Heartbeat.Interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("heartbeat loop stopped", "reason", ctx.Err())
-			return
-		case <-ticker.C:
-			if err := c.execHeartbeat(ctx); err != nil {
-				logger.Error("heartbeat execution failed", "error", err)
-			} else {
-				logger.Debug("heartbeat query executed")
-			}
-		}
-	}
-}
-
-// execHeartbeat ensures there's an open heartbeat connection and executes the
-// configured heartbeat query using that connection. It serializes all access to
-// heartbeatConn so that Close() and runHeartbeat() never touch the same
-// pgx connection concurrently.
-func (c *connector) execHeartbeat(ctx context.Context) error {
-	c.heartbeatMu.Lock()
-	defer c.heartbeatMu.Unlock()
-
-	// Lazily (re)establish connection if needed
-	if c.heartbeatConn == nil {
-		conn, err := pq.NewConnection(ctx, c.cfg.DSN())
-		if err != nil {
-			return fmt.Errorf("heartbeat connection (re)establish failed: %w", err)
-		}
-		c.heartbeatConn = conn
-	}
-
-	resultReader := c.heartbeatConn.Exec(ctx, c.cfg.Heartbeat.Query)
-	if resultReader == nil {
-		return fmt.Errorf("heartbeat exec returned nil resultReader")
-	}
-	defer func() {
-		if err := resultReader.Close(); err != nil {
-			logger.Error("heartbeat result reader close failed", "error", err)
-		}
-	}()
-
-	if _, err := resultReader.ReadAll(); err != nil {
-		// On error, proactively close and nil the connection so that the next
-		// heartbeat tick will try to re-establish it.
-		_ = c.heartbeatConn.Close(ctx)
-		c.heartbeatConn = nil
-		return fmt.Errorf("heartbeat query failed: %w", err)
-	}
-
-	return nil
-}
-
-// closeHeartbeatConn safely closes the heartbeat connection if it exists.
-// It is used from Close() to avoid races with the heartbeat goroutine.
-func (c *connector) closeHeartbeatConn(ctx context.Context) {
-	c.heartbeatMu.Lock()
-	defer c.heartbeatMu.Unlock()
-
-	if c.heartbeatConn != nil {
-		_ = c.heartbeatConn.Close(ctx)
-		c.heartbeatConn = nil
 	}
 }
 

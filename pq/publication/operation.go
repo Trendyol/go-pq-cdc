@@ -51,3 +51,7 @@ func (ops Operations) String() string {
 
 	return strings.Join(res, ", ")
 }
+
+func (ops Operations) Contains(op Operation) bool {
+	return slices.Contains(ops, op)
+}

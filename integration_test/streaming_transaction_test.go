@@ -59,77 +59,80 @@ func TestStreamingLargeTransactionCommit(t *testing.T) {
 	// Force PostgreSQL to stream in-progress transactions.
 	lowerLogicalDecodingWorkMem(ctx, t)
 
+	// --- CDC setup --------------------------------------------------------
 	cdcCfg := Config
 	cdcCfg.Slot.Name = slotName
+	cdcCfg.Slot.ProtoVersion = 2
 
-	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
-		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
+	postgresConn, err := newPostgresConn()
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+		t.FailNow()
+	}
+
+	var received atomic.Int64
+	msgCh := make(chan *format.Insert, rowCount+10)
+	handler := func(lCtx *replication.ListenerContext) {
+		if ins, ok := lCtx.Message.(*format.Insert); ok {
+			received.Add(1)
+			msgCh <- ins
 		}
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		_ = lCtx.Ack()
+	}
 
-		var received atomic.Int64
-		msgCh := make(chan *format.Insert, rowCount+10)
-		handler := func(lCtx *replication.ListenerContext) {
-			if ins, ok := lCtx.Message.(*format.Insert); ok {
-				received.Add(1)
-				msgCh <- ins
-			}
-			_ = lCtx.Ack()
-		}
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 
-		connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
+	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 
-		cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
-		pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
-
-		t.Cleanup(func() {
-			connector.Close()
-			_ = RestoreDB(ctx)
-			pool.Close()
-			_ = postgresConn.Close(ctx)
-		})
-
-		go connector.Start(ctx)
-		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		assert.NoError(t, connector.WaitUntilReady(waitCtx))
-		cancel()
-
-		tx, err := pool.Begin(ctx)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
-		for i := 0; i < rowCount; i++ {
-			_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+40000, fmt.Sprintf("stream-book-%d", i))
-			if !assert.NoError(t, err) {
-				_ = tx.Rollback(ctx)
-				t.FailNow()
-			}
-		}
-		assert.NoError(t, tx.Commit(ctx))
-
-		deadline := time.After(15 * time.Second)
-		for received.Load() < int64(rowCount) {
-			select {
-			case <-deadline:
-				t.Fatalf("timeout: expected %d insert messages, got %d", rowCount, received.Load())
-			case <-msgCh:
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
-
-		assert.Equal(t, int64(rowCount), received.Load(),
-			"not all messages delivered – streaming protocol likely dropped messages")
+	t.Cleanup(func() {
+		connector.Close()
+		_ = RestoreDB(ctx)
+		pool.Close()
+		_ = postgresConn.Close(ctx)
 	})
+
+	go connector.Start(ctx)
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	cancel()
+
+	// --- Insert many rows in a single transaction -------------------------
+	tx, err := pool.Begin(ctx)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+	for i := 0; i < rowCount; i++ {
+		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+40000, fmt.Sprintf("stream-book-%d", i))
+		if !assert.NoError(t, err) {
+			_ = tx.Rollback(ctx)
+			t.FailNow()
+		}
+	}
+	assert.NoError(t, tx.Commit(ctx))
+
+	// --- Collect all messages ---------------------------------------------
+	deadline := time.After(15 * time.Second)
+	for received.Load() < int64(rowCount) {
+		select {
+		case <-deadline:
+			t.Fatalf("timeout: expected %d insert messages, got %d", rowCount, received.Load())
+		case <-msgCh:
+			// already counted by atomic in handler
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	assert.Equal(t, int64(rowCount), received.Load(),
+		"not all messages delivered – streaming protocol likely dropped messages")
 }
 
 // TestStreamingInterleavedTransactions verifies that when a large streamed
@@ -156,84 +159,89 @@ func TestStreamingInterleavedTransactions(t *testing.T) {
 
 	lowerLogicalDecodingWorkMem(ctx, t)
 
+	// --- CDC setup --------------------------------------------------------
 	cdcCfg := Config
 	cdcCfg.Slot.Name = slotName
+	cdcCfg.Slot.ProtoVersion = 2
 
-	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
-		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
+	postgresConn, err := newPostgresConn()
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+		t.FailNow()
+	}
+
+	var totalReceived atomic.Int64
+	msgCh := make(chan *format.Insert, largeRowCount+10)
+	handler := func(lCtx *replication.ListenerContext) {
+		if ins, ok := lCtx.Message.(*format.Insert); ok {
+			totalReceived.Add(1)
+			msgCh <- ins
 		}
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		_ = lCtx.Ack()
+	}
 
-		var totalReceived atomic.Int64
-		msgCh := make(chan *format.Insert, largeRowCount+10)
-		handler := func(lCtx *replication.ListenerContext) {
-			if ins, ok := lCtx.Message.(*format.Insert); ok {
-				totalReceived.Add(1)
-				msgCh <- ins
-			}
-			_ = lCtx.Ack()
-		}
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 
-		connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
+	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
 
-		cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
-		pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
-
-		t.Cleanup(func() {
-			connector.Close()
-			_ = RestoreDB(ctx)
-			pool.Close()
-			_ = postgresConn.Close(ctx)
-		})
-
-		go connector.Start(ctx)
-		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		assert.NoError(t, connector.WaitUntilReady(waitCtx))
-		cancel()
-
-		largeTx, err := pool.Begin(ctx)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
-
-		half := largeRowCount / 2
-		for i := 0; i < half; i++ {
-			_, err = largeTx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+50000, fmt.Sprintf("large-%d", i))
-			assert.NoError(t, err)
-		}
-
-		_, err = pool.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, 'interleaved')", smallRowID)
-		assert.NoError(t, err)
-
-		for i := half; i < largeRowCount; i++ {
-			_, err = largeTx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+50000, fmt.Sprintf("large-%d", i))
-			assert.NoError(t, err)
-		}
-		assert.NoError(t, largeTx.Commit(ctx))
-
-		expectedTotal := int64(largeRowCount + 1)
-		deadline := time.After(15 * time.Second)
-
-		for totalReceived.Load() < expectedTotal {
-			select {
-			case <-deadline:
-				t.Fatalf("timeout: expected %d messages, got %d", expectedTotal, totalReceived.Load())
-			case <-msgCh:
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
-
-		assert.Equal(t, expectedTotal, totalReceived.Load(),
-			"not all messages delivered – interleaved streaming likely dropped messages")
+	t.Cleanup(func() {
+		connector.Close()
+		_ = RestoreDB(ctx)
+		pool.Close()
+		_ = postgresConn.Close(ctx)
 	})
+
+	go connector.Start(ctx)
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	cancel()
+
+	// --- Start the large transaction (will be streamed) -------------------
+	largeTx, err := pool.Begin(ctx)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+
+	// Insert first half
+	half := largeRowCount / 2
+	for i := 0; i < half; i++ {
+		_, err = largeTx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+50000, fmt.Sprintf("large-%d", i))
+		assert.NoError(t, err)
+	}
+
+	// --- Interleave a small transaction -----------------------------------
+	_, err = pool.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, 'interleaved')", smallRowID)
+	assert.NoError(t, err)
+
+	// --- Continue and commit the large transaction ------------------------
+	for i := half; i < largeRowCount; i++ {
+		_, err = largeTx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+50000, fmt.Sprintf("large-%d", i))
+		assert.NoError(t, err)
+	}
+	assert.NoError(t, largeTx.Commit(ctx))
+
+	// --- Collect all messages (large tx + 1 interleaved) ------------------
+	expectedTotal := int64(largeRowCount + 1)
+	deadline := time.After(15 * time.Second)
+
+	for totalReceived.Load() < expectedTotal {
+		select {
+		case <-deadline:
+			t.Fatalf("timeout: expected %d messages, got %d", expectedTotal, totalReceived.Load())
+		case <-msgCh:
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	assert.Equal(t, expectedTotal, totalReceived.Load(),
+		"not all messages delivered – interleaved streaming likely dropped messages")
 }

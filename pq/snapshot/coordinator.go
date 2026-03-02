@@ -439,18 +439,29 @@ func (s *Snapshotter) getQueryCondition(tableSchema, tableName string) string {
 		normalizedSchema = "public"
 	}
 
+	var perTableCondition string
 	for _, table := range s.tables {
-		tableSchema := table.Schema
-		if tableSchema == "" {
-			tableSchema = "public"
+		tblSchema := table.Schema
+		if tblSchema == "" {
+			tblSchema = "public"
 		}
-		if tableSchema == normalizedSchema && table.Name == tableName {
+		if tblSchema == normalizedSchema && table.Name == tableName {
 			if table.QueryCondition != "" {
-				return table.QueryCondition
+				perTableCondition = table.QueryCondition
+				break
 			}
 		}
 	}
-	return s.config.QueryCondition
+
+	// Combine global and per-table conditions with AND
+	globalCondition := s.config.QueryCondition
+	if globalCondition != "" && perTableCondition != "" {
+		return fmt.Sprintf("%s AND %s", globalCondition, perTableCondition)
+	}
+	if perTableCondition != "" {
+		return perTableCondition
+	}
+	return globalCondition
 }
 
 func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string, queryCondition string) string {

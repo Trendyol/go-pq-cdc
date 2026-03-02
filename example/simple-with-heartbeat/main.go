@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"time"
 
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -28,11 +27,13 @@ Step 1: Start Postgres
 	cd example/simple-with-heartbeat
 	docker compose up -d
 
-Step 2: Run the connector (first WITHOUT heartbeat)
----------------------------------------------------
+Step 2: Run the connector with heartbeat enabled
+------------------------------------------------
 
-	# In this file, Heartbeat.Enabled is initially set to false.
 	go run .
+
+The connector will automatically create the heartbeat table and start
+updating it at 100ms intervals (default).
 
 Step 3: Generate WAL in high_db (different database)
 ----------------------------------------------------
@@ -59,20 +60,10 @@ Step 4: Observe slot vs global WAL on cdc_db
 
 	SELECT pg_current_wal_lsn();
 
-Because cdc_db itself is almost idle and heartbeat is disabled:
-  - pg_current_wal_lsn() will move forward due to high_db traffic
-  - restart_lsn / confirmed_flush_lsn for cdc_slot may lag behind
-
-Step 5: Enable heartbeat and rerun
-----------------------------------
-
-  - Stop the Go process.
-  - Set Heartbeat.Enabled = true below.
-  - go run .
-
-Now, even if cdc_db has low application traffic, the heartbeat will insert
-into public.test_heartbeat_table inside cdc_db at a fixed interval, producing
-commits that advance confirmed_flush_lsn and restart_lsn.
+With heartbeat enabled, even if cdc_db has low application traffic,
+the heartbeat will UPDATE public.test_heartbeat_table inside cdc_db at a
+fixed interval, producing commits that advance confirmed_flush_lsn
+and restart_lsn.
 */
 func main() {
 	ctx := context.Background()
@@ -111,11 +102,11 @@ func main() {
 			SlotActivityCheckerInterval: 3000,
 		},
 		Heartbeat: config.HeartbeatConfig{
-			// For the first run of the simulation, leave this as false.
-			// Then set to true and rerun to see the effect of heartbeat.
-			Enabled:  false,
-			Query:    `INSERT INTO public.test_heartbeat_table(txt) VALUES ('hb')`,
-			Interval: 5 * time.Second,
+			Table: publication.Table{
+				Name:   "test_heartbeat_table",
+				Schema: "public",
+			},
+			// Interval defaults to 100ms if not specified
 		},
 		Metric: config.MetricConfig{
 			Port: 8081,

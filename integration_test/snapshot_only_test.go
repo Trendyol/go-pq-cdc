@@ -916,6 +916,190 @@ func TestSnapshotOnlyIdempotent(t *testing.T) {
 	})
 }
 
+// TestSnapshotOnlyCustomID tests snapshot_only mode with a user-defined ID
+func TestSnapshotOnlyCustomID(t *testing.T) {
+	ctx := context.Background()
+
+	tableName := "snapshot_only_custom_id_test"
+	customID := "my_custom_snapshot_id"
+
+	cdcCfg := Config
+	cdcCfg.Snapshot.Tables = publication.Tables{
+		{
+			Name:   tableName,
+			Schema: "public",
+		},
+	}
+	cdcCfg.Snapshot.Enabled = true
+	cdcCfg.Snapshot.Mode = "snapshot_only"
+	cdcCfg.Snapshot.ChunkSize = 100
+	cdcCfg.Snapshot.ID = customID
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	// Create table and insert test data
+	err = createTestTable(ctx, postgresConn, tableName)
+	require.NoError(t, err)
+
+	testData := []map[string]any{
+		{"id": 1, "name": "Alice", "age": 25},
+		{"id": 2, "name": "Bob", "age": 30},
+		{"id": 3, "name": "Charlie", "age": 35},
+	}
+
+	for _, data := range testData {
+		query := fmt.Sprintf("INSERT INTO %s(id, name, age) VALUES(%d, '%s', %d)",
+			tableName, data["id"], data["name"], data["age"])
+		err = pgExec(ctx, postgresConn, query)
+		require.NoError(t, err)
+	}
+
+	// Setup: Message collection
+	snapshotEndReceived := false
+	var rowCount int
+	var mu sync.Mutex
+
+	messageCh := make(chan any, 100)
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		switch msg := ctx.Message.(type) {
+		case *format.Snapshot:
+			messageCh <- msg
+			mu.Lock()
+			switch msg.EventType {
+			case format.SnapshotEventTypeData:
+				rowCount++
+			case format.SnapshotEventTypeEnd:
+				snapshotEndReceived = true
+			}
+			mu.Unlock()
+		}
+		_ = ctx.Ack()
+	}
+
+	// Start connector with snapshot_only mode and custom ID
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		postgresConn.Close(ctx)
+		cleanupSnapshotOnlyTestWithID(t, ctx, tableName, customID)
+	})
+
+	// Start in goroutine and wait for completion
+	completeCh := make(chan struct{})
+	go func() {
+		connector.Start(ctx)
+		close(completeCh)
+	}()
+
+	// Collect snapshot events with timeout
+	timeout := time.After(10 * time.Second)
+	snapshotCompleted := false
+
+	for !snapshotCompleted {
+		select {
+		case msg := <-messageCh:
+			if snapshot, ok := msg.(*format.Snapshot); ok {
+				if snapshot.EventType == format.SnapshotEventTypeEnd {
+					snapshotCompleted = true
+					t.Log("✅ Snapshot END received")
+				}
+			}
+		case <-timeout:
+			t.Fatal("Timeout waiting for snapshot events")
+		}
+	}
+
+	// Wait for connector to exit
+	select {
+	case <-completeCh:
+		t.Log("✅ Connector exited after snapshot completion")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Connector did not exit after snapshot completion")
+	}
+
+	// === Assertions ===
+
+	t.Run("Verify Snapshot Completed", func(t *testing.T) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		assert.True(t, snapshotEndReceived, "Snapshot END event should be received")
+		assert.Equal(t, 3, rowCount, "Should receive 3 DATA events from snapshot")
+	})
+
+	t.Run("Verify Custom ID Used in Metadata", func(t *testing.T) {
+		// Query snapshot job metadata - should use custom ID
+		query := fmt.Sprintf("SELECT completed, total_chunks, completed_chunks FROM cdc_snapshot_job WHERE slot_name = '%s'", customID)
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.NotEmpty(t, results, "Job metadata should exist with custom ID")
+		require.NotEmpty(t, results[0].Rows, "Should have at least one job record")
+
+		row := results[0].Rows[0]
+		completed := string(row[0]) == "t"
+		totalChunks := string(row[1])
+		completedChunks := string(row[2])
+
+		assert.True(t, completed, "Job should be marked as completed")
+		assert.Equal(t, totalChunks, completedChunks, "All chunks should be completed")
+
+		t.Logf("✅ Custom ID '%s' used in metadata: completed=%t, total_chunks=%s, completed_chunks=%s",
+			customID, completed, totalChunks, completedChunks)
+	})
+
+	t.Run("Verify Default ID NOT Used", func(t *testing.T) {
+		// Verify that the default ID pattern was NOT used
+		defaultID := fmt.Sprintf("snapshot_only_%s", cdcCfg.Database)
+		query := fmt.Sprintf("SELECT slot_name FROM cdc_snapshot_job WHERE slot_name = '%s'", defaultID)
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+
+		if len(results) > 0 && len(results[0].Rows) > 0 {
+			t.Errorf("Expected no job with default ID '%s', but found one", defaultID)
+		} else {
+			t.Logf("✅ Default ID '%s' not used (custom ID working correctly)", defaultID)
+		}
+	})
+
+	t.Run("Verify Chunks Use Custom ID", func(t *testing.T) {
+		// Query chunks table to verify custom ID
+		query := fmt.Sprintf("SELECT COUNT(*) FROM cdc_snapshot_chunks WHERE slot_name = '%s'", customID)
+		results, err := execQuery(ctx, postgresConn, query)
+		require.NoError(t, err)
+		require.NotEmpty(t, results)
+
+		chunkCount := string(results[0].Rows[0][0])
+		assert.NotEqual(t, "0", chunkCount, "Should have chunks with custom ID")
+
+		t.Logf("✅ Chunks created with custom ID: %s chunks", chunkCount)
+	})
+}
+
+// Helper function for snapshot_only tests cleanup with custom ID
+func cleanupSnapshotOnlyTestWithID(t *testing.T, ctx context.Context, tableName, id string) {
+	conn, err := newPostgresConn()
+	if err != nil {
+		t.Logf("Warning: Failed to create cleanup connection: %v", err)
+		return
+	}
+	defer conn.Close(ctx)
+
+	// Drop test table
+	query := fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
+	if err := pgExec(ctx, conn, query); err != nil {
+		t.Logf("Warning: Failed to drop table: %v", err)
+	}
+
+	// Clean metadata tables with the specific ID
+	_ = pgExec(ctx, conn, fmt.Sprintf("DELETE FROM cdc_snapshot_chunks WHERE slot_name = '%s'", id))
+	_ = pgExec(ctx, conn, fmt.Sprintf("DELETE FROM cdc_snapshot_job WHERE slot_name = '%s'", id))
+
+	t.Log("✅ Cleanup completed for ID:", id)
+}
+
 // Helper function for snapshot_only tests cleanup
 func cleanupSnapshotOnlyTest(t *testing.T, ctx context.Context, tableName string) {
 	conn, err := newPostgresConn()

@@ -38,6 +38,7 @@ type Table struct {
 	// Useful when integer PKs are hash-based (not sequential) and range partitioning performs poorly.
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
 	SnapshotPartitionStrategy SnapshotPartitionStrategy `json:"snapshotPartitionStrategy,omitempty" yaml:"snapshotPartitionStrategy,omitempty"`
+	QueryCondition            string                    `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 }
 
 func (tc Table) Validate() error {

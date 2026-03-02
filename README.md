@@ -139,6 +139,7 @@ func Handler(ctx *replication.ListenerContext) {
 * [Simple With Heartbeat](./example/simple-with-heartbeat)
 * [Snapshot Mode (Initial Data Capture)](./example/snapshot-initial-mode)
 * [Snapshot Only Mode (One-Time Export)](./example/snapshot-only-mode)
+* [Snapshot with Query Condition](./example/snapshot-with-query-condition)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
@@ -280,7 +281,9 @@ This requires setting the table's replica identity to FULL:
 | `heartbeat.table.name`                  |  string  |    no    |    -    | Name of the heartbeat table. Setting this enables heartbeat behavior.                                  | Table is auto-created if missing and should be included in `publication.tables` if you want it replicated.   |
 | `heartbeat.table.schema`                |  string  |    no    | public  | Schema of the heartbeat table.                                                                          | Defaults to `public` when omitted.                                                                            |
 | `heartbeat.interval`                    | duration |    no    | 100ms   | Interval between heartbeat updates when heartbeat is configured. Must be greater than 0.               | Any valid Go duration string (e.g. `100ms`, `1s`, `5s`, `1m`).                                                |
-| `extensionSupport.enableTimescaleDB`    |   bool   |    no    |  false  | Enable support for TimescaleDB hypertables. Ensures proper handling of compressed chunks during replication. |                                                                                                                                                    |
+| `extensionSupport.enableTimescaleDB`    |   bool   |    no    |  false  | Enable support for TimescaleDB hypertables. Ensures proper handling of compressed chunks during replication. |           
+| `snapshot.queryCondition`               |  string  |    no    |    -    | Global query condition applied to all snapshot queries (SNAPSHOT-ONLY, does NOT affect CDC)          | Example: `"status = 'active'"`. This condition is appended to WHERE clause with AND. Per-table conditions take precedence. |
+| `publication.tables[i].queryCondition`  |  string  |    no    |    -    | Per-table query condition for snapshot queries (SNAPSHOT-ONLY, does NOT affect CDC)                  | Example: `"deleted_at IS NULL"`. Takes precedence over global `snapshot.queryCondition`. |
 
 ### API
 

@@ -190,6 +190,9 @@ func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publicati
 		if st.SnapshotPartitionStrategy != "" {
 			mergedTable.SnapshotPartitionStrategy = st.SnapshotPartitionStrategy
 		}
+		if st.QueryCondition != "" {
+			mergedTable.QueryCondition = st.QueryCondition
+		}
 		validatedTables = append(validatedTables, mergedTable)
 	}
 
@@ -269,6 +272,9 @@ func (c *Config) mergePublicationTableConfig(pubInfoTables publication.Tables) p
 			if userTable.SnapshotPartitionStrategy != "" {
 				result[i].SnapshotPartitionStrategy = userTable.SnapshotPartitionStrategy
 			}
+			if userTable.QueryCondition != "" {
+				result[i].QueryCondition = userTable.QueryCondition
+			}
 		}
 	}
 	return result
@@ -284,6 +290,7 @@ type SnapshotConfig struct {
 	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
 	Enabled           bool               `json:"enabled" yaml:"enabled"`
 	Resnapshot        bool               `json:"resnapshot" yaml:"resnapshot"`
+	QueryCondition    string             `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 }
 
 func (s *SnapshotConfig) Validate() error {

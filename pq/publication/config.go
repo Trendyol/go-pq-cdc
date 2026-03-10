@@ -41,7 +41,11 @@ func (c Config) createQuery() string {
 
 	quotedTables := make([]string, len(c.Tables))
 	for i, table := range c.Tables {
-		quotedTables[i] = fmt.Sprintf("%s.%s", pq.QuoteIdentifier(table.Schema), pq.QuoteIdentifier(table.Name))
+		if len(table.Columns) > 0 {
+			quotedTables[i] = fmt.Sprintf("%s.%s(%s)", pq.QuoteIdentifier(table.Schema), pq.QuoteIdentifier(table.Name), strings.Join(table.Columns, ", "))
+		} else {
+			quotedTables[i] = fmt.Sprintf("%s.%s", pq.QuoteIdentifier(table.Schema), pq.QuoteIdentifier(table.Name))
+		}
 	}
 	sqlStatement += " FOR TABLE " + strings.Join(quotedTables, ", ")
 

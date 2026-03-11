@@ -107,32 +107,51 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "create pg export snapshot connection")
 	}
+
+	cleanupFailedExportConnection := func() {
+		_ = s.execSQL(ctx, exportSnapshotConn, "ROLLBACK")
+		_ = exportSnapshotConn.Close(ctx)
+
+		s.keepaliveMu.Lock()
+		if s.exportSnapshotConn == exportSnapshotConn {
+			s.exportSnapshotConn = nil
+		}
+		s.exportConnClosed = true
+		s.keepaliveMu.Unlock()
+	}
+
+	s.keepaliveMu.Lock()
 	s.exportSnapshotConn = exportSnapshotConn
+	s.exportConnClosed = false
+	s.keepaliveMu.Unlock()
 
 	logger.Info("[coordinator] exporting snapshot")
 
 	// Disable timeouts for snapshot transaction
 	if err := s.execSQL(ctx, exportSnapshotConn, "SET idle_in_transaction_session_timeout = 0"); err != nil {
+		cleanupFailedExportConnection()
 		return errors.Wrap(err, "set idle timeout")
 	}
 
 	if err := s.execSQL(ctx, exportSnapshotConn, "SET statement_timeout = 0"); err != nil {
+		cleanupFailedExportConnection()
 		return errors.Wrap(err, "set statement timeout")
 	}
 
 	// Start transaction on snapshot connection (will stay open)
 	if err := s.execSQL(ctx, exportSnapshotConn, "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		cleanupFailedExportConnection()
 		return errors.Wrap(err, "begin snapshot transaction")
 	}
-
-	go s.snapshotTransactionKeepalive(ctx, exportSnapshotConn)
 
 	// Export snapshot and cache the ID for later use in createMetadata
 	snapshotID, err := s.exportSnapshot(ctx, exportSnapshotConn)
 	if err != nil {
-		_ = s.execSQL(ctx, exportSnapshotConn, "ROLLBACK")
+		cleanupFailedExportConnection()
 		return errors.Wrap(err, "export snapshot")
 	}
+
+	s.startSnapshotKeepalive(ctx, exportSnapshotConn)
 
 	// Cache snapshot ID - will be used when creating job metadata
 	s.cachedSnapshotID = snapshotID
@@ -142,9 +161,10 @@ func (s *Snapshotter) exportSnapshotTransaction(ctx context.Context) error {
 	return nil
 }
 
-func (s *Snapshotter) snapshotTransactionKeepalive(ctx context.Context, conn pq.Connection) {
+func (s *Snapshotter) snapshotTransactionKeepalive(ctx context.Context, conn pq.Connection, done chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+	defer close(done)
 
 	for {
 		select {
@@ -152,7 +172,9 @@ func (s *Snapshotter) snapshotTransactionKeepalive(ctx context.Context, conn pq.
 			return
 		case <-ticker.C:
 			// Keepalive: SELECT 1
-			_ = s.execSQL(context.Background(), conn, "SELECT 1")
+			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			_ = s.execSQL(pingCtx, conn, "SELECT 1")
+			cancel()
 		}
 	}
 }

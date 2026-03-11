@@ -41,6 +41,10 @@ type Snapshotter struct {
 	tables             publication.Tables
 	config             config.SnapshotConfig
 	orderByMu          sync.RWMutex
+	keepaliveMu        sync.Mutex
+	keepaliveCancel    context.CancelFunc
+	keepaliveDone      chan struct{}
+	exportConnClosed   bool
 }
 
 type orderByCacheEntry struct {
@@ -174,9 +178,7 @@ func (s *Snapshotter) closeAllConnections(ctx context.Context, commitExport bool
 	logger.Info("[snapshot] closing all connections")
 
 	// Close export snapshot connection (coordinator only)
-	if s.exportSnapshotConn != nil {
-		s.closeExportSnapshotConnection(ctx, commitExport)
-	}
+	s.closeExportSnapshotConnection(ctx, commitExport)
 
 	// Close connection pool
 	if s.connectionPool != nil {
@@ -205,25 +207,43 @@ func (s *Snapshotter) closeAllConnections(ctx context.Context, commitExport bool
 
 // closeExportSnapshotConnection commits or rolls back and closes the export snapshot connection
 func (s *Snapshotter) closeExportSnapshotConnection(ctx context.Context, commit bool) {
+	s.stopSnapshotKeepalive()
+
+	s.keepaliveMu.Lock()
+	if s.exportConnClosed {
+		s.keepaliveMu.Unlock()
+		return
+	}
+	s.exportConnClosed = true
+	exportConn := s.exportSnapshotConn
+	s.keepaliveMu.Unlock()
+
+	if exportConn == nil {
+		return
+	}
+
 	if commit {
 		logger.Info("[coordinator] committing and closing snapshot export connection")
-		if err := s.execSQL(ctx, s.exportSnapshotConn, "COMMIT"); err != nil {
+		if err := s.execSQL(ctx, exportConn, "COMMIT"); err != nil {
 			logger.Warn("[coordinator] failed to commit snapshot transaction, attempting rollback", "error", err)
-			if rollbackErr := s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK"); rollbackErr != nil {
+			if rollbackErr := s.execSQL(ctx, exportConn, "ROLLBACK"); rollbackErr != nil {
 				logger.Error("[coordinator] failed to rollback snapshot transaction", "error", rollbackErr)
 			}
 		}
 	} else {
 		logger.Info("[coordinator] rolling back and closing snapshot export connection")
-		if err := s.execSQL(ctx, s.exportSnapshotConn, "ROLLBACK"); err != nil {
+		if err := s.execSQL(ctx, exportConn, "ROLLBACK"); err != nil {
 			logger.Warn("[coordinator] failed to rollback snapshot transaction", "error", err)
 		}
 	}
 
-	if err := s.exportSnapshotConn.Close(ctx); err != nil {
+	if err := exportConn.Close(ctx); err != nil {
 		logger.Warn("[coordinator] error closing export snapshot connection", "error", err)
 	}
+
+	s.keepaliveMu.Lock()
 	s.exportSnapshotConn = nil
+	s.keepaliveMu.Unlock()
 }
 
 // Close closes all connections held by the Snapshotter
@@ -235,6 +255,39 @@ func (s *Snapshotter) Close(ctx context.Context) {
 	}
 	logger.Debug("[snapshot] closing snapshotter (fallback cleanup)")
 	s.closeAllConnections(ctx, false) // Rollback on abnormal termination
+}
+
+func (s *Snapshotter) startSnapshotKeepalive(parentCtx context.Context, conn pq.Connection) {
+	keepaliveCtx, keepaliveCancel := context.WithCancel(parentCtx)
+	done := make(chan struct{})
+
+	s.keepaliveMu.Lock()
+	// Ensure previous keepalive is not left around during retries.
+	if s.keepaliveCancel != nil {
+		s.keepaliveCancel()
+	}
+	s.keepaliveCancel = keepaliveCancel
+	s.keepaliveDone = done
+	s.exportConnClosed = false
+	s.keepaliveMu.Unlock()
+
+	go s.snapshotTransactionKeepalive(keepaliveCtx, conn, done)
+}
+
+func (s *Snapshotter) stopSnapshotKeepalive() {
+	s.keepaliveMu.Lock()
+	cancel := s.keepaliveCancel
+	done := s.keepaliveDone
+	s.keepaliveCancel = nil
+	s.keepaliveDone = nil
+	s.keepaliveMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
 }
 
 // decodeColumnData decodes PostgreSQL column data using cached decoder

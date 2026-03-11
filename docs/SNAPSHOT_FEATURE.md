@@ -843,6 +843,11 @@ cachedSnapshotID = snapshotID  // Cache for metadata creation
 // This connection will be used for pg_relation_size queries too!
 ```
 
+**Connection lifecycle safety (important):**
+- The coordinator runs a periodic keepalive (`SELECT 1`) only while the snapshot transaction is active.
+- On snapshot finalization or shutdown, keepalive is stopped first, then the export transaction is finalized (`COMMIT` on success, `ROLLBACK` on abnormal termination), and finally the export connection is closed.
+- This ordering prevents leaked `idle in transaction` sessions and avoids long-lived open transactions that can block `VACUUM`.
+
 **Critical: Why Keep Transaction Open?**
 
 ```
@@ -1082,6 +1087,10 @@ if allDone {
     // CDC stream starts from where snapshot was taken
 }
 ```
+
+**Finalization guarantee:**
+- Snapshot finalization always stops the keepalive loop before closing the export transaction.
+- This guarantees there is no background `SELECT 1` running on a finalized connection.
 
 **No Duplicate Data:**
 

@@ -31,6 +31,7 @@ func TestLargeTransactionalCommit(t *testing.T) {
 	// --- CDC CONFIGURATION -------------------------------------------------
 	cdcCfg := Config
 	cdcCfg.Slot.Name = slotName
+	cdcCfg.Slot.ProtoVersion = 1
 
 	postgresConn, err := newPostgresConn()
 	if !assert.NoError(t, err) {

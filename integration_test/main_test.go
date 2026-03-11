@@ -219,6 +219,25 @@ func pgExec(ctx context.Context, conn pq.Connection, command string) error {
 	return nil
 }
 
+// protoVersions lists the pgoutput protocol versions that every CDC
+// integration test should exercise.
+var protoVersions = []int{1, 2}
+
+// forEachProtoVersion runs fn as a subtest for every protocol version.
+// It copies cdcCfg, sets ProtoVersion, and appends "_v{N}" to the slot name
+// so that parallel subtests don't collide.
+func forEachProtoVersion(t *testing.T, cdcCfg config.Config, fn func(t *testing.T, cfg config.Config)) {
+	t.Helper()
+	for _, v := range protoVersions {
+		cfg := cdcCfg
+		cfg.Slot.ProtoVersion = v
+		cfg.Slot.Name = fmt.Sprintf("%s_v%d", cdcCfg.Slot.Name, v)
+		t.Run(fmt.Sprintf("proto_v%d", v), func(t *testing.T) {
+			fn(t, cfg)
+		})
+	}
+}
+
 func fetchDeleteOpMetric() (int, error) {
 	m, err := fetchMetrics("go_pq_cdc_delete_total")
 	mi, _ := strconv.Atoi(m)

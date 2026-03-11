@@ -50,6 +50,7 @@ func main() {
 			CreateIfNotExists:           true,
 			Name:                        "cdc_slot_streaming",
 			SlotActivityCheckerInterval: 3000,
+			ProtoVersion:                2,
 		},
 		Metric: config.MetricConfig{
 			Port: 8081,
@@ -129,11 +130,6 @@ func main() {
 			_ = tx.Rollback(ctx)
 			os.Exit(1)
 		}
-	}
-
-	if err = tx.Commit(ctx); err != nil {
-		slog.Error("commit hatası", "error", err)
-		os.Exit(1)
 	}
 
 	slog.Info("Transaction COMMIT edildi, mesajlar bekleniyor...")

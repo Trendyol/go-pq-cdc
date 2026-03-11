@@ -8,15 +8,55 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// StreamStart signals the beginning of a streaming transaction chunk.
+// Between StreamStart and StreamStop, DML events belong to an in-progress
+// transaction that has not yet been committed.
+type StreamStart struct {
+	Xid          uint32
+	FirstSegment bool
+}
+
+func NewStreamStart(data []byte) (*StreamStart, error) {
+	// StreamStart message format:
+	// Byte1('S')  - message type (already at data[0])
+	// Int32       - Xid (4 bytes)
+	// Int8        - first_segment flag (1 byte)
+	// Total: 1 + 4 + 1 = 6 bytes minimum
+	if len(data) < 6 {
+		return nil, errors.Newf("stream start message length must be at least 6 bytes, but got %d", len(data))
+	}
+	return &StreamStart{
+		Xid:          binary.BigEndian.Uint32(data[1:]),
+		FirstSegment: data[5] == 1,
+	}, nil
+}
+
 // StreamStop signals the end of a streaming transaction chunk.
 // When streaming is enabled, large in-progress transactions are sent
-// in chunks bracketed by STREAM START / STREAM STOP. Any buffered
-// message must be flushed when this marker arrives.
+// in chunks bracketed by STREAM START / STREAM STOP.
 type StreamStop struct{}
 
 // StreamAbort signals that a streamed transaction has been aborted.
 // Any buffered messages from this transaction must be discarded.
-type StreamAbort struct{}
+type StreamAbort struct {
+	Xid    uint32
+	SubXid uint32
+}
+
+func NewStreamAbort(data []byte) (*StreamAbort, error) {
+	// StreamAbort message format:
+	// Byte1('A')  - message type (already at data[0])
+	// Int32       - Xid (4 bytes)
+	// Int32       - SubXid (4 bytes)
+	// Total: 1 + 4 + 4 = 9 bytes minimum
+	if len(data) < 9 {
+		return nil, errors.Newf("stream abort message length must be at least 9 bytes, but got %d", len(data))
+	}
+	return &StreamAbort{
+		Xid:    binary.BigEndian.Uint32(data[1:]),
+		SubXid: binary.BigEndian.Uint32(data[5:]),
+	}, nil
+}
 
 // StreamCommit signals the final commit of a streamed transaction.
 // It carries the same LSN information as a regular Commit message,

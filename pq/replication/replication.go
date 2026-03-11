@@ -20,12 +20,16 @@ func New(conn pq.Connection) *Replication {
 	return &Replication{conn: conn}
 }
 
-func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN) error {
-	pluginArguments := append([]string{
-		"proto_version '2'",
-		"messages 'true'",
-		"streaming 'true'",
-	}, "publication_names '"+publicationName+"'")
+func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
+	pluginArguments := []string{
+		fmt.Sprintf("proto_version '%d'", protoVersion),
+	}
+
+	if protoVersion >= 2 {
+		pluginArguments = append(pluginArguments, "messages 'true'", "streaming 'true'")
+	}
+
+	pluginArguments = append(pluginArguments, "publication_names '"+publicationName+"'")
 
 	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", slotName, startLSN, strings.Join(pluginArguments, ","))
 	r.conn.Frontend().SendQuery(&pgproto3.Query{String: sql})

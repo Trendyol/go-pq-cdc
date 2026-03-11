@@ -28,22 +28,22 @@ var (
 type Handler func(event *format.Snapshot) error
 
 type Snapshotter struct {
-	metadataConn       pq.Connection
 	healthcheckConn    pq.Connection
 	exportSnapshotConn pq.Connection
 	metric             metric.Metric
+	metadataConn       pq.Connection
+	keepaliveCancel    context.CancelFunc
 	typeMap            *pgtype.Map
 	decoderCache       *DecoderCache
 	connectionPool     *ConnectionPool
 	orderByCache       map[string]orderByCacheEntry
+	keepaliveDone      chan struct{}
 	dsn                string
 	cachedSnapshotID   string
 	tables             publication.Tables
 	config             config.SnapshotConfig
 	orderByMu          sync.RWMutex
 	keepaliveMu        sync.Mutex
-	keepaliveCancel    context.CancelFunc
-	keepaliveDone      chan struct{}
 	exportConnClosed   bool
 }
 

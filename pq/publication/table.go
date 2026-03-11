@@ -31,11 +31,10 @@ var ValidSnapshotPartitionStrategies = []SnapshotPartitionStrategy{
 }
 
 type Table struct {
-	Name            string `json:"name" yaml:"name"`
-	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
-	Schema          string `json:"schema,omitempty" yaml:"schema,omitempty"`
-	// Comma-separated list of columns to include in the publication (optional)
-	Columns []string `json:"columns,omitempty" yaml:"columns,omitempty"`
+	Name            string   `json:"name" yaml:"name"`
+	ReplicaIdentity string   `json:"replicaIdentity" yaml:"replicaIdentity"`
+	Schema          string   `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Columns         []string `json:"columns,omitempty" yaml:"columns,omitempty"`
 	// SnapshotPartitionStrategy allows overriding the auto-detected partition strategy.
 	// Useful when integer PKs are hash-based (not sequential) and range partitioning performs poorly.
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"

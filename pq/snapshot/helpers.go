@@ -194,3 +194,11 @@ func parseNullableInt64(value []byte) (*int64, error) {
 
 	return &parsed, nil
 }
+
+// helper function to format column list for snapshot queries
+func selectSnapshotColumns(columns []string) string {
+	if len(columns) > 0 {
+		return strings.Join(columns, ", ")
+	}
+	return "*"
+}

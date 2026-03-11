@@ -82,6 +82,16 @@ func (s *Snapshotter) retryDBOperation(ctx context.Context, operation func() err
 	return errors.Wrap(lastErr, "database operation failed after retries")
 }
 
+// getSnapshotColumns returns the list of columns for a given table from the publication configuration
+func (s *Snapshotter) getSnapshotColumns(schema, name string) []string {
+	for _, t := range s.tables {
+		if t.Schema == schema && t.Name == name {
+			return t.Columns
+		}
+	}
+	return nil
+}
+
 // isTransientError checks if an error is transient and should be retried
 func isTransientError(err error) bool {
 	if err == nil {

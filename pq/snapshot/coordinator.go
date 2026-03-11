@@ -378,6 +378,9 @@ func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
 
 // processChunk processes a single chunk
 func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chunk *Chunk, lsn pq.LSN, handler Handler) (int64, error) {
+	// Resolve columns from table config (should probably store these in the )
+	chunk.TableColumns = s.getSnapshotColumns(chunk.TableSchema, chunk.TableName)
+	
 	// Get ORDER BY clause for the table
 	table := publication.Table{
 		Schema:  chunk.TableSchema,

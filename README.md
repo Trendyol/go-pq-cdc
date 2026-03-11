@@ -19,8 +19,11 @@ ensuring low resource consumption and high performance.
 - **Crash Recovery**: Automatic resume from failures
 - **No Duplicates**: Seamless transition from snapshot to CDC
 - **Snapshot Only Mode**: One-time data export without CDC (no replication slot required)
+- **Protocol Flexibility**: `pgoutput` `proto_version` `1` and `2` support
+- **Safe Streaming TX Handling**: Streamed rollback transactions are discarded correctly
 
 📚 **[Read Full Documentation](docs/SNAPSHOT_FEATURE.md)** for detailed architecture, configuration, and best practices.
+📚 **[Protocol Version & Streaming Transactions](docs/PROTO_VERSION_SUPPORT.md)** for `proto_version` behavior and migration guidance.
 
 ### Contents
 
@@ -35,6 +38,7 @@ ensuring low resource consumption and high performance.
 		- [Heartbeat-based WAL Protection](#heartbeat-based-wal-protection)
 			- [Replica Identity Requirement](#replica-identity-requirement)
 		- [Configuration](#configuration)
+		- [Protocol Version \& Streaming Transactions](#protocol-version--streaming-transactions)
 		- [API](#api)
 		- [Exposed Metrics](#exposed-metrics)
 		- [Grafana Dashboard](#grafana-dashboard)
@@ -96,6 +100,7 @@ func main() {
 			Name:                        "cdc_slot",
 			CreateIfNotExists:           true,
 			SlotActivityCheckerInterval: 3000,
+			ProtoVersion:                2,
 		},
 		Metric: config.MetricConfig{
 			Port: 8081,
@@ -137,6 +142,7 @@ func Handler(ctx *replication.ListenerContext) {
 * [Simple](./example/simple)
 * [Simple File Config](./example/simple-file-config)
 * [Simple With Heartbeat](./example/simple-with-heartbeat)
+* [Streaming Transactions](./example/streaming-transactions)
 * [Snapshot Mode (Initial Data Capture)](./example/snapshot-initial-mode)
 * [Snapshot Only Mode (One-Time Export)](./example/snapshot-only-mode)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
@@ -270,6 +276,7 @@ This requires setting the table's replica identity to FULL:
 | `slot.createIfNotExists`                |   bool   |    no    |    -    | Create replication slot if not exists. Otherwise, return `replication slot is not exists` error.      |                                                                                                                                                    |
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive.                                                                                                                  |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
+| `slot.protoVersion`                     |   int    |    no    |    2    | `pgoutput` protocol version used in `START_REPLICATION`                                               | `1`: PostgreSQL 10+ compatibility, no streaming transaction protocol messages. `2`: PostgreSQL 14+, enables streaming/messages options.           |
 | `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
 | `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial`, `never`, or `snapshot_only`                                                 | **initial:** Take snapshot only if no previous snapshot exists, then start CDC. <br> **never:** Skip snapshot, start CDC immediately. <br> **snapshot_only:** Take snapshot and exit (no CDC, no replication slot required). |
 | `snapshot.chunkSize`                    |  int64   |    no    |  8000   | Number of rows per chunk during snapshot                                                              | Adjust based on table size. Larger chunks = fewer chunks but more memory per chunk.                                                               |
@@ -289,6 +296,28 @@ This requires setting the table's replica identity to FULL:
 | `GET /status`        | Returns a 200 OK status if the client is able to ping the PostgreSQL server successfully. |
 | `GET /metrics`       | Prometheus metric endpoint.                                                               |
 | `GET /debug/pprof/*` | (Only for `debugMode=true`) [pprof](https://pkg.go.dev/net/http/pprof)                    |
+
+### Protocol Version & Streaming Transactions
+
+`go-pq-cdc` now supports both `pgoutput` protocol versions:
+
+- **`slot.protoVersion: 1`**
+  - Works with PostgreSQL 10+
+  - Starts replication with `proto_version '1'`
+  - Does not request `messages 'true'` or `streaming 'true'`
+  - Best choice for older PostgreSQL versions or simpler CDC setups
+
+- **`slot.protoVersion: 2` (default)**
+  - Requires PostgreSQL 14+
+  - Starts replication with `proto_version '2'`, `messages 'true'`, and `streaming 'true'`
+  - Supports streamed in-progress transactions (`STREAM START/STOP/COMMIT/ABORT`)
+
+Streaming behavior for `proto_version: 2`:
+
+- Streamed DML events are buffered per transaction XID.
+- Events are emitted only on `STREAM COMMIT`.
+- `STREAM ABORT` discards all buffered events for that transaction.
+- This prevents rolled-back streamed transactions from leaking to consumers.
 
 ### Exposed Metrics
 
@@ -322,9 +351,10 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 
 ### Compatibility
 
-| go-pq-cdc Version | Minimum PostgreSQL Server Version |
-|-------------------|-----------------------------------|
-| 0.0.2 or higher   | 14                                |
+| go-pq-cdc Version | slot.protoVersion | Minimum PostgreSQL Server Version | Notes |
+|-------------------|-------------------|-----------------------------------|-------|
+| 0.0.2 or higher   | 1                 | 10                                | No streaming transaction protocol messages |
+| 0.0.2 or higher   | 2                 | 14                                | Supports streamed in-progress transactions |
 
 ### Breaking Changes
 

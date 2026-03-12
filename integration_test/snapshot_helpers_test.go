@@ -144,3 +144,31 @@ func countWalsendersForSlot(ctx context.Context, conn pq.Connection, slotName st
 	count, _ := strconv.Atoi(string(results[0].Rows[0][0]))
 	return count, nil
 }
+
+func countIdleSnapshotKeepaliveSessions(ctx context.Context, conn pq.Connection, username string) (int, error) {
+	query := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM pg_stat_activity
+		WHERE datname = current_database()
+		  AND usename = '%s'
+		  AND state = 'idle in transaction'
+		  AND query = 'SELECT 1'
+		  AND pid <> pg_backend_pid()
+	`, username)
+
+	results, err := execQuery(ctx, conn, query)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return 0, nil
+	}
+
+	count, err := strconv.Atoi(string(results[0].Rows[0][0]))
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}

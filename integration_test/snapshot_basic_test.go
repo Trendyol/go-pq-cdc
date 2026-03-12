@@ -121,6 +121,14 @@ func TestSnapshotBasicSingleChunk(t *testing.T) {
 		}
 	}
 
+	t.Run("Verify No Leaked Keepalive Transaction", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			count, queryErr := countIdleSnapshotKeepaliveSessions(ctx, postgresConn, cdcCfg.Username)
+			require.NoError(t, queryErr)
+			return count == 0
+		}, 5*time.Second, 100*time.Millisecond, "found leaked idle-in-transaction keepalive session")
+	})
+
 	// Wait a bit for CDC to start
 	time.Sleep(500 * time.Millisecond)
 

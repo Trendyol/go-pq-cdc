@@ -534,6 +534,7 @@ INSERT: map[id:1001 name:Charlie]  <-- New data after snapshot
 | `heartbeatInterval` | duration | `5s` | Interval for worker heartbeat updates |
 | `instanceId` | string | `hostname-pid` | Custom instance identifier (optional) |
 | `resnapshot` | bool | `false` | Force reprocessing by cleaning metadata for this slot (see below) |
+| `queryCondition` | string | `""` | Global query condition applied to all snapshot queries (SNAPSHOT-ONLY, see below) |
 
 ### Resnapshot
 
@@ -597,6 +598,102 @@ snapshot:
   mode: initial
   resnapshot: false  # Normal operation
 ```
+
+### Custom Query Conditions
+
+The `queryCondition` feature allows you to add custom WHERE clause conditions to snapshot queries. This is useful for filtering data during snapshot (e.g., excluding soft-deleted records, filtering by status, date ranges, etc.).
+
+#### Important: Snapshot-Only Feature
+
+⚠️ **This feature is SNAPSHOT-ONLY and does NOT affect CDC (publication).**
+
+- **Snapshot**: Uses SQL `SELECT` queries → `queryCondition` is applied
+- **CDC**: Uses WAL replication stream (binary messages) → `queryCondition` is NOT used
+
+CDC will capture ALL changes to tables in the publication, regardless of snapshot query conditions. The `queryCondition` only filters which existing rows are captured during the initial snapshot phase.
+
+#### Configuration
+
+You can specify query conditions in two places:
+
+1. **Global Condition** (`snapshot.queryCondition`): Applies to all snapshot tables
+   ```yaml
+   snapshot:
+     enabled: true
+     mode: initial
+     queryCondition: "status = 'active'"  # Global condition
+   ```
+
+2. **Per-Table Condition** (`publication.tables[].queryCondition` or `snapshot.tables[].queryCondition`): Applies to specific table
+   ```yaml
+   publication:
+     tables:
+       - name: users
+         schema: public
+         replicaIdentity: FULL
+         queryCondition: "deleted_at IS NULL"  # Per-table condition
+   ```
+
+**Priority**: Per-table conditions take precedence over global conditions.
+
+#### How It Works
+
+The query condition is appended to the WHERE clause with `AND`:
+
+```sql
+-- Without queryCondition
+SELECT * FROM public.users WHERE id >= 1 AND id <= 1000 ORDER BY id LIMIT 1000
+
+-- With queryCondition: "deleted_at IS NULL"
+SELECT * FROM public.users WHERE id >= 1 AND id <= 1000 AND deleted_at IS NULL ORDER BY id LIMIT 1000
+```
+
+#### Use Cases
+
+- **Filter soft-deleted records**: `queryCondition: "deleted_at IS NULL"`
+- **Filter by status**: `queryCondition: "status = 'active'"`
+- **Date range filtering**: `queryCondition: "created_at >= '2024-01-01'"`
+- **Multiple conditions**: `queryCondition: "status = 'active' AND archived = false"`
+- **Exclude test data**: `queryCondition: "environment != 'test'"`
+
+#### Example Configuration
+
+```yaml
+publication:
+  createIfNotExists: true
+  name: cdc_publication
+  operations:
+    - INSERT
+    - UPDATE
+    - DELETE
+  tables:
+    - name: users
+      schema: public
+      replicaIdentity: FULL
+      queryCondition: "deleted_at IS NULL"  # Per-table: exclude soft-deleted
+    - name: orders
+      schema: public
+      replicaIdentity: FULL
+      queryCondition: "status != 'cancelled'"  # Per-table: exclude cancelled
+
+snapshot:
+  enabled: true
+  mode: initial
+  queryCondition: "created_at >= '2024-01-01'"  # Global: only recent data
+  chunkSize: 10000
+```
+
+In this example:
+- `users` table: Uses `"deleted_at IS NULL"` (per-table takes precedence)
+- `orders` table: Uses `"status != 'cancelled'"` (per-table takes precedence)
+- Other tables: Use `"created_at >= '2024-01-01'"` (global condition)
+
+#### Notes
+
+- Query conditions are applied to all snapshot query types (integer_range, ctid_block, offset)
+- Conditions are also applied to row count queries for accurate chunk estimation
+- If you need to filter CDC events, filter in your application handler function
+- The condition must be valid SQL that can be appended with `AND`
 
 ---
 

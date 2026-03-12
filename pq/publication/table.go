@@ -31,9 +31,10 @@ var ValidSnapshotPartitionStrategies = []SnapshotPartitionStrategy{
 }
 
 type Table struct {
-	Name            string `json:"name" yaml:"name"`
-	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
-	Schema          string `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Name            string   `json:"name" yaml:"name"`
+	ReplicaIdentity string   `json:"replicaIdentity" yaml:"replicaIdentity"`
+	Schema          string   `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Columns         []string `json:"columns,omitempty" yaml:"columns,omitempty"`
 	// SnapshotPartitionStrategy allows overriding the auto-detected partition strategy.
 	// Useful when integer PKs are hash-based (not sequential) and range partitioning performs poorly.
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
@@ -47,6 +48,10 @@ func (tc Table) Validate() error {
 
 	if !slices.Contains(ReplicaIdentityOptions, tc.ReplicaIdentity) {
 		return errors.Newf("undefined replica identity option. valid identity options are: %v", ReplicaIdentityOptions)
+	}
+
+	if tc.ReplicaIdentity == ReplicaIdentityFull && len(tc.Columns) > 0 {
+		return errors.New("cannot specify columns when replica identity is FULL. Must be ReplicaIdentityDefault")
 	}
 
 	return nil
@@ -77,7 +82,8 @@ func (ts Tables) Diff(tss Tables) Tables {
 	}
 
 	for _, t := range ts {
-		if v, found := tssMap[t.Name+t.ReplicaIdentity]; !found || v.ReplicaIdentity != t.ReplicaIdentity {
+		v, found := tssMap[t.Name+t.ReplicaIdentity]
+		if !found || v.ReplicaIdentity != t.ReplicaIdentity || !slices.Equal(v.Columns, t.Columns) {
 			res = append(res, t)
 		}
 	}

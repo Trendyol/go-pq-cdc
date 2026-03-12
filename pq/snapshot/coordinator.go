@@ -400,10 +400,14 @@ func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
 
 // processChunk processes a single chunk
 func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chunk *Chunk, lsn pq.LSN, handler Handler) (int64, error) {
+	// Resolve columns from table config (should probably store these in the )
+	chunk.TableColumns = s.getSnapshotColumns(chunk.TableSchema, chunk.TableName)
+	
 	// Get ORDER BY clause for the table
 	table := publication.Table{
-		Schema: chunk.TableSchema,
-		Name:   chunk.TableName,
+		Schema:  chunk.TableSchema,
+		Name:    chunk.TableName,
+		Columns: chunk.TableColumns,
 	}
 
 	orderByClause, pkColumns, err := s.getOrderByClause(ctx, conn, table)
@@ -468,8 +472,10 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string) string {
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
+		cols := selectSnapshotColumns(chunk.TableColumns)
 		return fmt.Sprintf(
-			"SELECT * FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
+			"SELECT %s FROM %s.%s WHERE %s >= %d AND %s <= %d ORDER BY %s LIMIT %d",
+			cols,
 			chunk.TableSchema,
 			chunk.TableName,
 			pkColumn,
@@ -485,26 +491,26 @@ func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string,
 }
 
 func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk) string {
+	cols := selectSnapshotColumns(chunk.TableColumns)
 	// Empty table or single chunk without block info - select all
 	if chunk.BlockStart == nil {
-		return fmt.Sprintf("SELECT * FROM %s.%s", chunk.TableSchema, chunk.TableName)
+		return fmt.Sprintf("SELECT %s FROM %s.%s", cols, chunk.TableSchema, chunk.TableName)
 	}
 
 	// Last chunk (BlockEnd is nil): no upper bound to catch rows added after metadata creation
 	// This prevents missing rows that were inserted between chunk creation and snapshot export
 	if chunk.BlockEnd == nil || chunk.IsLastChunk {
 		return fmt.Sprintf(
-			"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid",
-			chunk.TableSchema,
-			chunk.TableName,
-			*chunk.BlockStart,
+			"SELECT %s FROM %s.%s WHERE ctid >= '(%d,0)'::tid",
+			cols, chunk.TableSchema, chunk.TableName, *chunk.BlockStart,
 		)
 	}
 
 	// Normal chunk: use bounded CTID range [BlockStart, BlockEnd)
 	// ctid format: (block_number, tuple_index)
 	return fmt.Sprintf(
-		"SELECT * FROM %s.%s WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid",
+		"SELECT %s FROM %s.%s WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid",
+		cols,
 		chunk.TableSchema,
 		chunk.TableName,
 		*chunk.BlockStart,
@@ -513,8 +519,10 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk) string {
 }
 
 func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string) string {
+	cols := selectSnapshotColumns(chunk.TableColumns)
 	return fmt.Sprintf(
-		"SELECT * FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
+		"SELECT %s FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
+		cols,
 		chunk.TableSchema,
 		chunk.TableName,
 		orderByClause,
@@ -691,6 +699,7 @@ func (s *Snapshotter) createRangeChunksWithConn(ctx context.Context, conn pq.Con
 				SlotName:          slotName,
 				TableSchema:       table.Schema,
 				TableName:         table.Name,
+				TableColumns:      table.Columns,
 				ChunkIndex:        0,
 				ChunkStart:        0,
 				ChunkSize:         s.config.ChunkSize,
@@ -719,6 +728,7 @@ func (s *Snapshotter) createRangeChunksWithConn(ctx context.Context, conn pq.Con
 			SlotName:          slotName,
 			TableSchema:       table.Schema,
 			TableName:         table.Name,
+			TableColumns:      table.Columns,
 			ChunkIndex:        int(i),
 			ChunkStart:        i * chunkSize,
 			ChunkSize:         chunkSize,
@@ -814,6 +824,7 @@ func (s *Snapshotter) createCTIDBlockChunksWithConn(ctx context.Context, conn pq
 			SlotName:          slotName,
 			TableSchema:       table.Schema,
 			TableName:         table.Name,
+			TableColumns:      table.Columns,
 			ChunkIndex:        int(i),
 			ChunkStart:        blockStart, // Store block start for ordering
 			ChunkSize:         s.config.ChunkSize,
@@ -900,6 +911,7 @@ func (s *Snapshotter) createOffsetChunksWithConn(ctx context.Context, conn pq.Co
 			SlotName:          slotName,
 			TableSchema:       table.Schema,
 			TableName:         table.Name,
+			TableColumns:      table.Columns,
 			ChunkIndex:        int(i),
 			ChunkStart:        i * chunkSize,
 			ChunkSize:         chunkSize,

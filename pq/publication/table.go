@@ -30,6 +30,7 @@ var ValidSnapshotPartitionStrategies = []SnapshotPartitionStrategy{
 	SnapshotPartitionStrategyOffset,
 }
 
+//nolint:fieldalignment
 type Table struct {
 	Name            string   `json:"name" yaml:"name"`
 	ReplicaIdentity string   `json:"replicaIdentity" yaml:"replicaIdentity"`

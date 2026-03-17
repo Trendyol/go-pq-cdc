@@ -225,7 +225,6 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 	return false, nil
 }
 
-//nolint:funlen
 func (s *Snapshotter) initTables(ctx context.Context) error {
 	// Check if job table exists
 	jobTableExists, err := s.tableExists(ctx, jobTableName)
@@ -380,7 +379,7 @@ func (s *Snapshotter) getCurrentLSN(ctx context.Context) (pq.LSN, error) {
 func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chunk *Chunk, lsn pq.LSN, handler Handler) (int64, error) {
 	// Resolve columns from table config (should probably store these in the )
 	chunk.TableColumns = s.getSnapshotColumns(chunk.TableSchema, chunk.TableName)
-	
+
 	// Get ORDER BY clause for the table
 	table := publication.Table{
 		Schema:  chunk.TableSchema,

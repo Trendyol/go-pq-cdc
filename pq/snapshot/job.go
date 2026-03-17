@@ -28,6 +28,8 @@ const (
 )
 
 // Chunk represents a unit of work for snapshot processing
+//
+//nolint:fieldalignment
 type Chunk struct {
 	ClaimedAt   *time.Time
 	HeartbeatAt *time.Time

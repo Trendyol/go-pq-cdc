@@ -28,8 +28,6 @@ const (
 )
 
 // Chunk represents a unit of work for snapshot processing
-//
-//nolint:fieldalignment
 type Chunk struct {
 	ClaimedAt   *time.Time
 	HeartbeatAt *time.Time
@@ -43,10 +41,10 @@ type Chunk struct {
 
 	Status            ChunkStatus
 	PartitionStrategy PartitionStrategy
+	TableColumns      []string
 	TableName         string
 	ClaimedBy         string
 	TableSchema       string
-	TableColumns      []string
 	SlotName          string
 	ID                int64
 	ChunkIndex        int

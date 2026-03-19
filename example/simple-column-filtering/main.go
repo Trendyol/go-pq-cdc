@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
+
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
-	"log/slog"
-	"os"
 )
 
 /*
@@ -18,13 +19,20 @@ import (
 	CREATE TABLE users (
 	 id serial PRIMARY KEY,
 	 name text NOT NULL,
+	 secret_id text NOT NULL,
 	 created_on timestamptz
 	);
 
-	INSERT INTO users (name)
+	INSERT INTO users (name, secret_id, created_on)
 	SELECT
-		'Oyleli' || i
+		'Oyleli' || i,
+		'secret' || i,
+		NOW()
 	FROM generate_series(1, 100) AS i;
+
+	-- secret_id will NOT be included in the change events because it's not included in the publication configuration
+	-- see https://www.postgresql.org/docs/current/logical-replication-col-lists.html
+
 */
 
 func main() {
@@ -50,6 +58,8 @@ func main() {
 					Name:            "users",
 					ReplicaIdentity: publication.ReplicaIdentityDefault,
 					Schema:          "public",
+					// Only the specified columns will be included in the change events. In this example, secret_id column will be excluded.
+					Columns: []string{"id", "name", "created_on"},
 				},
 			},
 		},
@@ -80,10 +90,13 @@ func Handler(ctx *replication.ListenerContext) {
 	switch msg := ctx.Message.(type) {
 	case *format.Insert:
 		slog.Info("insert message received", "new", msg.Decoded)
+		slog.Info("secret_id value", "new", msg.Decoded["secret_id"])
 	case *format.Delete:
 		slog.Info("delete message received", "old", msg.OldDecoded)
+		slog.Info("secret_id value", "old", msg.OldDecoded["secret_id"])
 	case *format.Update:
 		slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
+		slog.Info("secret_id value", "new", msg.NewDecoded["secret_id"], "old", msg.OldDecoded["secret_id"])
 	}
 
 	if err := ctx.Ack(); err != nil {

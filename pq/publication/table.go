@@ -31,14 +31,14 @@ var ValidSnapshotPartitionStrategies = []SnapshotPartitionStrategy{
 }
 
 type Table struct {
-	Columns         []string `json:"columns,omitempty" yaml:"columns,omitempty"`
-	Name            string   `json:"name" yaml:"name"`
-	ReplicaIdentity string   `json:"replicaIdentity" yaml:"replicaIdentity"`
-	Schema          string   `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Name            string `json:"name" yaml:"name"`
+	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
+	Schema          string `json:"schema,omitempty" yaml:"schema,omitempty"`
 	// SnapshotPartitionStrategy allows overriding the auto-detected partition strategy.
 	// Useful when integer PKs are hash-based (not sequential) and range partitioning performs poorly.
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
 	SnapshotPartitionStrategy SnapshotPartitionStrategy `json:"snapshotPartitionStrategy,omitempty" yaml:"snapshotPartitionStrategy,omitempty"`
+	Columns                   []string                  `json:"columns,omitempty" yaml:"columns,omitempty"`
 }
 
 func (tc Table) Validate() error {

@@ -45,6 +45,7 @@ type Chunk struct {
 	ClaimedBy         string
 	TableSchema       string
 	SlotName          string
+	TableColumns      []string
 	ID                int64
 	ChunkIndex        int
 	ChunkStart        int64

@@ -38,9 +38,14 @@ func (c Config) Validate() error {
 
 func (c Config) createQuery() string {
 	sqlStatement := fmt.Sprintf(`CREATE PUBLICATION %s`, pq.QuoteIdentifier(c.Name))
+	var hasPartitionedTable bool
 
 	quotedTables := make([]string, len(c.Tables))
 	for i, table := range c.Tables {
+		if table.Partitioned {
+			hasPartitionedTable = true
+		}
+
 		if len(table.Columns) > 0 {
 			quotedTables[i] = fmt.Sprintf("%s.%s(%s)", pq.QuoteIdentifier(table.Schema), pq.QuoteIdentifier(table.Name), strings.Join(table.Columns, ", "))
 		} else {
@@ -49,7 +54,7 @@ func (c Config) createQuery() string {
 	}
 	sqlStatement += " FOR TABLE " + strings.Join(quotedTables, ", ")
 
-	sqlStatement += fmt.Sprintf(" WITH (publish = '%s')", c.Operations.String())
+	sqlStatement += fmt.Sprintf(" WITH (publish = '%s', publish_via_partition_root = %t)", c.Operations.String(), hasPartitionedTable)
 
 	return sqlStatement
 }

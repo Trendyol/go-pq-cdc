@@ -39,6 +39,8 @@ type Table struct {
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
 	SnapshotPartitionStrategy SnapshotPartitionStrategy `json:"snapshotPartitionStrategy,omitempty" yaml:"snapshotPartitionStrategy,omitempty"`
 	Columns                   []string                  `json:"columns,omitempty" yaml:"columns,omitempty"`
+	// Boolean flag to indicate if the table is partitioned, used for creating the publicaiton on the root table.
+	Partitioned bool `json:"partitioned,omitempty" yaml:"partitioned,omitempty"`
 }
 
 func (tc Table) Validate() error {
@@ -83,7 +85,7 @@ func (ts Tables) Diff(tss Tables) Tables {
 
 	for _, t := range ts {
 		v, found := tssMap[t.Name+t.ReplicaIdentity]
-		if !found || v.ReplicaIdentity != t.ReplicaIdentity || !slices.Equal(v.Columns, t.Columns) {
+		if !found || v.ReplicaIdentity != t.ReplicaIdentity || !slices.Equal(v.Columns, t.Columns) || v.Partitioned != t.Partitioned {
 			res = append(res, t)
 		}
 	}

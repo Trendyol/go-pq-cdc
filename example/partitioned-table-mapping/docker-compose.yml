@@ -19,7 +19,7 @@ services:
       - -c
       - max_connections=100
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U testuser -d testdb" ]
+      test: ["CMD-SHELL", "pg_isready -U cdc_user -d cdc_db"]
       interval: 5s
       timeout: 5s
       retries: 5

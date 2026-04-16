@@ -55,7 +55,7 @@ func main() {
 					ReplicaIdentity: publication.ReplicaIdentityDefault,
 					Schema:          "public",
 					// test_events is a partitioned table, so we need to set Partitioned to true to ensure that the publication is created with the root table name
-					// If this isnt set (default false) cdc events will still be captured but the the table name in the message will be the partition table name (e.g. test_events_1) instead of the root table name (test_events)
+					// If this isn't set (default false) cdc events will still be captured but the table name in the message will be the partition table name (e.g. test_events_1) instead of the root table name (test_events)
 					// Sets publish_via_partition_root = true in the publication
 					Partitioned: true,
 				},
@@ -87,7 +87,7 @@ func main() {
 func Handler(ctx *replication.ListenerContext) {
 	switch msg := ctx.Message.(type) {
 	case *format.Insert:
-		// Table name will be `test_events`, even thought the table part `test_events_<partition>` is the one that receives the insert
+		// Table name will be `test_events`, even though the table part `test_events_<partition>` is the one that receives the insert
 		slog.Info("insert message received", "table", msg.TableName, "message", msg.Decoded)
 	case *format.Delete:
 		slog.Info("delete message received", "table", msg.TableName, "message", msg.OldDecoded)

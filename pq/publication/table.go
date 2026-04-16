@@ -39,7 +39,7 @@ type Table struct {
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
 	SnapshotPartitionStrategy SnapshotPartitionStrategy `json:"snapshotPartitionStrategy,omitempty" yaml:"snapshotPartitionStrategy,omitempty"`
 	Columns                   []string                  `json:"columns,omitempty" yaml:"columns,omitempty"`
-	// Boolean flag to indicate if the table is partitioned, used for creating the publicaiton on the root table.
+	// Boolean flag to indicate if the table is partitioned, used for creating the publication on the root table.
 	Partitioned bool `json:"partitioned,omitempty" yaml:"partitioned,omitempty"`
 }
 

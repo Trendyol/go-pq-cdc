@@ -38,8 +38,3 @@ func TestQualifiedTableName(t *testing.T) {
 		assert.Equal(t, "public.books", qualifiedTableName(Table{Name: "books"}))
 	})
 }
-
-func TestQuoteLiteral(t *testing.T) {
-	assert.Equal(t, "'simple'", quoteLiteral("simple"))
-	assert.Equal(t, "'o''reilly'", quoteLiteral("o'reilly"))
-}

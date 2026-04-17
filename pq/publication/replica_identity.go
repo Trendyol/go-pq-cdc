@@ -96,7 +96,7 @@ func (c *Publication) GetReplicaIdentities(ctx context.Context) ([]Table, error)
 	tableNames := make([]string, len(c.cfg.Tables))
 
 	for i, t := range c.cfg.Tables {
-		tableNames[i] = quoteLiteral(qualifiedTableName(t))
+		tableNames[i] = pq.QuoteLiteral(qualifiedTableName(t))
 	}
 
 	query := fmt.Sprintf(`
@@ -199,8 +199,4 @@ func qualifiedTableName(t Table) string {
 	}
 
 	return t.Schema + "." + t.Name
-}
-
-func quoteLiteral(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }

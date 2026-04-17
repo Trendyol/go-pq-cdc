@@ -149,6 +149,8 @@ func Handler(ctx *replication.ListenerContext) {
 * [Streaming Transactions](./example/streaming-transactions)
 * [Snapshot Mode (Initial Data Capture)](./example/snapshot-initial-mode)
 * [Snapshot Only Mode (One-Time Export)](./example/snapshot-only-mode)
+* [Replica Identity Using Index](./example/replica-identity-using-index)
+* [Replica Identity Nothing](./example/replica-identity-nothing)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
@@ -264,6 +266,12 @@ For large tables, `REPLICA IDENTITY USING INDEX` can be a better trade-off for n
 - `USING INDEX` sends only old values of the columns from the selected unique index (`K` tuple data).
 - This reduces payload size, but unlike `FULL`, old non-index columns are not available.
 
+You can run [Replica Identity Using Index](./example/replica-identity-using-index) for a minimal `USING INDEX` setup.
+
+`REPLICA IDENTITY NOTHING` is best paired with insert-only publications because PostgreSQL does not provide old-row data for updates and deletes in that mode.
+
+You can run [Replica Identity Nothing](./example/replica-identity-nothing) for an insert-only `NOTHING` example.
+
 ### Configuration
 
 | Variable                                |   Type   | Required | Default | Description                                                                                           | Options                                                                                                                                            |
@@ -375,4 +383,3 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 | Date taking effect | Version | Change | How to check |
 |--------------------|---------|--------|--------------| 
 | -                  | -       | -      | -            |
-

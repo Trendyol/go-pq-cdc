@@ -72,8 +72,7 @@ func main() {
 }
 
 func handler(ctx *replication.ListenerContext) {
-	switch msg := ctx.Message.(type) {
-	case *format.Insert:
+	if msg, ok := ctx.Message.(*format.Insert); ok {
 		slog.Info("insert message received", "new", msg.Decoded)
 	}
 

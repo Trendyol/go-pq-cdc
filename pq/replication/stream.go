@@ -63,6 +63,7 @@ type stream struct {
 	mu                  *sync.RWMutex
 	config              config.Config
 	lastXLogPos         pq.LSN
+	confirmedXLogPos    pq.LSN
 	snapshotLSN         pq.LSN
 	openFromSnapshotLSN bool
 	closed              atomic.Bool
@@ -292,7 +293,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 			}
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
-					if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
+					if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
 						logger.Error("send stand by status update", "error", err)
 						return true
 					}
@@ -355,7 +356,7 @@ func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
 	}
 
 	if pkm.ReplyRequested {
-		if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos())); err != nil {
+		if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
 			logger.Error("standby status update", "error", err)
 			return err
 		}
@@ -454,9 +455,9 @@ func (s *stream) process(ctx context.Context) {
 
 		ackFunc := func() error {
 			pos := pq.LSN(msg.walStart)
-			s.UpdateXLogPos(pos)
-			logger.Debug("send stand by status update", "xLogPos", s.LoadXLogPos().String())
-			return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()))
+			s.UpdateConfirmedXLogPos(pos)
+			logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
+			return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
 		}
 
 		if s.isHeartbeatMessage(msg.message) {
@@ -548,6 +549,21 @@ func (s *stream) LoadXLogPos() pq.LSN {
 	return s.lastXLogPos
 }
 
+func (s *stream) UpdateConfirmedXLogPos(l pq.LSN) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.confirmedXLogPos < l {
+		s.confirmedXLogPos = l
+	}
+}
+
+func (s *stream) LoadConfirmedXLogPos() pq.LSN {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.confirmedXLogPos
+}
+
 func (s *stream) OpenFromSnapshotLSN() {
 	s.openFromSnapshotLSN = true
 }
@@ -626,12 +642,12 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 	return snapshotLSN, nil
 }
 
-func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walWritePosition uint64) error {
+func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walReceivedPosition, walFlushedPosition uint64) error {
 	data := make([]byte, 0, 34)
 	data = append(data, StandbyStatusUpdateByteID)
-	data = AppendUint64(data, walWritePosition)
-	data = AppendUint64(data, walWritePosition)
-	data = AppendUint64(data, walWritePosition)
+	data = AppendUint64(data, walReceivedPosition)
+	data = AppendUint64(data, walFlushedPosition)
+	data = AppendUint64(data, walFlushedPosition)
 	data = AppendUint64(data, timeToPgTime(time.Now()))
 	data = append(data, 0)
 

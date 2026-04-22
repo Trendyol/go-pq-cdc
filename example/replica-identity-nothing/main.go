@@ -1,3 +1,4 @@
+// Package main demonstrates CDC with REPLICA IDENTITY NOTHING tables.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Package pq provides PostgreSQL connection and replication primitives.
 package pq
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
+// Connection defines the interface for PostgreSQL connections.
 type Connection interface {
 	Connect(ctx context.Context) error
 	IsClosed() bool
@@ -23,6 +25,7 @@ type connection struct {
 	dsn string
 }
 
+// NewConnection creates and opens a new PostgreSQL connection.
 func NewConnection(ctx context.Context, dsn string) (Connection, error) {
 	conn := NewConnectionTemplate(dsn)
 	if err := conn.Connect(ctx); err != nil {
@@ -31,6 +34,7 @@ func NewConnection(ctx context.Context, dsn string) (Connection, error) {
 	return conn, nil
 }
 
+// NewConnectionTemplate creates a connection without opening it.
 func NewConnectionTemplate(dsn string) Connection {
 	return &connection{
 		dsn: dsn,

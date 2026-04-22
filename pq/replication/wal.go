@@ -13,6 +13,7 @@ import (
 // microSecFromUnixEpochToY2K is unix timestamp of 2000-01-01.
 var microSecFromUnixEpochToY2K = int64(946684800)
 
+// XLogData represents a parsed WAL data message from the replication stream.
 type XLogData struct {
 	ServerTime   time.Time
 	WALData      []byte
@@ -20,6 +21,7 @@ type XLogData struct {
 	ServerWALEnd pq.LSN
 }
 
+// ParseXLogData decodes a raw WAL data payload into an XLogData struct.
 func ParseXLogData(buf []byte) (XLogData, error) {
 	var xld XLogData
 	if len(buf) < 24 {
@@ -28,7 +30,7 @@ func ParseXLogData(buf []byte) (XLogData, error) {
 
 	xld.WALStart = pq.LSN(binary.BigEndian.Uint64(buf))
 	xld.ServerWALEnd = pq.LSN(binary.BigEndian.Uint64(buf[8:]))
-	xld.ServerTime = pgTimeToTime(int64(binary.BigEndian.Uint64(buf[16:])))
+	xld.ServerTime = pgTimeToTime(int64(binary.BigEndian.Uint64(buf[16:]))) //nolint:gosec // G115: PG timestamp fits int64
 	xld.WALData = buf[24:]
 
 	return xld, nil

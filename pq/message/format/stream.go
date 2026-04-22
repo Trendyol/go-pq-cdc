@@ -16,6 +16,7 @@ type StreamStart struct {
 	FirstSegment bool
 }
 
+// NewStreamStart parses raw bytes into a StreamStart message.
 func NewStreamStart(data []byte) (*StreamStart, error) {
 	// StreamStart message format:
 	// Byte1('S')  - message type (already at data[0])
@@ -43,6 +44,7 @@ type StreamAbort struct {
 	SubXid uint32
 }
 
+// NewStreamAbort parses raw bytes into a StreamAbort message.
 func NewStreamAbort(data []byte) (*StreamAbort, error) {
 	// StreamAbort message format:
 	// Byte1('A')  - message type (already at data[0])
@@ -70,6 +72,7 @@ type StreamCommit struct {
 	Flags             uint8
 }
 
+// NewStreamCommit parses raw bytes into a StreamCommit message.
 func NewStreamCommit(data []byte) (*StreamCommit, error) {
 	msg := &StreamCommit{}
 	if err := msg.decode(data); err != nil {
@@ -101,7 +104,7 @@ func (sc *StreamCommit) decode(data []byte) error {
 	skipByte += 8
 	sc.TransactionEndLSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
 	skipByte += 8
-	sc.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0)
+	sc.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0) //nolint:gosec // G115: PG timestamp fits int64
 
 	return nil
 }

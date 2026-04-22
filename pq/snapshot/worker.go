@@ -536,12 +536,12 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	chunk.BlockEnd = blockEnd
 
 	// Parse is_last_chunk (boolean)
-	if row[10] != nil && len(row[10]) > 0 {
+	if len(row[10]) > 0 {
 		chunk.IsLastChunk = string(row[10]) == "t" || string(row[10]) == "true"
 	}
 
 	// Parse partition strategy
-	if row[11] != nil && len(row[11]) > 0 {
+	if len(row[11]) > 0 {
 		chunk.PartitionStrategy = PartitionStrategy(string(row[11]))
 	} else {
 		chunk.PartitionStrategy = PartitionStrategyOffset

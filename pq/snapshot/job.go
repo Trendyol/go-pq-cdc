@@ -12,6 +12,7 @@ import (
 // ChunkStatus represents the status of a chunk
 type ChunkStatus string
 
+// Chunk status constants for tracking snapshot chunk progress.
 const (
 	ChunkStatusPending    ChunkStatus = "pending"
 	ChunkStatusInProgress ChunkStatus = "in_progress"
@@ -21,6 +22,7 @@ const (
 // PartitionStrategy defines how a table is partitioned for snapshot
 type PartitionStrategy string
 
+// Partition strategy constants for snapshot table chunking.
 const (
 	PartitionStrategyIntegerRange PartitionStrategy = "integer_range" // Single integer PK - MIN/MAX range
 	PartitionStrategyCTIDBlock    PartitionStrategy = "ctid_block"    // Physical block-based partitioning

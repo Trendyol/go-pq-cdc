@@ -1,3 +1,4 @@
+// Package publication manages PostgreSQL publication configuration for logical replication.
 package publication
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/lib/pq"
 )
 
+// Config holds the configuration for a PostgreSQL publication.
 type Config struct {
 	Name              string     `json:"name" yaml:"name"`
 	Operations        Operations `json:"operations" yaml:"operations"`
@@ -15,6 +17,7 @@ type Config struct {
 	CreateIfNotExists bool       `json:"createIfNotExists" yaml:"createIfNotExists"`
 }
 
+// Validate checks the publication configuration for required fields and consistency.
 func (c Config) Validate() error {
 	var err error
 	if strings.TrimSpace(c.Name) == "" {

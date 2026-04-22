@@ -1,3 +1,4 @@
+// Package main demonstrates CDC with REPLICA IDENTITY USING INDEX tables.
 package main
 
 import (

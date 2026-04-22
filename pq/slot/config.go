@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// Config holds the configuration for a replication slot.
 type Config struct {
 	Name                        string        `json:"name" yaml:"name"`
 	SlotActivityCheckerInterval time.Duration `json:"slotActivityCheckerInterval" yaml:"slotActivityCheckerInterval"`
@@ -16,6 +17,7 @@ type Config struct {
 	CreateIfNotExists bool `json:"createIfNotExists" yaml:"createIfNotExists"`
 }
 
+// Validate checks that all required slot configuration fields are set.
 func (c Config) Validate() error {
 	var err error
 	if strings.TrimSpace(c.Name) == "" {

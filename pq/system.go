@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// IdentifySystemResult holds the response from the IDENTIFY_SYSTEM replication command.
 type IdentifySystemResult struct {
 	mu       *sync.RWMutex
 	SystemID string
@@ -18,6 +19,7 @@ type IdentifySystemResult struct {
 	Timeline int32
 }
 
+// IdentifySystem executes the IDENTIFY_SYSTEM replication command and returns the result.
 func IdentifySystem(ctx context.Context, conn Connection) (IdentifySystemResult, error) {
 	res, err := ParseIdentifySystem(conn.Exec(ctx, "IDENTIFY_SYSTEM"))
 	if err != nil {
@@ -26,6 +28,7 @@ func IdentifySystem(ctx context.Context, conn Connection) (IdentifySystemResult,
 	return res, nil
 }
 
+// ParseIdentifySystem parses the result of the IDENTIFY_SYSTEM command.
 func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, error) {
 	var isr IdentifySystemResult
 	results, err := mrr.ReadAll()
@@ -65,6 +68,7 @@ func ParseIdentifySystem(mrr *pgconn.MultiResultReader) (IdentifySystemResult, e
 	return isr, nil
 }
 
+// LoadXLogPos returns the current WAL position.
 func (isr *IdentifySystemResult) LoadXLogPos() LSN {
 	return isr.xLogPos
 }

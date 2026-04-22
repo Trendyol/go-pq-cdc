@@ -8,8 +8,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// ReadConfigYAML reads and parses a YAML configuration file into a Config.
 func ReadConfigYAML(path string) (Config, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: path is caller-controlled, not user input
 	if err != nil {
 		return Config{}, errors.Wrap(err, "read yaml config")
 	}
@@ -24,8 +25,9 @@ func ReadConfigYAML(path string) (Config, error) {
 	return c, nil
 }
 
+// ReadConfigJSON reads and parses a JSON configuration file into a Config.
 func ReadConfigJSON(path string) (Config, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: path is caller-controlled, not user input
 	if err != nil {
 		return Config{}, errors.Wrap(err, "read json config")
 	}

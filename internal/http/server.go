@@ -1,3 +1,4 @@
+// Package http provides an HTTP server for metrics, health checks, and replication slot info.
 package http
 
 import (
@@ -16,10 +17,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// SlotInfoProvider retrieves replication slot information from PostgreSQL.
 type SlotInfoProvider interface {
 	Info(ctx context.Context) (*slot.Info, error)
 }
 
+// Server defines the interface for the CDC HTTP server.
 type Server interface {
 	Listen()
 	Shutdown()
@@ -32,6 +35,7 @@ type server struct {
 	closed           bool
 }
 
+// NewServer creates a new HTTP server with metrics, status, and slot info endpoints.
 func NewServer(cfg config.Config, registry metric.Registry, slotInfoProvider SlotInfoProvider) Server {
 	s := &server{
 		cdcConfig:        cfg,

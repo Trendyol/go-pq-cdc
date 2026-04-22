@@ -9,6 +9,7 @@ import (
 // SnapshotEventType represents the type of snapshot event
 type SnapshotEventType string
 
+// Snapshot event type constants.
 const (
 	SnapshotEventTypeBegin SnapshotEventType = "BEGIN" // Snapshot started
 	SnapshotEventTypeData  SnapshotEventType = "DATA"  // Row data

@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
+// Registry manages Prometheus metric collector registration.
 type Registry interface {
 	AddMetricCollectors(metricCollectors ...prometheus.Collector)
 	Prometheus() *prometheus.Registry
@@ -16,6 +17,7 @@ type prometheusRegistry struct {
 	registry *prometheus.Registry
 }
 
+// NewRegistry creates a new Prometheus registry with default and CDC metric collectors.
 func NewRegistry(m Metric) Registry {
 	r := prometheus.NewRegistry()
 	r.MustRegister(collectors.NewBuildInfoCollector())

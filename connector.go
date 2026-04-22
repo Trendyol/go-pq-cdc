@@ -1,3 +1,4 @@
+// Package cdc provides the main entry point for PostgreSQL CDC (Change Data Capture) connectors.
 package cdc
 
 import (
@@ -30,6 +31,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// Connector defines the interface for managing a PostgreSQL CDC connection lifecycle.
 type Connector interface {
 	Start(ctx context.Context)
 	WaitUntilReady(ctx context.Context) error
@@ -53,6 +55,7 @@ type connector struct {
 	once               sync.Once
 }
 
+// NewConnectorWithConfigFile creates a new Connector by loading configuration from a JSON or YAML file.
 func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, listenerFunc replication.ListenerFunc) (Connector, error) {
 	var cfg config.Config
 	var err error
@@ -72,6 +75,7 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 	return NewConnector(ctx, cfg, listenerFunc)
 }
 
+// NewConnector creates a new Connector with the given configuration and listener function.
 func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
 	cfg.SetDefault()
 	if err := cfg.Validate(); err != nil {
@@ -100,7 +104,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	if cfg.IsHeartbeatEnabled() {
 		hb = heartbeat.New(cfg.DSN(), cfg.Heartbeat)
 		if err := hb.EnsureTable(ctx, conn); err != nil {
-			conn.Close(ctx)
+			_ = conn.Close(ctx)
 			return nil, errors.Wrap(err, "create heartbeat table")
 		}
 	}
@@ -112,7 +116,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	logger.Info("publication", "info", publicationInfo)
 
 	// Close the setup connection - we don't need it anymore
-	conn.Close(ctx)
+	_ = conn.Close(ctx)
 
 	m := metric.NewMetric(cfg.Slot.Name)
 

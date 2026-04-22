@@ -8,10 +8,12 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// InsertTupleDataType is the tuple data type marker for insert messages.
 const (
 	InsertTupleDataType = 'N'
 )
 
+// Insert represents a decoded logical replication INSERT message.
 type Insert struct {
 	MessageTime    time.Time
 	TupleData      *tuple.Data
@@ -22,6 +24,7 @@ type Insert struct {
 	XID            uint32
 }
 
+// NewInsert parses raw bytes into an Insert message using the given relation map.
 func NewInsert(data []byte, streamedTransaction bool, relation map[uint32]*Relation, serverTime time.Time) (*Insert, error) {
 	msg := &Insert{
 		MessageTime: serverTime,

@@ -1,3 +1,4 @@
+// Package heartbeat provides periodic heartbeat updates to a PostgreSQL table to prevent WAL bloat.
 package heartbeat
 
 import (
@@ -40,7 +41,6 @@ func (h *Heartbeat) EnsureTable(ctx context.Context, conn pq.Connection) error {
 	schema := quoteIdentifier(h.cfg.Table.Schema)
 	table := quoteIdentifier(h.cfg.Table.Name)
 	constraint := quoteIdentifier(h.cfg.Table.Name + "_single_row")
-
 	createTableSQL := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s.%s (
 			id INTEGER PRIMARY KEY DEFAULT 1,

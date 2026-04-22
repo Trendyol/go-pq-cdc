@@ -27,6 +27,7 @@ var (
 // Handler SnapshotHandler is a function that handles snapshot events
 type Handler func(event *format.Snapshot) error
 
+// Snapshotter manages the snapshot process for initial CDC data loads.
 type Snapshotter struct {
 	healthcheckConn    pq.Connection
 	exportSnapshotConn pq.Connection
@@ -52,6 +53,7 @@ type orderByCacheEntry struct {
 	columns []string
 }
 
+// New creates a new Snapshotter with the given configuration and database connections.
 func New(ctx context.Context, snapshotConfig config.SnapshotConfig, tables publication.Tables, dsn string, m metric.Metric) (*Snapshotter, error) {
 	metadataConn, err := pq.NewConnection(ctx, dsn)
 	if err != nil {

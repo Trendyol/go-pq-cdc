@@ -2,11 +2,13 @@ package format
 
 import (
 	"encoding/binary"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
-	"time"
 )
 
+// Commit represents a decoded logical replication COMMIT message.
 type Commit struct {
 	CommitTime        time.Time
 	CommitLSN         pq.LSN
@@ -14,6 +16,7 @@ type Commit struct {
 	Flags             uint8
 }
 
+// NewCommit parses raw bytes into a Commit message.
 func NewCommit(data []byte) (*Commit, error) {
 	msg := &Commit{}
 	if err := msg.decode(data); err != nil {
@@ -35,7 +38,7 @@ func (c *Commit) decode(data []byte) error {
 	skipByte += 8
 	c.TransactionEndLSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
 	skipByte += 8
-	c.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0)
+	c.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0) //nolint:gosec // G115: PG timestamp fits int64
 
 	return nil
 }

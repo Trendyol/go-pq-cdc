@@ -1,3 +1,4 @@
+// Package config provides configuration types and helpers for the PostgreSQL CDC connector.
 package config
 
 import (
@@ -16,6 +17,7 @@ import (
 
 const defaultSchema = "public"
 
+// Config holds the PostgreSQL connection and CDC pipeline configuration.
 type Config struct {
 	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
@@ -32,19 +34,23 @@ type Config struct {
 	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
 }
 
+// MetricConfig holds the Prometheus metrics server configuration.
 type MetricConfig struct {
 	Port int `json:"port" yaml:"port"`
 }
 
+// LoggerConfig holds the logging configuration, supporting a custom logger or slog level.
 type LoggerConfig struct {
 	Logger   logger.Logger `json:"-" yaml:"-"`         // custom logger
 	LogLevel slog.Level    `json:"level" yaml:"level"` // if custom logger is nil, set the slog log level
 }
 
+// ExtensionSupport configures PostgreSQL extension compatibility flags.
 type ExtensionSupport struct {
 	EnableTimeScaleDB bool `json:"enableTimeScaleDB" yaml:"EnableTimeScaleDB"`
 }
 
+// HeartbeatConfig configures periodic writes to a heartbeat table to advance replication lag.
 type HeartbeatConfig struct {
 	Table    publication.Table `json:"table" yaml:"table"`
 	Interval time.Duration     `json:"interval" yaml:"interval"`
@@ -62,10 +68,12 @@ func (c *Config) ReplicationDSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?replication=database", url.QueryEscape(c.Username), url.QueryEscape(c.Password), c.Host, c.Port, c.Database)
 }
 
+// DSNWithoutSSL returns a PostgreSQL connection string with SSL explicitly disabled.
 func (c *Config) DSNWithoutSSL() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", url.QueryEscape(c.Username), url.QueryEscape(c.Password), c.Host, c.Port, c.Database)
 }
 
+// SetDefault populates zero-valued fields with sensible defaults.
 func (c *Config) SetDefault() {
 	if c.Port == 0 {
 		c.Port = 5432
@@ -200,6 +208,7 @@ func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publicati
 	return validatedTables, nil
 }
 
+// Validate checks all required fields and sub-configurations for correctness.
 func (c *Config) Validate() error {
 	var err error
 	if isEmpty(c.Host) {
@@ -243,10 +252,11 @@ func (c *Config) Validate() error {
 	return err
 }
 
+// Print logs the current configuration as JSON with the password masked.
 func (c *Config) Print() {
 	cfg := *c
 	cfg.Password = "*******"
-	b, _ := json.Marshal(cfg)
+	b, _ := json.Marshal(cfg) //nolint:gosec // G117: password is already masked above
 	fmt.Println("used config: " + string(b))
 }
 
@@ -278,6 +288,7 @@ func (c *Config) mergePublicationTableConfig(pubInfoTables publication.Tables) p
 	return result
 }
 
+// SnapshotConfig controls the initial data snapshot behavior before CDC streaming begins.
 type SnapshotConfig struct {
 	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
 	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
@@ -290,6 +301,7 @@ type SnapshotConfig struct {
 	Resnapshot        bool               `json:"resnapshot" yaml:"resnapshot"`
 }
 
+// Validate checks that snapshot settings are consistent and all required fields are set.
 func (s *SnapshotConfig) Validate() error {
 	if !s.Enabled {
 		return nil
@@ -326,10 +338,14 @@ func (s *SnapshotConfig) Validate() error {
 	return nil
 }
 
+// SnapshotMode determines when and how the initial data snapshot is taken.
 type SnapshotMode string
 
 const (
-	SnapshotModeInitial      SnapshotMode = "initial"
-	SnapshotModeNever        SnapshotMode = "never"
+	// SnapshotModeInitial takes a snapshot before starting CDC streaming.
+	SnapshotModeInitial SnapshotMode = "initial"
+	// SnapshotModeNever skips the snapshot and starts CDC streaming immediately.
+	SnapshotModeNever SnapshotMode = "never"
+	// SnapshotModeSnapshotOnly takes a snapshot without starting CDC streaming.
 	SnapshotModeSnapshotOnly SnapshotMode = "snapshot_only"
 )

@@ -8,6 +8,7 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// Delete represents a decoded logical replication DELETE message.
 type Delete struct {
 	MessageTime    time.Time
 	OldTupleData   *tuple.Data
@@ -19,6 +20,7 @@ type Delete struct {
 	OldTupleType   uint8
 }
 
+// NewDelete parses raw bytes into a Delete message using the given relation map.
 func NewDelete(data []byte, streamedTransaction bool, relation map[uint32]*Relation, serverTime time.Time) (*Delete, error) {
 	msg := &Delete{
 		MessageTime: serverTime,

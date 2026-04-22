@@ -30,6 +30,7 @@ var ValidSnapshotPartitionStrategies = []SnapshotPartitionStrategy{
 	SnapshotPartitionStrategyOffset,
 }
 
+// Table represents a PostgreSQL table included in a publication.
 type Table struct {
 	Name                 string `json:"name" yaml:"name"`
 	ReplicaIdentity      string `json:"replicaIdentity" yaml:"replicaIdentity"`
@@ -44,6 +45,7 @@ type Table struct {
 	Partitioned bool `json:"partitioned,omitempty" yaml:"partitioned,omitempty"`
 }
 
+// Validate checks the table configuration for required fields and valid replica identity.
 func (tc Table) Validate() error {
 	if strings.TrimSpace(tc.Name) == "" {
 		return errors.New("table name cannot be empty")
@@ -68,8 +70,10 @@ func (tc Table) Validate() error {
 	return nil
 }
 
+// Tables is a slice of Table configurations.
 type Tables []Table
 
+// Validate checks that at least one table is defined and all tables are valid.
 func (ts Tables) Validate() error {
 	if len(ts) == 0 {
 		return errors.New("at least one table must be defined")
@@ -84,6 +88,7 @@ func (ts Tables) Validate() error {
 	return nil
 }
 
+// Diff returns tables that differ between ts and tss in identity, columns, or partitioning.
 func (ts Tables) Diff(tss Tables) Tables {
 	res := Tables{}
 	tssMap := make(map[string]Table)

@@ -1,3 +1,4 @@
+// Package main demonstrates a simple CDC setup with PostgreSQL logical replication.
 package main
 
 import (

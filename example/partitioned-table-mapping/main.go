@@ -1,3 +1,4 @@
+// Package main demonstrates CDC with partitioned table mapping and publish_via_partition_root.
 package main
 
 import (

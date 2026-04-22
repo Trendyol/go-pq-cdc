@@ -8,6 +8,7 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// Relation represents a decoded logical replication RELATION message describing a table schema.
 type Relation struct {
 	Namespace     string
 	Name          string
@@ -18,6 +19,7 @@ type Relation struct {
 	ReplicaID     uint8
 }
 
+// NewRelation parses raw bytes into a Relation message.
 func NewRelation(data []byte, streamedTransaction bool) (*Relation, error) {
 	msg := &Relation{}
 	if err := msg.decode(data, streamedTransaction); err != nil {

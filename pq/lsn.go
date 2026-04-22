@@ -6,12 +6,14 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// LSN represents a PostgreSQL Log Sequence Number.
 type LSN uint64
 
 func (lsn LSN) String() string {
-	return fmt.Sprintf("%X/%X", uint32(lsn>>32), uint32(lsn))
+	return fmt.Sprintf("%X/%X", uint32(lsn>>32), uint32(lsn)) //nolint:gosec // G115: intentional truncation for LSN formatting
 }
 
+// ParseLSN parses a PostgreSQL LSN string in the format "X/X".
 func ParseLSN(s string) (LSN, error) {
 	var upperHalf, lowerHalf uint64
 	var nparsed int

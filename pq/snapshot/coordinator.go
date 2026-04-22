@@ -457,9 +457,6 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 	return rowCount, nil
 }
 
-// getQueryCondition returns the SQL predicate that must be applied to snapshot
-// queries for the given table. Per-table QueryCondition overrides the global
-// SnapshotConfig.QueryCondition when set.
 func (s *Snapshotter) getQueryCondition(tableSchema, tableName string) string {
 	normalizedSchema := tableSchema
 	if normalizedSchema == "" {
@@ -479,8 +476,6 @@ func (s *Snapshotter) getQueryCondition(tableSchema, tableName string) string {
 	return s.config.QueryCondition
 }
 
-// andCondition combines an existing WHERE predicate with an optional user-provided
-// query condition using AND. Either input may be empty.
 func andCondition(existing, extra string) string {
 	if existing == "" {
 		return extra

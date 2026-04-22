@@ -17,13 +17,13 @@ import (
 const defaultSchema = "public"
 
 type Config struct {
-	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
 	Host             string             `json:"host" yaml:"host"`
 	Username         string             `json:"username" yaml:"username"`
 	Password         string             `json:"password" yaml:"password"`
 	Database         string             `json:"database" yaml:"database"`
 	Publication      publication.Config `json:"publication" yaml:"publication"`
+	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Slot             slot.Config        `json:"slot" yaml:"slot"`
 	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Port             int                `json:"port" yaml:"port"`
@@ -288,16 +288,13 @@ type SnapshotConfig struct {
 	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
 	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
 	ID                string             `json:"id" yaml:"id"`
+	QueryCondition    string             `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 	Tables            publication.Tables `json:"tables" yaml:"tables"`
 	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
 	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
 	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
 	Enabled           bool               `json:"enabled" yaml:"enabled"`
 	Resnapshot        bool               `json:"resnapshot" yaml:"resnapshot"`
-	// QueryCondition is an optional SQL predicate applied as a WHERE clause to
-	// all snapshot queries (chunk selects + row counts) for every table.
-	// Per-table QueryCondition overrides this global value when set.
-	QueryCondition string `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 }
 
 func (s *SnapshotConfig) Validate() error {

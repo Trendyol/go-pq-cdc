@@ -1,3 +1,4 @@
+// Package main demonstrates CDC with heartbeat enabled to prevent WAL bloat on low-traffic databases.
 package main
 
 import (

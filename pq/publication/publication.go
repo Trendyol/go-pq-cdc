@@ -12,21 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// ErrorPublicationIsNotExists is returned when a publication does not exist in the database.
 var (
 	ErrorPublicationIsNotExists = goerrors.New("publication is not exists")
 )
 
 var typeMap = pgtype.NewMap()
 
+// Publication manages a PostgreSQL logical replication publication.
 type Publication struct {
 	conn pq.Connection
 	cfg  Config
 }
 
+// New creates a new Publication with the given configuration and connection.
 func New(cfg Config, conn pq.Connection) *Publication {
 	return &Publication{cfg: cfg, conn: conn}
 }
 
+// Create creates the publication if it does not already exist and returns its configuration.
 func (c *Publication) Create(ctx context.Context) (*Config, error) {
 	info, err := c.Info(ctx)
 	if err != nil {
@@ -53,6 +57,7 @@ func (c *Publication) Create(ctx context.Context) (*Config, error) {
 	return &c.cfg, nil
 }
 
+// Info retrieves the current publication configuration from the database.
 func (c *Publication) Info(ctx context.Context) (*Config, error) {
 	resultReader := c.conn.Exec(ctx, c.cfg.infoQuery())
 	results, err := resultReader.ReadAll()

@@ -17,17 +17,22 @@ import (
 )
 
 var (
+	// ErrorSlotIsNotExists is returned when the replication slot does not exist.
 	ErrorSlotIsNotExists = goerrors.New("slot is not exists")
-	ErrorNotConnected    = goerrors.New("slot is not connected")
-	ErrorSlotClosed      = goerrors.New("slot is closed")
+	// ErrorNotConnected is returned when the slot connection is not established.
+	ErrorNotConnected = goerrors.New("slot is not connected")
+	// ErrorSlotClosed is returned when operating on a closed slot.
+	ErrorSlotClosed = goerrors.New("slot is closed")
 )
 
 var typeMap = pgtype.NewMap()
 
+// XLogUpdater is implemented by types that track WAL position updates.
 type XLogUpdater interface {
 	UpdateXLogPos(l pq.LSN)
 }
 
+// Slot manages a PostgreSQL logical replication slot.
 type Slot struct {
 	conn            pq.Connection
 	replicationConn pq.Connection
@@ -40,6 +45,7 @@ type Slot struct {
 	closed          atomic.Bool
 }
 
+// NewSlot creates a new replication slot manager with the given configuration.
 func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
 	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
 
@@ -54,12 +60,14 @@ func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, up
 	}
 }
 
+// Connect opens the standard database connection for slot operations.
 func (s *Slot) Connect(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.conn.Connect(ctx)
 }
 
+// Create creates the replication slot if it does not already exist.
 func (s *Slot) Create(ctx context.Context) (*Info, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -113,6 +121,7 @@ func (s *Slot) createSlotWithReplicationConn(ctx context.Context) error {
 	return nil
 }
 
+// Info returns the current status of the replication slot.
 func (s *Slot) Info(ctx context.Context) (*Info, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -147,6 +156,7 @@ func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 	return slotInfo, nil
 }
 
+// Metrics periodically collects and reports replication slot metrics.
 func (s *Slot) Metrics(ctx context.Context) {
 	for range s.ticker.C {
 		if s.closed.Load() {
@@ -172,6 +182,7 @@ func (s *Slot) Metrics(ctx context.Context) {
 	}
 }
 
+// Close stops metrics collection and closes the slot connection.
 func (s *Slot) Close(ctx context.Context) {
 	s.closed.Store(true)
 	s.ticker.Stop()

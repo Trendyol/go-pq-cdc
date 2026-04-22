@@ -22,27 +22,33 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
+// Replication stream errors.
 var (
 	ErrorSlotInUse    = errors.New("replication slot in use")
 	ErrorNotConnected = errors.New("stream is not connected")
 )
 
+// StandbyStatusUpdateByteID is the byte identifier for standby status update messages.
 const (
 	StandbyStatusUpdateByteID = 'r'
 )
 
+// ListenerContext provides the decoded message and an Ack function to the listener callback.
 type ListenerContext struct {
 	Message any
 	Ack     func() error
 }
 
+// ListenerFunc is the callback invoked for each decoded replication message.
 type ListenerFunc func(ctx *ListenerContext)
 
+// Message pairs a decoded replication event with its WAL start position.
 type Message struct {
 	message  any
 	walStart int64
 }
 
+// Streamer defines the interface for managing a logical replication stream.
 type Streamer interface {
 	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
@@ -69,6 +75,7 @@ type stream struct {
 	closed              atomic.Bool
 }
 
+// NewStream creates a new logical replication stream with the given configuration.
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
 	return &stream{
 		conn:         pq.NewConnectionTemplate(dsn),
@@ -180,7 +187,7 @@ func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
 		b.outCh <- &Message{
 			message:  b.pending.message,
-			walStart: int64(lsn),
+			walStart: int64(lsn), //nolint:gosec // G115: WAL LSN conversion is safe
 		}
 		b.pending = nil
 	}
@@ -246,7 +253,7 @@ func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LS
 		if i == n-1 {
 			outCh <- &Message{
 				message:  msg.message,
-				walStart: int64(endLSN),
+				walStart: int64(endLSN), //nolint:gosec // G115: WAL LSN conversion is safe
 			}
 		} else {
 			outCh <- msg
@@ -434,7 +441,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		// DML event (Insert, Update, Delete, Relation, …)
 		m := &Message{
 			message:  decodedMsg,
-			walStart: int64(xld.WALStart),
+			walStart: int64(xld.WALStart), //nolint:gosec // G115: WAL LSN conversion is safe
 		}
 		if streamBuf.streaming {
 			streamBuf.append(m)
@@ -454,7 +461,7 @@ func (s *stream) process(ctx context.Context) {
 		}
 
 		ackFunc := func() error {
-			pos := pq.LSN(msg.walStart)
+			pos := pq.LSN(msg.walStart) //nolint:gosec // G115: WAL LSN conversion is safe
 			s.UpdateConfirmedXLogPos(pos)
 			logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
 			return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
@@ -583,7 +590,7 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			if err != nil {
 				return errors.Wrap(err, "create connection for snapshot LSN query")
 			}
-			defer conn.Close(ctx)
+			defer func() { _ = conn.Close(ctx) }()
 
 			query := fmt.Sprintf(`
 				SELECT snapshot_lsn, completed 
@@ -594,7 +601,7 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			resultReader := conn.Exec(ctx, query)
 			results, err := resultReader.ReadAll()
 			if err != nil {
-				resultReader.Close()
+				_ = resultReader.Close()
 				return errors.Wrap(err, "execute snapshot LSN query")
 			}
 
@@ -642,6 +649,7 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 	return snapshotLSN, nil
 }
 
+// SendStandbyStatusUpdate sends a standby status update to the primary server.
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walReceivedPosition, walFlushedPosition uint64) error {
 	data := make([]byte, 0, 34)
 	data = append(data, StandbyStatusUpdateByteID)
@@ -660,6 +668,7 @@ func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walReceivedP
 	return conn.Frontend().SendUnbufferedEncodedCopyData(buf)
 }
 
+// AppendUint64 appends a big-endian encoded uint64 to the byte slice.
 func AppendUint64(buf []byte, n uint64) []byte {
 	wp := len(buf)
 	buf = append(buf, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -668,7 +677,7 @@ func AppendUint64(buf []byte, n uint64) []byte {
 }
 
 func timeToPgTime(t time.Time) uint64 {
-	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - microSecFromUnixEpochToY2K)
+	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - microSecFromUnixEpochToY2K) //nolint:gosec // G115: PG timestamp conversion is safe
 }
 
 func isClosed[T any](ch <-chan T) bool {

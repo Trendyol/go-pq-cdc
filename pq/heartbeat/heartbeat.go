@@ -1,3 +1,4 @@
+// Package heartbeat provides periodic heartbeat updates to a PostgreSQL table to prevent WAL bloat.
 package heartbeat
 
 import (

@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq"
 )
 
+// Replica identity modes for PostgreSQL logical replication.
 const (
 	ReplicaIdentityFull       = "FULL"
 	ReplicaIdentityDefault    = "DEFAULT"
@@ -20,9 +21,12 @@ const (
 )
 
 var (
-	ErrorTablesNotExists   = goerrors.New("table does not exists")
+	// ErrorTablesNotExists is returned when referenced tables do not exist in the database.
+	ErrorTablesNotExists = goerrors.New("table does not exists")
+	// ReplicaIdentityOptions lists all valid replica identity modes.
 	ReplicaIdentityOptions = []string{ReplicaIdentityDefault, ReplicaIdentityFull, ReplicaIdentityNothing, ReplicaIdentityUsingIndex}
-	ReplicaIdentityMap     = map[string]string{
+	// ReplicaIdentityMap maps PostgreSQL single-character codes to replica identity names.
+	ReplicaIdentityMap = map[string]string{
 		"d": ReplicaIdentityDefault,    // primary key on old value
 		"f": ReplicaIdentityFull,       // full row on old value
 		"n": ReplicaIdentityNothing,    // nothing on old value
@@ -30,6 +34,7 @@ var (
 	}
 )
 
+// SetReplicaIdentities applies configured replica identity settings to publication tables.
 func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 	if !c.cfg.CreateIfNotExists {
 		return nil
@@ -70,6 +75,7 @@ func (c *Publication) warnNothingReplicaIdentityWithUpdateDelete() {
 	}
 }
 
+// AlterTableReplicaIdentity changes the replica identity of the given table.
 func (c *Publication) AlterTableReplicaIdentity(ctx context.Context, t Table) error {
 	tableName := fmt.Sprintf("%s.%s", pq.QuoteIdentifier(t.Schema), pq.QuoteIdentifier(t.Name))
 	query := fmt.Sprintf("ALTER TABLE %s REPLICA IDENTITY %s;", tableName, t.ReplicaIdentity)
@@ -92,6 +98,7 @@ func (c *Publication) AlterTableReplicaIdentity(ctx context.Context, t Table) er
 	return nil
 }
 
+// GetReplicaIdentities retrieves the current replica identity settings for configured tables.
 func (c *Publication) GetReplicaIdentities(ctx context.Context) ([]Table, error) {
 	tableNames := make([]string, len(c.cfg.Tables))
 

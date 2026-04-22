@@ -1,3 +1,4 @@
+// Package main demonstrates CDC with publication column filtering.
 package main
 
 import (

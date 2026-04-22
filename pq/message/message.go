@@ -1,3 +1,4 @@
+// Package message decodes PostgreSQL logical replication messages by their leading byte identifier.
 package message
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// Logical replication message type byte identifiers.
 const (
 	StreamAbortByte  Type = 'A'
 	BeginByte        Type = 'B'
@@ -24,17 +26,21 @@ const (
 	StreamCommitByte Type = 'c'
 )
 
+// WAL-level message byte identifiers.
 const (
 	XLogDataByteID                = 'w'
 	PrimaryKeepaliveMessageByteID = 'k'
 )
 
+// ErrorByteNotSupported is returned when an unrecognized message type byte is encountered.
 var ErrorByteNotSupported = errors.New("message byte not supported")
 
+// Type is the single-byte identifier for a logical replication message.
 type Type uint8
 
 var streamedTransaction bool
 
+// New decodes raw WAL data into a typed logical replication message.
 func New(data []byte, serverTime time.Time, relation map[uint32]*format.Relation) (any, error) {
 	switch Type(data[0]) {
 	case BeginByte:

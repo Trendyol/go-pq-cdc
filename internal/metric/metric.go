@@ -1,3 +1,4 @@
+// Package metric provides Prometheus metrics for CDC replication and snapshot monitoring.
 package metric
 
 import (
@@ -11,6 +12,7 @@ const (
 	replicationSlotSubsystem = "replication_slot"
 )
 
+// Metric defines methods for recording CDC replication and snapshot metrics.
 type Metric interface {
 	InsertOpIncrement(count int64)
 	UpdateOpIncrement(count int64)
@@ -63,6 +65,8 @@ type metric struct {
 	snapshotActiveWorkers   prometheus.Gauge
 }
 
+// NewMetric creates a new Metric instance with Prometheus collectors for the given slot.
+//
 //nolint:funlen
 func NewMetric(slotName string) Metric {
 	hostname, _ := os.Hostname()

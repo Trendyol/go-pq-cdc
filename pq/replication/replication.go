@@ -1,3 +1,4 @@
+// Package replication manages PostgreSQL logical replication connections, streaming, and WAL processing.
 package replication
 
 import (
@@ -12,14 +13,17 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
+// Replication manages a logical replication connection to PostgreSQL.
 type Replication struct {
 	conn pq.Connection
 }
 
+// New creates a new Replication instance with the given connection.
 func New(conn pq.Connection) *Replication {
 	return &Replication{conn: conn}
 }
 
+// Start begins logical replication from the given LSN using the specified slot and publication.
 func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
 	pluginArguments := []string{
 		fmt.Sprintf("proto_version '%d'", protoVersion),
@@ -40,6 +44,7 @@ func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, p
 	return nil
 }
 
+// Test validates the replication connection by processing the initial server response.
 func (r *Replication) Test(ctx context.Context) error {
 	var (
 		nextTli         int64

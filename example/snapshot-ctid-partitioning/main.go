@@ -1,3 +1,4 @@
+// Package main demonstrates CDC snapshot with CTID block partitioning and explicit partition strategy configuration.
 package main
 
 import (

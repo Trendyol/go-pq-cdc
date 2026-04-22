@@ -8,12 +8,14 @@ import (
 	"github.com/go-playground/errors"
 )
 
+// Update tuple type markers for key, old, and new row data.
 const (
 	UpdateTupleTypeKey = 'K'
 	UpdateTupleTypeOld = 'O'
 	UpdateTupleTypeNew = 'N'
 )
 
+// Update represents a decoded logical replication UPDATE message.
 type Update struct {
 	MessageTime    time.Time
 	NewTupleData   *tuple.Data
@@ -27,6 +29,7 @@ type Update struct {
 	OldTupleType   uint8
 }
 
+// NewUpdate parses raw bytes into an Update message using the given relation map.
 func NewUpdate(data []byte, streamedTransaction bool, relation map[uint32]*Relation, serverTime time.Time) (*Update, error) {
 	msg := &Update{
 		MessageTime: serverTime,

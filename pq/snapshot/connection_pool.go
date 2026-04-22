@@ -1,3 +1,4 @@
+// Package snapshot provides point-in-time snapshot capabilities for CDC initial data loads.
 package snapshot
 
 import (

@@ -1,3 +1,4 @@
+// Package timescaledb provides hypertable discovery for TimescaleDB-backed CDC.
 package timescaledb
 
 import (
@@ -16,13 +17,16 @@ import (
 
 var typeMap = pgtype.NewMap()
 
+// HyperTables maps chunk names to their parent hypertable names.
 var HyperTables = sync.Map{}
 
+// TimescaleDB manages hypertable discovery and chunk-to-table mapping.
 type TimescaleDB struct {
 	conn   pq.Connection
 	ticker *time.Ticker
 }
 
+// NewTimescaleDB creates a new TimescaleDB instance with a database connection.
 func NewTimescaleDB(ctx context.Context, dsn string) (*TimescaleDB, error) {
 	conn, err := pq.NewConnection(ctx, dsn)
 	if err != nil {
@@ -32,6 +36,7 @@ func NewTimescaleDB(ctx context.Context, dsn string) (*TimescaleDB, error) {
 	return &TimescaleDB{conn: conn, ticker: time.NewTicker(time.Second)}, nil
 }
 
+// SyncHyperTables periodically refreshes the hypertable chunk mapping.
 func (tdb *TimescaleDB) SyncHyperTables(ctx context.Context) {
 	for range tdb.ticker.C {
 		hyperTables, err := tdb.FindHyperTables(ctx)
@@ -44,6 +49,7 @@ func (tdb *TimescaleDB) SyncHyperTables(ctx context.Context) {
 	}
 }
 
+// FindHyperTables queries TimescaleDB for all chunk-to-hypertable mappings.
 func (tdb *TimescaleDB) FindHyperTables(ctx context.Context) (map[string]string, error) {
 	query := "SELECT h.hypertable_schema, h.hypertable_name, c.chunk_schema, c.chunk_name FROM timescaledb_information.chunks c JOIN timescaledb_information.hypertables h ON c.hypertable_schema = h.hypertable_schema AND c.hypertable_name = h.hypertable_name;"
 	resultReader := tdb.conn.Exec(ctx, query)

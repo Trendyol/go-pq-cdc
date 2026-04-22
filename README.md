@@ -149,6 +149,8 @@ func Handler(ctx *replication.ListenerContext) {
 * [Streaming Transactions](./example/streaming-transactions)
 * [Snapshot Mode (Initial Data Capture)](./example/snapshot-initial-mode)
 * [Snapshot Only Mode (One-Time Export)](./example/snapshot-only-mode)
+* [Replica Identity Using Index](./example/replica-identity-using-index)
+* [Replica Identity Nothing](./example/replica-identity-nothing)
 * [PostgreSQL to Elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch/tree/main/example/simple)
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
@@ -258,6 +260,18 @@ This requires setting the table's replica identity to FULL:
 - In that mode, old tuple values (including TOASTed fields) are not provided.
 - Therefore, `FULL` is required to correctly handle TOASTed columns in CDC.
 
+For large tables, `REPLICA IDENTITY USING INDEX` can be a better trade-off for network traffic and matching performance:
+
+- `FULL` sends old values of all columns (`O` tuple data).
+- `USING INDEX` sends only old values of the columns from the selected unique index (`K` tuple data).
+- This reduces payload size, but unlike `FULL`, old non-index columns are not available.
+
+You can run [Replica Identity Using Index](./example/replica-identity-using-index) for a minimal `USING INDEX` setup.
+
+`REPLICA IDENTITY NOTHING` is best paired with insert-only publications because PostgreSQL does not provide old-row data for updates and deletes in that mode.
+
+You can run [Replica Identity Nothing](./example/replica-identity-nothing) for an insert-only `NOTHING` example.
+
 ### Configuration
 
 | Variable                                |   Type   | Required | Default | Description                                                                                           | Options                                                                                                                                            |
@@ -275,7 +289,8 @@ This requires setting the table's replica identity to FULL:
 | `publication.operations`                | []string |   yes    |    -    | Set PostgreSQL publication operations. List of operations to track; all or a subset can be specified. | **INSERT:** Track insert operations. <br> **UPDATE:** Track update operations. <br> **DELETE:** Track delete operations.                           |
 | `publication.tables`                    | []Table  |   yes    |    -    | Set tables which are tracked by data change capture                                                   | Define multiple tables as needed.                                                                                                                  |
 | `publication.tables[i].name`            |  string  |   yes    |    -    | Set the data change captured table name                                                               | Must be a valid table name in the specified database.                                                                                              |
-| `publication.tables[i].replicaIdentity` |  string  |   yes    |    -    | Set the data change captured table replica identity [`FULL`, `DEFAULT`]                               | **FULL:** Captures all columns when a row is updated or deleted. <br> **DEFAULT:** Captures only the primary key when a row is updated or deleted. |
+| `publication.tables[i].replicaIdentity` |  string  |   yes    |    -    | Set the data change captured table replica identity [`DEFAULT`, `FULL`, `NOTHING`, `USING INDEX`]     | **DEFAULT:** Captures primary key old values. <br> **FULL:** Captures all old row columns. <br> **NOTHING:** Captures no old row data (typically insert-only scenarios; update/delete matching can fail). <br> **USING INDEX:** Captures old values from a chosen unique index. |
+| `publication.tables[i].replicaIdentityIndex` |  string  |    no*   |    -    | Unique index name used when `replicaIdentity` is `USING INDEX`.                                        | Required only for `USING INDEX`, ignored otherwise.                                                   |
 | `publication.tables[i].schema`          |  string  |    no    | public  | Set the data change captured table schema name                                                        | Must be a valid table name in the specified database.                                                                                              |
 | `publication.tables[i].columns`                   | []string |    no    |   -   | Only include these columns in replication and snapshotting                                            | Must not be set when `replicaIdentity` is `FULL`; only compatible with `DEFAULT`.                                                                 |
 | `publication.tables[i].partitioned`               |   bool   |    no    | false | Flag for replicating a partitioned table via the root table name instead of listing out the individual table parts. Sets `publish_via_partition_root = true` when creating the publication. | Only avaible with PostgreSQL 13+. This is a publication-wide setting, Setting any table with this will include it for all tables in the publication.                                                                                                                                                   |
@@ -368,4 +383,3 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 | Date taking effect | Version | Change | How to check |
 |--------------------|---------|--------|--------------| 
 | -                  | -       | -      | -            |
-

@@ -31,9 +31,10 @@ var ValidSnapshotPartitionStrategies = []SnapshotPartitionStrategy{
 }
 
 type Table struct {
-	Name            string `json:"name" yaml:"name"`
-	ReplicaIdentity string `json:"replicaIdentity" yaml:"replicaIdentity"`
-	Schema          string `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Name                 string `json:"name" yaml:"name"`
+	ReplicaIdentity      string `json:"replicaIdentity" yaml:"replicaIdentity"`
+	ReplicaIdentityIndex string `json:"replicaIdentityIndex,omitempty" yaml:"replicaIdentityIndex,omitempty"`
+	Schema               string `json:"schema,omitempty" yaml:"schema,omitempty"`
 	// SnapshotPartitionStrategy allows overriding the auto-detected partition strategy.
 	// Useful when integer PKs are hash-based (not sequential) and range partitioning performs poorly.
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
@@ -54,6 +55,14 @@ func (tc Table) Validate() error {
 
 	if tc.ReplicaIdentity == ReplicaIdentityFull && len(tc.Columns) > 0 {
 		return errors.New("cannot specify columns when replica identity is FULL. Must be ReplicaIdentityDefault")
+	}
+
+	if tc.ReplicaIdentity == ReplicaIdentityUsingIndex {
+		if strings.TrimSpace(tc.ReplicaIdentityIndex) == "" {
+			return errors.New("replicaIdentityIndex cannot be empty when replicaIdentity is USING INDEX")
+		}
+	} else if strings.TrimSpace(tc.ReplicaIdentityIndex) != "" {
+		return errors.New("replicaIdentityIndex can only be set when replicaIdentity is USING INDEX")
 	}
 
 	return nil
@@ -80,12 +89,11 @@ func (ts Tables) Diff(tss Tables) Tables {
 	tssMap := make(map[string]Table)
 
 	for _, t := range tss {
-		tssMap[t.Name+t.ReplicaIdentity] = t
+		tssMap[t.Schema+"."+t.Name] = t
 	}
 
 	for _, t := range ts {
-		v, found := tssMap[t.Name+t.ReplicaIdentity]
-		if !found || v.ReplicaIdentity != t.ReplicaIdentity || !slices.Equal(v.Columns, t.Columns) || v.Partitioned != t.Partitioned {
+		if v, found := tssMap[t.Schema+"."+t.Name]; !found || v.ReplicaIdentity != t.ReplicaIdentity || v.ReplicaIdentityIndex != t.ReplicaIdentityIndex || !slices.Equal(v.Columns, t.Columns) || v.Partitioned != t.Partitioned {
 			res = append(res, t)
 		}
 	}

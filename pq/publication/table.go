@@ -40,6 +40,11 @@ type Table struct {
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
 	SnapshotPartitionStrategy SnapshotPartitionStrategy `json:"snapshotPartitionStrategy,omitempty" yaml:"snapshotPartitionStrategy,omitempty"`
 	Columns                   []string                  `json:"columns,omitempty" yaml:"columns,omitempty"`
+	// QueryCondition is an optional SQL predicate injected into the WHERE clause
+	// of snapshot queries for this specific table. It overrides the global
+	// SnapshotConfig.QueryCondition when set. Use this to limit which rows are
+	// snapshotted (e.g. "created_at > '2024-01-01'" or "is_active = true").
+	QueryCondition string `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 	// Boolean flag to indicate if the table is partitioned, used for creating the publication on the root table.
 	Partitioned bool `json:"partitioned,omitempty" yaml:"partitioned,omitempty"`
 }

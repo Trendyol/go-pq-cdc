@@ -534,6 +534,7 @@ INSERT: map[id:1001 name:Charlie]  <-- New data after snapshot
 | `heartbeatInterval` | duration | `5s` | Interval for worker heartbeat updates |
 | `instanceId` | string | `hostname-pid` | Custom instance identifier (optional) |
 | `resnapshot` | bool | `false` | Force reprocessing by cleaning metadata for this slot (see below) |
+| `queryCondition` | string | `""` | Global query condition applied to all snapshot queries (SNAPSHOT-ONLY, see [Custom Query Conditions](#custom-query-conditions)) |
 
 ### Resnapshot
 
@@ -597,6 +598,107 @@ snapshot:
   mode: initial
   resnapshot: false  # Normal operation
 ```
+
+### Custom Query Conditions
+
+The `queryCondition` feature allows you to add custom WHERE clause conditions to snapshot queries. This is useful for filtering data during snapshot (e.g., excluding soft-deleted records, filtering by status, date ranges, etc.).
+
+#### Important: Snapshot-Only Feature
+
+> This feature is **SNAPSHOT-ONLY** and does **NOT** affect CDC (publication).
+>
+> - **Snapshot**: Uses SQL `SELECT` queries — `queryCondition` is applied.
+> - **CDC**: Uses the WAL replication stream — `queryCondition` is **not** used.
+>
+> CDC will capture every change to tables in the publication regardless of the snapshot `queryCondition`. The condition only filters which existing rows are captured during the initial snapshot phase.
+
+#### Configuration
+
+You can specify query conditions in two places:
+
+1. **Global Condition** (`snapshot.queryCondition`) — applies to all snapshot tables:
+   ```yaml
+   snapshot:
+     enabled: true
+     mode: initial
+     queryCondition: "status = 'active'"  # Global condition
+   ```
+
+2. **Per-Table Condition** (`publication.tables[].queryCondition` or `snapshot.tables[].queryCondition`) — applies to a specific table:
+   ```yaml
+   publication:
+     tables:
+       - name: users
+         schema: public
+         replicaIdentity: FULL
+         queryCondition: "deleted_at IS NULL"  # Per-table condition
+   ```
+
+**Priority:** a per-table condition fully overrides the global `snapshot.queryCondition` for that table.
+
+#### How It Works
+
+The query condition is appended to the WHERE clause with `AND`:
+
+```sql
+-- Without queryCondition
+SELECT * FROM public.users WHERE id >= 1 AND id <= 1000 ORDER BY id LIMIT 1000
+
+-- With queryCondition: "deleted_at IS NULL"
+SELECT * FROM public.users WHERE id >= 1 AND id <= 1000 AND deleted_at IS NULL ORDER BY id LIMIT 1000
+```
+
+The condition is applied to **all** snapshot query strategies (`integer_range`, `ctid_block`, `offset`) and to the row-count query used for chunk estimation.
+
+#### Use Cases
+
+- **Filter soft-deleted records:** `queryCondition: "deleted_at IS NULL"`
+- **Filter by status:** `queryCondition: "status = 'active'"`
+- **Date range filtering:** `queryCondition: "created_at >= '2024-01-01'"`
+- **Multiple conditions:** `queryCondition: "status = 'active' AND archived = false"`
+- **Exclude test data:** `queryCondition: "environment != 'test'"`
+
+#### Example Configuration
+
+```yaml
+publication:
+  createIfNotExists: true
+  name: cdc_publication
+  operations:
+    - INSERT
+    - UPDATE
+    - DELETE
+  tables:
+    - name: users
+      schema: public
+      replicaIdentity: FULL
+      queryCondition: "deleted_at IS NULL"      # Per-table override
+    - name: orders
+      schema: public
+      replicaIdentity: FULL
+      queryCondition: "status != 'cancelled'"   # Per-table override
+    - name: products
+      schema: public
+      replicaIdentity: FULL                     # Uses global condition
+
+snapshot:
+  enabled: true
+  mode: initial
+  queryCondition: "created_at >= '2024-01-01'"  # Global fallback
+  chunkSize: 10000
+```
+
+In this example:
+
+- `users` uses `"deleted_at IS NULL"` (per-table takes precedence).
+- `orders` uses `"status != 'cancelled'"` (per-table takes precedence).
+- `products` uses `"created_at >= '2024-01-01'"` (global condition).
+
+#### Notes
+
+- The condition must be valid SQL that can be appended with `AND`.
+- If you also need to filter CDC events, filter inside your application handler — this feature does not influence the replication stream.
+- The condition is applied to the row-count query too, so chunk estimation reflects the filtered set.
 
 ---
 

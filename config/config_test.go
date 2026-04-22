@@ -414,3 +414,111 @@ func TestValidateSnapshotSubset(t *testing.T) {
 		assert.Equal(t, publication.SnapshotPartitionStrategyIntegerRange, result[1].SnapshotPartitionStrategy)
 	})
 }
+
+func TestQueryConditionPropagation(t *testing.T) {
+	t.Run("validateSnapshotSubset preserves QueryCondition from snapshot.tables", func(t *testing.T) {
+		cfg := Config{
+			Snapshot: SnapshotConfig{
+				Tables: publication.Tables{
+					{
+						Name:           "events",
+						Schema:         "public",
+						QueryCondition: "created_at > '2024-01-01'",
+					},
+				},
+			},
+		}
+		pubTables := publication.Tables{
+			{Name: "events", Schema: "public", ReplicaIdentity: "full"},
+		}
+
+		result, err := cfg.validateSnapshotSubset(pubTables)
+
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "created_at > '2024-01-01'", result[0].QueryCondition)
+		assert.Equal(t, "full", result[0].ReplicaIdentity)
+	})
+
+	t.Run("mergePublicationTableConfig preserves QueryCondition from publication.tables", func(t *testing.T) {
+		cfg := Config{
+			Publication: publication.Config{
+				Tables: publication.Tables{
+					{
+						Name:           "events",
+						Schema:         "public",
+						QueryCondition: "is_active = true",
+					},
+					{
+						Name:           "orders",
+						Schema:         "public",
+						QueryCondition: "status != 'cancelled'",
+					},
+				},
+			},
+		}
+		pubInfoTables := publication.Tables{
+			{Name: "events", Schema: "public"},
+			{Name: "orders", Schema: "public"},
+			{Name: "users", Schema: "public"},
+		}
+
+		result := cfg.mergePublicationTableConfig(pubInfoTables)
+
+		require.Len(t, result, 3)
+		assert.Equal(t, "is_active = true", result[0].QueryCondition)
+		assert.Equal(t, "status != 'cancelled'", result[1].QueryCondition)
+		assert.Empty(t, result[2].QueryCondition, "table without user config keeps empty QueryCondition")
+	})
+
+	t.Run("GetSnapshotTables end-to-end: per-table QueryCondition reaches snapshotter through publication.tables", func(t *testing.T) {
+		cfg := Config{
+			Publication: publication.Config{
+				Tables: publication.Tables{
+					{Name: "users", Schema: "public", QueryCondition: "deleted_at IS NULL"},
+				},
+			},
+			Snapshot: SnapshotConfig{
+				Enabled:        true,
+				Mode:           SnapshotModeInitial,
+				QueryCondition: "created_at >= '2024-01-01'",
+			},
+		}
+		pubInfo := &publication.Config{
+			Tables: publication.Tables{
+				{Name: "users", Schema: "public"},
+			},
+		}
+
+		tables, err := cfg.GetSnapshotTables(pubInfo)
+
+		require.NoError(t, err)
+		require.Len(t, tables, 1)
+		assert.Equal(t, "deleted_at IS NULL", tables[0].QueryCondition,
+			"per-table QueryCondition from publication.tables must be propagated so per-table override works")
+	})
+
+	t.Run("GetSnapshotTables end-to-end: per-table QueryCondition reaches snapshotter through snapshot.tables", func(t *testing.T) {
+		cfg := Config{
+			Snapshot: SnapshotConfig{
+				Enabled: true,
+				Mode:    SnapshotModeInitial,
+				Tables: publication.Tables{
+					{Name: "users", Schema: "public", QueryCondition: "deleted_at IS NULL"},
+				},
+			},
+		}
+		pubInfo := &publication.Config{
+			Tables: publication.Tables{
+				{Name: "users", Schema: "public", ReplicaIdentity: "full"},
+			},
+		}
+
+		tables, err := cfg.GetSnapshotTables(pubInfo)
+
+		require.NoError(t, err)
+		require.Len(t, tables, 1)
+		assert.Equal(t, "deleted_at IS NULL", tables[0].QueryCondition)
+		assert.Equal(t, "full", tables[0].ReplicaIdentity, "publication metadata is still merged in")
+	})
+}

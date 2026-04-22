@@ -249,7 +249,7 @@ func (s *Snapshotter) setupJob(ctx context.Context, slotName, instanceID string)
 
 func (s *Snapshotter) initTables(ctx context.Context) error {
 	// Check if job table exists
-	jobTableExists, err := s.tableExists(ctx, jobTableName)
+	jobTableExists, err := pq.TableExists(ctx, s.metadataConn, "public", jobTableName)
 	if err != nil {
 		return errors.Wrap(err, "check job table existence")
 	}
@@ -276,7 +276,7 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 	}
 
 	// Check if chunks table exists
-	chunksTableExists, err := s.tableExists(ctx, chunksTableName)
+	chunksTableExists, err := pq.TableExists(ctx, s.metadataConn, "public", chunksTableName)
 	if err != nil {
 		return errors.Wrap(err, "check chunks table existence")
 	}
@@ -322,12 +322,12 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 	}
 
 	for indexName, indexSQL := range indexes {
-		indexExists, err := s.indexExists(ctx, indexName)
+		exists, err := pq.IndexExists(ctx, s.metadataConn, "public", indexName)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("check index %s existence", indexName))
 		}
 
-		if !indexExists {
+		if !exists {
 			if err := s.execSQL(ctx, s.metadataConn, indexSQL); err != nil {
 				return errors.Wrap(err, fmt.Sprintf("create index %s", indexName))
 			}
@@ -1227,56 +1227,4 @@ func hashString(s string) int64 {
 		hash = -hash
 	}
 	return hash
-}
-
-// tableExists checks if a table exists using information_schema
-// This approach only requires SELECT permission on information_schema
-func (s *Snapshotter) tableExists(ctx context.Context, tableName string) (bool, error) {
-	query := fmt.Sprintf(`
-		SELECT EXISTS (
-			SELECT 1 
-			FROM information_schema.tables 
-			WHERE table_schema = 'public' 
-			AND table_name = '%s'
-		)
-	`, tableName)
-
-	results, err := s.execQuery(ctx, s.metadataConn, query)
-	if err != nil {
-		return false, errors.Wrap(err, "query table existence")
-	}
-
-	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
-		return false, errors.New("no result returned from table existence check")
-	}
-
-	// PostgreSQL returns 't' for true, 'f' for false
-	exists := string(results[0].Rows[0][0]) == "t"
-	return exists, nil
-}
-
-// indexExists checks if an index exists using pg_indexes
-// This approach only requires SELECT permission on pg_indexes
-func (s *Snapshotter) indexExists(ctx context.Context, indexName string) (bool, error) {
-	query := fmt.Sprintf(`
-		SELECT EXISTS (
-			SELECT 1 
-			FROM pg_indexes 
-			WHERE schemaname = 'public' 
-			AND indexname = '%s'
-		)
-	`, indexName)
-
-	results, err := s.execQuery(ctx, s.metadataConn, query)
-	if err != nil {
-		return false, errors.Wrap(err, "query index existence")
-	}
-
-	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
-		return false, errors.New("no result returned from index existence check")
-	}
-
-	// PostgreSQL returns 't' for true, 'f' for false
-	exists := string(results[0].Rows[0][0]) == "t"
-	return exists, nil
 }

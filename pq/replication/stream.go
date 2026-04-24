@@ -383,6 +383,7 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 		"serverTime", xld.ServerTime,
 	)
 
+	s.UpdateXLogPos(xld.ServerWALEnd)
 	s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
 	decodedMsg, err := message.New(xld.WALData, xld.ServerTime, s.relation)

@@ -101,7 +101,7 @@ func (sc *StreamCommit) decode(data []byte) error {
 	skipByte += 8
 	sc.TransactionEndLSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
 	skipByte += 8
-	sc.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0)
+	sc.CommitTime = pgTimeToTime(int64(binary.BigEndian.Uint64(data[skipByte:])))
 
 	return nil
 }

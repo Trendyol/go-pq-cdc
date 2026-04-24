@@ -2,7 +2,6 @@ package format
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -18,7 +17,7 @@ func TestNewCommit(t *testing.T) {
 			0,                           // Flags
 			0, 0, 0, 0, 1, 150, 157, 24, // CommitLSN: 0x1969D18 = 26647832
 			0, 0, 0, 0, 1, 150, 157, 72, // TransactionEndLSN: 0x1969D48 = 26647880
-			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 0x2EA04784DC484 = 820254872552580 as Unix seconds
+			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 0x2EA04784DC484 = 820254872552580
 		}
 
 		// When
@@ -30,7 +29,7 @@ func TestNewCommit(t *testing.T) {
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(26647832), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(26647880), commit.TransactionEndLSN)
-		assert.Equal(t, time.Unix(820254872552580, 0), commit.CommitTime)
+		assert.Equal(t, pgTimeForTest(820254872552580), commit.CommitTime)
 	})
 
 	t.Run("should return error when data is too short", func(t *testing.T) {
@@ -58,7 +57,7 @@ func TestNewCommit(t *testing.T) {
 			0,                      // Flags
 			0, 0, 0, 0, 0, 0, 0, 1, // CommitLSN: 1
 			0, 0, 0, 0, 0, 0, 0, 2, // TransactionEndLSN: 2
-			0, 0, 0, 0, 0, 0, 0, 0, // CommitTime: 0 (Unix epoch)
+			0, 0, 0, 0, 0, 0, 0, 0, // CommitTime: 0
 		}
 
 		// When
@@ -70,7 +69,7 @@ func TestNewCommit(t *testing.T) {
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(1), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(2), commit.TransactionEndLSN)
-		assert.Equal(t, time.Unix(0, 0), commit.CommitTime)
+		assert.Equal(t, pgTimeForTest(0), commit.CommitTime)
 	})
 
 	t.Run("should decode commit message with flags set", func(t *testing.T) {
@@ -92,7 +91,7 @@ func TestNewCommit(t *testing.T) {
 		assert.Equal(t, uint8(1), commit.Flags)
 		assert.Equal(t, pq.LSN(100), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(200), commit.TransactionEndLSN)
-		assert.Equal(t, time.Unix(123, 0), commit.CommitTime)
+		assert.Equal(t, pgTimeForTest(123), commit.CommitTime)
 	})
 
 	t.Run("should decode commit message with maximum values", func(t *testing.T) {
@@ -125,7 +124,7 @@ func TestCommit_decode(t *testing.T) {
 			0,                           // Flags
 			0, 0, 0, 0, 1, 150, 157, 24, // CommitLSN: 26647832
 			0, 0, 0, 0, 1, 150, 157, 72, // TransactionEndLSN: 26647880
-			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 820254872552580 as Unix seconds
+			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 820254872552580
 		}
 		commit := &Commit{}
 
@@ -137,7 +136,7 @@ func TestCommit_decode(t *testing.T) {
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(26647832), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(26647880), commit.TransactionEndLSN)
-		assert.Equal(t, time.Unix(820254872552580, 0), commit.CommitTime)
+		assert.Equal(t, pgTimeForTest(820254872552580), commit.CommitTime)
 	})
 
 	t.Run("should return error for empty data", func(t *testing.T) {
@@ -180,7 +179,7 @@ func TestCommit_decode(t *testing.T) {
 		assert.Equal(t, uint8(0), commit.Flags)
 		assert.Equal(t, pq.LSN(0), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(0), commit.TransactionEndLSN)
-		assert.Equal(t, time.Unix(0, 0), commit.CommitTime)
+		assert.Equal(t, pgTimeForTest(0), commit.CommitTime)
 	})
 
 	t.Run("should decode with non-zero flags", func(t *testing.T) {
@@ -202,6 +201,6 @@ func TestCommit_decode(t *testing.T) {
 		assert.Equal(t, uint8(255), commit.Flags)
 		assert.Equal(t, pq.LSN(256), commit.CommitLSN)
 		assert.Equal(t, pq.LSN(512), commit.TransactionEndLSN)
-		assert.Equal(t, time.Unix(1677721600, 0), commit.CommitTime)
+		assert.Equal(t, pgTimeForTest(1677721600), commit.CommitTime)
 	})
 }

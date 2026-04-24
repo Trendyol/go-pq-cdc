@@ -35,7 +35,7 @@ func (c *Commit) decode(data []byte) error {
 	skipByte += 8
 	c.TransactionEndLSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
 	skipByte += 8
-	c.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0)
+	c.CommitTime = pgTimeToTime(int64(binary.BigEndian.Uint64(data[skipByte:])))
 
 	return nil
 }

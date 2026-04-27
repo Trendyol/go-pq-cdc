@@ -35,49 +35,62 @@ func New(dsn string, cfg config.HeartbeatConfig) *Heartbeat {
 	}
 }
 
-// EnsureTable creates the heartbeat table if it doesn't exist
+// EnsureTable checks if the heartbeat table exists and creates it only when missing.
+// This avoids permission errors for users who only have replication privileges.
 func (h *Heartbeat) EnsureTable(ctx context.Context, conn pq.Connection) error {
+	schema := quoteIdentifier(h.cfg.Table.Schema)
+	table := quoteIdentifier(h.cfg.Table.Name)
+
+	exists, err := pq.TableExists(ctx, conn, h.cfg.Table.Schema, h.cfg.Table.Name)
+	if err != nil {
+		return fmt.Errorf("check heartbeat table existence: %w", err)
+	}
+
+	if exists {
+		logger.Info("heartbeat table already exists, skipping creation", "table", schema+"."+table)
+		return nil
+	}
+
+	if err := h.createTable(ctx, conn); err != nil {
+		return err
+	}
+
+	if err := h.insertInitialRow(ctx, conn); err != nil {
+		return err
+	}
+
+	logger.Info("heartbeat table created", "table", schema+"."+table)
+	return nil
+}
+
+func (h *Heartbeat) createTable(ctx context.Context, conn pq.Connection) error {
 	schema := quoteIdentifier(h.cfg.Table.Schema)
 	table := quoteIdentifier(h.cfg.Table.Name)
 	constraint := quoteIdentifier(h.cfg.Table.Name + "_single_row")
 
-	createTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s (
+	sql := fmt.Sprintf(`
+		CREATE TABLE %s.%s (
 			id INTEGER PRIMARY KEY DEFAULT 1,
 			last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			CONSTRAINT %s CHECK (id = 1)
 		)`, schema, table, constraint)
 
-	insertRowSQL := fmt.Sprintf(`
-		INSERT INTO %s.%s (id) VALUES (1) ON CONFLICT DO NOTHING`, schema, table)
-
-	// Execute CREATE TABLE
-	resultReader := conn.Exec(ctx, createTableSQL)
-	if resultReader == nil {
-		return fmt.Errorf("create heartbeat table: exec returned nil")
-	}
-	if _, err := resultReader.ReadAll(); err != nil {
-		_ = resultReader.Close()
+	if err := pq.ExecSQL(ctx, conn, sql); err != nil {
 		return fmt.Errorf("create heartbeat table failed: %w", err)
 	}
-	if err := resultReader.Close(); err != nil {
-		return fmt.Errorf("close create table result: %w", err)
-	}
+	return nil
+}
 
-	// Execute INSERT initial row
-	resultReader = conn.Exec(ctx, insertRowSQL)
-	if resultReader == nil {
-		return fmt.Errorf("insert heartbeat row: exec returned nil")
-	}
-	if _, err := resultReader.ReadAll(); err != nil {
-		_ = resultReader.Close()
+func (h *Heartbeat) insertInitialRow(ctx context.Context, conn pq.Connection) error {
+	schema := quoteIdentifier(h.cfg.Table.Schema)
+	table := quoteIdentifier(h.cfg.Table.Name)
+
+	sql := fmt.Sprintf(`
+		INSERT INTO %s.%s (id) VALUES (1) ON CONFLICT DO NOTHING`, schema, table)
+
+	if err := pq.ExecSQL(ctx, conn, sql); err != nil {
 		return fmt.Errorf("insert heartbeat row failed: %w", err)
 	}
-	if err := resultReader.Close(); err != nil {
-		return fmt.Errorf("close insert result: %w", err)
-	}
-
-	logger.Info("heartbeat table created", "table", schema+"."+table)
 	return nil
 }
 

@@ -23,12 +23,7 @@ const (
 
 // execSQL executes a SQL statement without returning results (DDL, DML)
 func (s *Snapshotter) execSQL(ctx context.Context, conn pq.Connection, sql string) error {
-	resultReader := conn.Exec(ctx, sql)
-	_, err := resultReader.ReadAll()
-	if err != nil {
-		return err
-	}
-	return resultReader.Close()
+	return pq.ExecSQL(ctx, conn, sql)
 }
 
 // execQuery executes a SQL query and returns results

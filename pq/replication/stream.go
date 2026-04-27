@@ -67,6 +67,7 @@ type stream struct {
 	snapshotLSN         pq.LSN
 	openFromSnapshotLSN bool
 	closed              atomic.Bool
+	sinkStarted         atomic.Bool
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
@@ -108,8 +109,6 @@ func (s *stream) Open(ctx context.Context) error {
 	}
 
 	if err := s.setup(ctx); err != nil {
-		s.sinkEnd <- struct{}{}
-
 		var v *pgconn.PgError
 		if goerrors.As(err, &v) && v.Code == "55006" {
 			return ErrorSlotInUse
@@ -117,6 +116,7 @@ func (s *stream) Open(ctx context.Context) error {
 		return errors.Wrap(err, "replication setup")
 	}
 
+	s.sinkStarted.Store(true)
 	go s.sink(ctx)
 
 	go s.process(ctx)
@@ -509,13 +509,14 @@ func (s *stream) isHeartbeatMessage(msg any) bool {
 }
 
 func (s *stream) Close(ctx context.Context) {
-	s.closed.Store(true)
-
-	<-s.sinkEnd
-	if !isClosed(s.sinkEnd) {
-		close(s.sinkEnd)
+	if !s.closed.CompareAndSwap(false, true) {
+		return
 	}
-	logger.Info("postgres message sink stopped")
+
+	if s.sinkStarted.Load() {
+		<-s.sinkEnd
+		logger.Info("postgres message sink stopped")
+	}
 
 	if !s.conn.IsClosed() {
 		_ = s.conn.Close(ctx)
@@ -670,14 +671,4 @@ func AppendUint64(buf []byte, n uint64) []byte {
 
 func timeToPgTime(t time.Time) uint64 {
 	return uint64(t.UTC().UnixMicro() - microSecFromUnixEpochToY2K)
-}
-
-func isClosed[T any](ch <-chan T) bool {
-	select {
-	case <-ch:
-		return true
-	default:
-	}
-
-	return false
 }

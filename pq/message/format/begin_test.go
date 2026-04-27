@@ -2,7 +2,6 @@ package format
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -16,7 +15,7 @@ func TestNewBegin(t *testing.T) {
 		data := []byte{
 			66,                          // Message type 'B'
 			0, 0, 0, 0, 1, 150, 157, 24, // FinalLSN: 0x1969D18 = 26647832
-			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 0x2EA04784DC484 = 820254872552580 microseconds from 2000-01-01 (as Unix seconds in decode)
+			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 0x2EA04784DC484 = 820254872552580 microseconds from 2000-01-01
 			0, 0, 2, 249, // Xid: 0x2F9 = 761
 		}
 
@@ -27,8 +26,8 @@ func TestNewBegin(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, begin)
 		assert.Equal(t, pq.LSN(26647832), begin.FinalLSN)
-		// The decode function treats the 8 bytes as Unix seconds directly
-		assert.Equal(t, time.Unix(820254872552580, 0), begin.CommitTime)
+		// The decode function treats the 8 bytes as PostgreSQL time.
+		assert.Equal(t, pgTimeForTest(820254872552580), begin.CommitTime)
 		assert.Equal(t, uint32(761), begin.Xid)
 	})
 
@@ -54,7 +53,7 @@ func TestNewBegin(t *testing.T) {
 		data := []byte{
 			66,                     // Message type 'B'
 			0, 0, 0, 0, 0, 0, 0, 1, // FinalLSN: 1
-			0, 0, 0, 0, 0, 0, 0, 0, // CommitTime: 0 (Unix epoch)
+			0, 0, 0, 0, 0, 0, 0, 0, // CommitTime: 0
 			0, 0, 0, 1, // Xid: 1
 		}
 
@@ -65,7 +64,7 @@ func TestNewBegin(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, begin)
 		assert.Equal(t, pq.LSN(1), begin.FinalLSN)
-		assert.Equal(t, time.Unix(0, 0), begin.CommitTime)
+		assert.Equal(t, pgTimeForTest(0), begin.CommitTime)
 		assert.Equal(t, uint32(1), begin.Xid)
 	})
 
@@ -95,7 +94,7 @@ func TestBegin_decode(t *testing.T) {
 		data := []byte{
 			66,                          // Message type 'B'
 			0, 0, 0, 0, 1, 150, 157, 24, // FinalLSN: 26647832
-			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 820254872552580 as Unix seconds
+			0, 2, 234, 4, 120, 77, 196, 132, // CommitTime: 820254872552580
 			0, 0, 2, 249, // Xid: 761
 		}
 		begin := &Begin{}
@@ -106,7 +105,7 @@ func TestBegin_decode(t *testing.T) {
 		// Then
 		require.NoError(t, err)
 		assert.Equal(t, pq.LSN(26647832), begin.FinalLSN)
-		assert.Equal(t, time.Unix(820254872552580, 0), begin.CommitTime)
+		assert.Equal(t, pgTimeForTest(820254872552580), begin.CommitTime)
 		assert.Equal(t, uint32(761), begin.Xid)
 	})
 
@@ -148,7 +147,7 @@ func TestBegin_decode(t *testing.T) {
 		// Then
 		require.NoError(t, err)
 		assert.Equal(t, pq.LSN(0), begin.FinalLSN)
-		assert.Equal(t, time.Unix(0, 0), begin.CommitTime)
+		assert.Equal(t, pgTimeForTest(0), begin.CommitTime)
 		assert.Equal(t, uint32(0), begin.Xid)
 	})
 }

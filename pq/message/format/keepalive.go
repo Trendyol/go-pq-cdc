@@ -37,9 +37,3 @@ func (p *PrimaryKeepaliveMessage) decode(data []byte) error {
 	p.ReplyRequested = data[16] != 0
 	return nil
 }
-
-// pgTimeToTime converts microseconds since 2000-01-01 (Y2K) to time.Time (UTC).
-func pgTimeToTime(microSecSinceY2K int64) time.Time {
-	const microSecFromUnixEpochToY2K = int64(946684800) // Unix timestamp of 2000-01-01
-	return time.Unix(microSecFromUnixEpochToY2K+(microSecSinceY2K/1_000_000), (microSecSinceY2K%1_000_000)*1_000).UTC()
-}

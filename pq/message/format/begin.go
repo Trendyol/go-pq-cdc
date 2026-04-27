@@ -30,7 +30,7 @@ func (b *Begin) decode(data []byte) error {
 
 	b.FinalLSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
 	skipByte += 8
-	b.CommitTime = time.Unix(int64(binary.BigEndian.Uint64(data[skipByte:])), 0)
+	b.CommitTime = pgTimeToTime(int64(binary.BigEndian.Uint64(data[skipByte:])))
 	skipByte += 8
 	b.Xid = binary.BigEndian.Uint32(data[skipByte:])
 

@@ -2,7 +2,6 @@ package format
 
 import (
 	"testing"
-	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/stretchr/testify/assert"
@@ -224,7 +223,7 @@ func TestNewStreamCommit(t *testing.T) {
 		assert.Equal(t, uint8(0), sc.Flags)
 		assert.Equal(t, pq.LSN(26647832), sc.CommitLSN)
 		assert.Equal(t, pq.LSN(26647880), sc.TransactionEndLSN)
-		assert.Equal(t, time.Unix(123, 0), sc.CommitTime)
+		assert.Equal(t, pgTimeForTest(123), sc.CommitTime)
 	})
 
 	t.Run("should return error when data is too short", func(t *testing.T) {
@@ -266,7 +265,7 @@ func TestNewStreamCommit(t *testing.T) {
 		assert.Equal(t, uint8(0), sc.Flags)
 		assert.Equal(t, pq.LSN(1), sc.CommitLSN)
 		assert.Equal(t, pq.LSN(2), sc.TransactionEndLSN)
-		assert.Equal(t, time.Unix(0, 0), sc.CommitTime)
+		assert.Equal(t, pgTimeForTest(0), sc.CommitTime)
 	})
 
 	t.Run("should return error for empty data", func(t *testing.T) {
@@ -302,6 +301,6 @@ func TestNewStreamCommit(t *testing.T) {
 		assert.Equal(t, uint8(1), sc.Flags)
 		assert.Equal(t, pq.LSN(100), sc.CommitLSN)
 		assert.Equal(t, pq.LSN(200), sc.TransactionEndLSN)
-		assert.Equal(t, time.Unix(50, 0), sc.CommitTime)
+		assert.Equal(t, pgTimeForTest(50), sc.CommitTime)
 	})
 }

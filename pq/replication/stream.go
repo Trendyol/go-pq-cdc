@@ -668,7 +668,7 @@ func AppendUint64(buf []byte, n uint64) []byte {
 }
 
 func timeToPgTime(t time.Time) uint64 {
-	return uint64(t.Unix()*1000000 + int64(t.Nanosecond())/1000 - microSecFromUnixEpochToY2K)
+	return uint64(t.UTC().UnixMicro() - microSecFromUnixEpochToY2K)
 }
 
 func isClosed[T any](ch <-chan T) bool {

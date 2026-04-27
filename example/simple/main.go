@@ -85,6 +85,8 @@ func Handler(ctx *replication.ListenerContext) {
 		slog.Info("delete message received", "old", msg.OldDecoded)
 	case *format.Update:
 		slog.Info("update message received", "new", msg.NewDecoded, "old", msg.OldDecoded)
+	case *format.Truncate:
+		slog.Info("truncate message received", "relations", msg.RelationOIDs, "cascade", msg.Cascade, "restartIdentity", msg.RestartIdentity)
 	}
 
 	if err := ctx.Ack(); err != nil {

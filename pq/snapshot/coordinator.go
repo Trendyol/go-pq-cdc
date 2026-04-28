@@ -441,7 +441,7 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 		isLast := (i == len(result.Rows)-1) && (rowCount < chunk.ChunkSize)
 
 		// Send data event
-		_ = handler(&format.Snapshot{
+		if err := handler(&format.Snapshot{
 			EventType:  format.SnapshotEventTypeData,
 			Table:      chunk.TableName,
 			Schema:     chunk.TableSchema,
@@ -449,7 +449,9 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 			ServerTime: chunkTime,
 			LSN:        lsn,
 			IsLast:     isLast,
-		})
+		}); err != nil {
+			return int64(i), errors.Wrap(err, "snapshot handler")
+		}
 	}
 
 	return rowCount, nil

@@ -66,6 +66,12 @@ func (tc Table) Validate() error {
 		return errors.New("replicaIdentityIndex can only be set when replicaIdentity is USING INDEX")
 	}
 
+	if tc.QueryCondition != "" {
+		if err := ValidateQueryCondition(tc.QueryCondition); err != nil {
+			return errors.Wrap(err, "queryCondition")
+		}
+	}
+
 	return nil
 }
 

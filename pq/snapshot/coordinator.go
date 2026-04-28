@@ -478,12 +478,15 @@ func (s *Snapshotter) getQueryCondition(tableSchema, tableName string) string {
 
 func andCondition(existing, extra string) string {
 	if existing == "" {
-		return extra
+		if extra == "" {
+			return ""
+		}
+		return "(" + extra + ")"
 	}
 	if extra == "" {
 		return existing
 	}
-	return fmt.Sprintf("%s AND %s", existing, extra)
+	return fmt.Sprintf("%s AND (%s)", existing, extra)
 }
 
 func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColumns []string, queryCondition string) string {
@@ -524,7 +527,7 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) s
 	// Empty table or single chunk without block info - select all
 	if chunk.BlockStart == nil {
 		if queryCondition != "" {
-			return fmt.Sprintf("SELECT %s FROM %s.%s WHERE %s", cols, chunk.TableSchema, chunk.TableName, queryCondition)
+			return fmt.Sprintf("SELECT %s FROM %s.%s WHERE (%s)", cols, chunk.TableSchema, chunk.TableName, queryCondition)
 		}
 		return fmt.Sprintf("SELECT %s FROM %s.%s", cols, chunk.TableSchema, chunk.TableName)
 	}
@@ -555,23 +558,16 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) s
 
 func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string, queryCondition string) string {
 	cols := selectSnapshotColumns(chunk.TableColumns)
+	where := ""
 	if queryCondition != "" {
-		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE %s ORDER BY %s LIMIT %d OFFSET %d",
-			cols,
-			chunk.TableSchema,
-			chunk.TableName,
-			queryCondition,
-			orderByClause,
-			chunk.ChunkSize,
-			chunk.ChunkStart,
-		)
+		where = " WHERE (" + queryCondition + ")"
 	}
 	return fmt.Sprintf(
-		"SELECT %s FROM %s.%s ORDER BY %s LIMIT %d OFFSET %d",
+		"SELECT %s FROM %s.%s%s ORDER BY %s LIMIT %d OFFSET %d",
 		cols,
 		chunk.TableSchema,
 		chunk.TableName,
+		where,
 		orderByClause,
 		chunk.ChunkSize,
 		chunk.ChunkStart,
@@ -1196,7 +1192,7 @@ func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Conn
 	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
 	if queryCondition != "" {
-		query = fmt.Sprintf("SELECT COUNT(*) FROM %s.%s WHERE %s", schema, table, queryCondition)
+		query += " WHERE (" + queryCondition + ")"
 	}
 
 	results, err := s.execQuery(ctx, conn, query)

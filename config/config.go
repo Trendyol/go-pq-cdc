@@ -330,6 +330,19 @@ func (s *SnapshotConfig) Validate() error {
 		return errors.New("snapshot.tables must be specified for snapshot_only mode")
 	}
 
+	if s.QueryCondition != "" {
+		if err := publication.ValidateQueryCondition(s.QueryCondition); err != nil {
+			return err
+		}
+	}
+	for _, t := range s.Tables {
+		if t.QueryCondition != "" {
+			if err := publication.ValidateQueryCondition(t.QueryCondition); err != nil {
+				return fmt.Errorf("snapshot.tables %s.%s: %w", t.Schema, t.Name, err)
+			}
+		}
+	}
+
 	return nil
 }
 

@@ -522,3 +522,32 @@ func TestQueryConditionPropagation(t *testing.T) {
 		assert.Equal(t, "full", tables[0].ReplicaIdentity, "publication metadata is still merged in")
 	})
 }
+
+func TestSnapshotConfigValidateQueryCondition(t *testing.T) {
+	base := SnapshotConfig{
+		Enabled:           true,
+		Mode:              SnapshotModeInitial,
+		ChunkSize:         1000,
+		ClaimTimeout:      30 * time.Second,
+		HeartbeatInterval: 5 * time.Second,
+	}
+
+	t.Run("rejects unsafe global queryCondition", func(t *testing.T) {
+		cfg := base
+		cfg.QueryCondition = "true; SELECT 1"
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `";"`)
+	})
+
+	t.Run("rejects unsafe per-table queryCondition in snapshot.tables", func(t *testing.T) {
+		cfg := base
+		cfg.Tables = publication.Tables{
+			{Name: "t", Schema: "public", ReplicaIdentity: publication.ReplicaIdentityFull, QueryCondition: "x /* */"},
+		}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "snapshot.tables")
+		assert.Contains(t, err.Error(), `"/*"`)
+	})
+}

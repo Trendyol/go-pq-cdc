@@ -17,11 +17,11 @@ func TestAndCondition(t *testing.T) {
 	t.Run("only existing returns existing", func(t *testing.T) {
 		assert.Equal(t, "a = 1", andCondition("a = 1", ""))
 	})
-	t.Run("only extra returns extra", func(t *testing.T) {
-		assert.Equal(t, "b = 2", andCondition("", "b = 2"))
+	t.Run("only extra returns parenthesized", func(t *testing.T) {
+		assert.Equal(t, "(b = 2)", andCondition("", "b = 2"))
 	})
-	t.Run("combines with AND", func(t *testing.T) {
-		assert.Equal(t, "a = 1 AND b = 2", andCondition("a = 1", "b = 2"))
+	t.Run("combines with AND and parenthesizes extra for OR precedence", func(t *testing.T) {
+		assert.Equal(t, "a = 1 AND (b = 2)", andCondition("a = 1", "b = 2"))
 	})
 }
 
@@ -103,7 +103,7 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 			ChunkSize:         500,
 		}
 		q := s.buildChunkQuery(chunk, "id", []string{"id"}, "is_active = true")
-		assert.Contains(t, q, "WHERE id >= 1 AND id <= 1000 AND is_active = true")
+		assert.Contains(t, q, "WHERE id >= 1 AND id <= 1000 AND (is_active = true)")
 		assert.Contains(t, q, "ORDER BY id LIMIT 500")
 	})
 
@@ -129,8 +129,21 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 			ChunkStart:        200,
 		}
 		q := s.buildChunkQuery(chunk, "id", nil, "status = 'active'")
-		assert.Contains(t, q, "WHERE status = 'active'")
+		assert.Contains(t, q, "WHERE (status = 'active')")
 		assert.Contains(t, q, "ORDER BY id LIMIT 100 OFFSET 200")
+	})
+
+	t.Run("OR in condition is parenthesized with integer range", func(t *testing.T) {
+		chunk := &Chunk{
+			TableSchema:       "public",
+			TableName:         "users",
+			PartitionStrategy: PartitionStrategyIntegerRange,
+			RangeStart:        ptrInt64(1),
+			RangeEnd:          ptrInt64(1000),
+			ChunkSize:         500,
+		}
+		q := s.buildChunkQuery(chunk, "id", []string{"id"}, "status = 'a' OR status = 'b'")
+		assert.Contains(t, q, "AND (status = 'a' OR status = 'b')")
 	})
 
 	t.Run("offset strategy without condition omits WHERE", func(t *testing.T) {
@@ -154,7 +167,7 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 			BlockEnd:          ptrInt64(100),
 		}
 		q := s.buildChunkQuery(chunk, "", nil, "tenant_id = 7")
-		assert.Contains(t, q, "WHERE ctid >= '(0,0)'::tid AND ctid < '(100,0)'::tid AND tenant_id = 7")
+		assert.Contains(t, q, "WHERE ctid >= '(0,0)'::tid AND ctid < '(100,0)'::tid AND (tenant_id = 7)")
 	})
 
 	t.Run("ctid last chunk (nil BlockEnd) injects condition", func(t *testing.T) {
@@ -167,7 +180,7 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 			IsLastChunk:       true,
 		}
 		q := s.buildChunkQuery(chunk, "", nil, "tenant_id = 7")
-		assert.Contains(t, q, "WHERE ctid >= '(50,0)'::tid AND tenant_id = 7")
+		assert.Contains(t, q, "WHERE ctid >= '(50,0)'::tid AND (tenant_id = 7)")
 	})
 
 	t.Run("ctid empty table with condition uses WHERE", func(t *testing.T) {
@@ -177,7 +190,7 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 			PartitionStrategy: PartitionStrategyCTIDBlock,
 		}
 		q := s.buildChunkQuery(chunk, "", nil, "tenant_id = 7")
-		assert.Contains(t, q, "FROM public.events WHERE tenant_id = 7")
+		assert.Contains(t, q, "FROM public.events WHERE (tenant_id = 7)")
 	})
 
 	t.Run("ctid empty table without condition has no WHERE", func(t *testing.T) {
@@ -198,7 +211,7 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 			ChunkSize:         10,
 		}
 		q := s.buildChunkQuery(chunk, "id", []string{"id"}, "is_active = true")
-		assert.Contains(t, q, "WHERE is_active = true")
+		assert.Contains(t, q, "WHERE (is_active = true)")
 		assert.Contains(t, q, "ORDER BY id LIMIT 10")
 	})
 }

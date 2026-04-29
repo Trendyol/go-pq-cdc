@@ -39,6 +39,7 @@ type Table struct {
 	// Useful when integer PKs are hash-based (not sequential) and range partitioning performs poorly.
 	// Options: "" (auto), "integer_range", "ctid_block", "offset"
 	SnapshotPartitionStrategy SnapshotPartitionStrategy `json:"snapshotPartitionStrategy,omitempty" yaml:"snapshotPartitionStrategy,omitempty"`
+	QueryCondition            string                    `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 	Columns                   []string                  `json:"columns,omitempty" yaml:"columns,omitempty"`
 	// Boolean flag to indicate if the table is partitioned, used for creating the publication on the root table.
 	Partitioned bool `json:"partitioned,omitempty" yaml:"partitioned,omitempty"`
@@ -63,6 +64,12 @@ func (tc Table) Validate() error {
 		}
 	} else if strings.TrimSpace(tc.ReplicaIdentityIndex) != "" {
 		return errors.New("replicaIdentityIndex can only be set when replicaIdentity is USING INDEX")
+	}
+
+	if tc.QueryCondition != "" {
+		if err := ValidateQueryCondition(tc.QueryCondition); err != nil {
+			return errors.Wrap(err, "queryCondition")
+		}
 	}
 
 	return nil

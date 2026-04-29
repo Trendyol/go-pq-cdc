@@ -17,13 +17,13 @@ import (
 const defaultSchema = "public"
 
 type Config struct {
-	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
 	Host             string             `json:"host" yaml:"host"`
 	Username         string             `json:"username" yaml:"username"`
 	Password         string             `json:"password" yaml:"password"`
 	Database         string             `json:"database" yaml:"database"`
 	Publication      publication.Config `json:"publication" yaml:"publication"`
+	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
 	Slot             slot.Config        `json:"slot" yaml:"slot"`
 	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Port             int                `json:"port" yaml:"port"`
@@ -194,6 +194,9 @@ func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publicati
 		if st.SnapshotPartitionStrategy != "" {
 			mergedTable.SnapshotPartitionStrategy = st.SnapshotPartitionStrategy
 		}
+		if st.QueryCondition != "" {
+			mergedTable.QueryCondition = st.QueryCondition
+		}
 		validatedTables = append(validatedTables, mergedTable)
 	}
 
@@ -273,6 +276,9 @@ func (c *Config) mergePublicationTableConfig(pubInfoTables publication.Tables) p
 			if userTable.SnapshotPartitionStrategy != "" {
 				result[i].SnapshotPartitionStrategy = userTable.SnapshotPartitionStrategy
 			}
+			if userTable.QueryCondition != "" {
+				result[i].QueryCondition = userTable.QueryCondition
+			}
 		}
 	}
 	return result
@@ -282,6 +288,7 @@ type SnapshotConfig struct {
 	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
 	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
 	ID                string             `json:"id" yaml:"id"`
+	QueryCondition    string             `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
 	Tables            publication.Tables `json:"tables" yaml:"tables"`
 	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
 	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
@@ -321,6 +328,19 @@ func (s *SnapshotConfig) Validate() error {
 	// For snapshot_only mode, tables must be specified
 	if s.Mode == SnapshotModeSnapshotOnly && len(s.Tables) == 0 {
 		return errors.New("snapshot.tables must be specified for snapshot_only mode")
+	}
+
+	if s.QueryCondition != "" {
+		if err := publication.ValidateQueryCondition(s.QueryCondition); err != nil {
+			return err
+		}
+	}
+	for _, t := range s.Tables {
+		if t.QueryCondition != "" {
+			if err := publication.ValidateQueryCondition(t.QueryCondition); err != nil {
+				return fmt.Errorf("snapshot.tables %s.%s: %w", t.Schema, t.Name, err)
+			}
+		}
 	}
 
 	return nil

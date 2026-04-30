@@ -60,6 +60,7 @@ type stream struct {
 	messageCH           chan *Message
 	listenerFunc        ListenerFunc
 	sinkEnd             chan struct{}
+	processEnd          chan struct{}
 	mu                  *sync.RWMutex
 	config              config.Config
 	lastXLogPos         pq.LSN
@@ -68,6 +69,8 @@ type stream struct {
 	openFromSnapshotLSN bool
 	closed              atomic.Bool
 	sinkStarted         atomic.Bool
+	processStarted      atomic.Bool
+	messageCloseOnce    sync.Once
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
@@ -83,6 +86,7 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		// https://github.com/postgres/postgres/blob/master/src/backend/replication/logical/logical.c#L540
 		lastXLogPos: 0,
 		sinkEnd:     make(chan struct{}, 1),
+		processEnd:  make(chan struct{}, 1),
 		mu:          &sync.RWMutex{},
 	}
 }
@@ -117,8 +121,9 @@ func (s *stream) Open(ctx context.Context) error {
 	}
 
 	s.sinkStarted.Store(true)
-	go s.sink(ctx)
+	s.processStarted.Store(true)
 
+	go s.sink(ctx)
 	go s.process(ctx)
 
 	logger.Info("cdc stream started")
@@ -267,6 +272,9 @@ func (s *stream) sink(ctx context.Context) {
 	buf := &messageBuffer{outCh: s.messageCH}
 	streamBuf := &streamTxBuffer{}
 	corrupted := s.sinkLoop(ctx, buf, streamBuf)
+	s.messageCloseOnce.Do(func() {
+		close(s.messageCH)
+	})
 
 	s.sinkEnd <- struct{}{}
 	if !s.closed.Load() {
@@ -447,44 +455,56 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 
 func (s *stream) process(ctx context.Context) {
 	logger.Info("postgres message process started")
+	defer func() {
+		s.processEnd <- struct{}{}
+	}()
 
 	for {
-		msg, ok := <-s.messageCH
-		if !ok {
-			break
-		}
-
-		ackFunc := func() error {
-			pos := pq.LSN(msg.walStart)
-			s.UpdateConfirmedXLogPos(pos)
-			logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
-			return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
-		}
-
-		if s.isHeartbeatMessage(msg.message) {
-			if err := ackFunc(); err != nil {
-				logger.Error("heartbeat auto-ack failed", "error", err)
+		select {
+		case <-ctx.Done():
+			logger.Info("postgres message process stopped")
+			return
+		case msg, ok := <-s.messageCH:
+			if !ok {
+				logger.Info("postgres message process stopped")
+				return
 			}
-			continue
-		}
+			if msg == nil {
+				continue
+			}
 
-		lCtx := &ListenerContext{
-			Message: msg.message,
-			Ack:     ackFunc,
-		}
+			ackFunc := func() error {
+				pos := pq.LSN(msg.walStart)
+				s.UpdateConfirmedXLogPos(pos)
+				logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
+				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
+			}
 
-		switch lCtx.Message.(type) {
-		case *format.Insert:
-			s.metric.InsertOpIncrement(1)
-		case *format.Delete:
-			s.metric.DeleteOpIncrement(1)
-		case *format.Update:
-			s.metric.UpdateOpIncrement(1)
-		}
+			if s.isHeartbeatMessage(msg.message) {
+				if err := ackFunc(); err != nil {
+					logger.Error("heartbeat auto-ack failed", "error", err)
+				}
+				continue
+			}
 
-		start := time.Now().UTC()
-		s.listenerFunc(lCtx)
-		s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
+			lCtx := &ListenerContext{
+				Message: msg.message,
+				Ack:     ackFunc,
+			}
+
+			switch lCtx.Message.(type) {
+			case *format.Insert:
+				s.metric.InsertOpIncrement(1)
+			case *format.Delete:
+				s.metric.DeleteOpIncrement(1)
+			case *format.Update:
+				s.metric.UpdateOpIncrement(1)
+			}
+
+			start := time.Now().UTC()
+			s.listenerFunc(lCtx)
+			s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
+		}
 	}
 }
 
@@ -514,8 +534,21 @@ func (s *stream) Close(ctx context.Context) {
 	}
 
 	if s.sinkStarted.Load() {
-		<-s.sinkEnd
-		logger.Info("postgres message sink stopped")
+		select {
+		case <-s.sinkEnd:
+			logger.Info("postgres message sink stopped")
+		case <-ctx.Done():
+			logger.Warn("timed out waiting for postgres message sink", "error", ctx.Err())
+		}
+	}
+
+	if s.processStarted.Load() {
+		select {
+		case <-s.processEnd:
+			logger.Info("postgres message process stopped")
+		case <-ctx.Done():
+			logger.Warn("timed out waiting for postgres message process", "error", ctx.Err())
+		}
 	}
 
 	if !s.conn.IsClosed() {

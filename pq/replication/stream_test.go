@@ -66,6 +66,31 @@ func TestStreamSinkExitStopsProcessor(t *testing.T) {
 	}
 }
 
+func TestStreamSinkReceiveErrorClosesWithoutPanic(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	stream := NewStream("", config.Config{}, metric.NewMetric("test_slot"), func(*ListenerContext) {}).(*stream)
+	stream.conn = receiveErrorConn{}
+	stream.processStarted.Store(true)
+
+	go stream.process(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		stream.sink(context.Background())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("sink did not finish after receive error")
+	}
+	if !stream.closed.Load() {
+		t.Fatal("stream was not closed after receive error")
+	}
+}
+
 func requireCloseReturns(t *testing.T, stream Streamer, msg string) {
 	t.Helper()
 

@@ -76,9 +76,11 @@ func (s *Snapshotter) isCoordinatorDidItsJob(ctx context.Context, slotName strin
 // hasChunksReady checks if there are chunks available for processing
 func (s *Snapshotter) hasChunksReady(ctx context.Context, slotName string) (bool, error) {
 	query := fmt.Sprintf(`
-		SELECT COUNT(*) > 0 
-		FROM %s 
-		WHERE slot_name = '%s'
+		SELECT EXISTS (
+			SELECT 1
+			FROM %s
+			WHERE slot_name = '%s'
+		)
 	`, chunksTableName, slotName)
 
 	results, err := s.execQuery(ctx, s.metadataConn, query)

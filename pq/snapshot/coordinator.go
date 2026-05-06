@@ -1210,7 +1210,8 @@ func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Conn
 	}
 
 	var count int64
-	if _, err := fmt.Sscanf(countStr, "%d", &count); err != nil {
+	count, err = strconv.ParseInt(countStr, 10, 64)
+	if err != nil {
 		return 0, errors.Wrap(err, "parse row count")
 	}
 

@@ -3,6 +3,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -117,10 +118,12 @@ func (s *Snapshotter) loadJob(ctx context.Context, slotName string) (*Job, error
 		}
 
 		job.Completed = string(row[4]) == "t" || string(row[4]) == "true"
-		if _, err := fmt.Sscanf(string(row[5]), "%d", &job.TotalChunks); err != nil {
+		job.TotalChunks, err = strconv.Atoi(string(row[5]))
+		if err != nil {
 			return errors.Wrap(err, "parse total chunks")
 		}
-		if _, err := fmt.Sscanf(string(row[6]), "%d", &job.CompletedChunks); err != nil {
+		job.CompletedChunks, err = strconv.Atoi(string(row[6]))
+		if err != nil {
 			return errors.Wrap(err, "parse completed chunks")
 		}
 
@@ -160,10 +163,12 @@ func (s *Snapshotter) checkJobCompleted(ctx context.Context, slotName string) (b
 
 		row := results[0].Rows[0]
 		var total, completed int
-		if _, err := fmt.Sscanf(string(row[0]), "%d", &total); err != nil {
+		total, err = strconv.Atoi(string(row[0]))
+		if err != nil {
 			return errors.Wrap(err, "parse total count")
 		}
-		if _, err := fmt.Sscanf(string(row[1]), "%d", &completed); err != nil {
+		completed, err = strconv.Atoi(string(row[1]))
+		if err != nil {
 			return errors.Wrap(err, "parse completed count")
 		}
 

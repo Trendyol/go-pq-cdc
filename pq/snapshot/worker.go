@@ -3,6 +3,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
@@ -496,18 +497,23 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	}
 
 	// Parse each field with validation
-	if _, err := fmt.Sscanf(string(row[0]), "%d", &chunk.ID); err != nil {
+	var err error
+	chunk.ID, err = strconv.ParseInt(string(row[0]), 10, 64)
+	if err != nil {
 		return nil, errors.Wrap(err, "parse chunk ID")
 	}
 	chunk.TableSchema = string(row[1])
 	chunk.TableName = string(row[2])
-	if _, err := fmt.Sscanf(string(row[3]), "%d", &chunk.ChunkIndex); err != nil {
+	chunk.ChunkIndex, err = strconv.Atoi(string(row[3]))
+	if err != nil {
 		return nil, errors.Wrap(err, "parse chunk index")
 	}
-	if _, err := fmt.Sscanf(string(row[4]), "%d", &chunk.ChunkStart); err != nil {
+	chunk.ChunkStart, err = strconv.ParseInt(string(row[4]), 10, 64)
+	if err != nil {
 		return nil, errors.Wrap(err, "parse chunk start")
 	}
-	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
+	chunk.ChunkSize, err = strconv.ParseInt(string(row[5]), 10, 64)
+	if err != nil {
 		return nil, errors.Wrap(err, "parse chunk size")
 	}
 

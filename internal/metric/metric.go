@@ -111,7 +111,7 @@ func NewMetric(slotName string) Metric {
 			Namespace: cdcNamespace,
 			Subsystem: "process_latency",
 			Name:      "current",
-			Help:      "latest cdc process latency",
+			Help:      "latest cdc process latency ms",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
 				"host":      hostname,

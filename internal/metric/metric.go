@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	cdcNamespace             = "go_pq_cdc"
-	replicationSlotSubsystem = "replication_slot"
+	cdcNamespace              = "go_pq_cdc"
+	replicationSlotSubsystem  = "replication_slot"
+	nanosecondsPerMillisecond = 1_000_000
 )
 
 type Metric interface {
@@ -42,13 +43,15 @@ type metric struct {
 	totalUpdate prometheus.Counter
 	totalDelete prometheus.Counter
 
-	cdcLatency            prometheus.Gauge
-	processLatency        prometheus.Gauge
-	slotActivity          prometheus.Gauge
-	slotConfirmedFlushLSN prometheus.Gauge
-	slotCurrentLSN        prometheus.Gauge
-	slotRetainedWALSize   prometheus.Gauge
-	slotLag               prometheus.Gauge
+	cdcLatency                 prometheus.Gauge
+	cdcLatencyMilliseconds     prometheus.Gauge
+	processLatency             prometheus.Gauge
+	processLatencyMilliseconds prometheus.Gauge
+	slotActivity               prometheus.Gauge
+	slotConfirmedFlushLSN      prometheus.Gauge
+	slotCurrentLSN             prometheus.Gauge
+	slotRetainedWALSize        prometheus.Gauge
+	slotLag                    prometheus.Gauge
 
 	// Snapshot metrics
 	snapshotInProgress      prometheus.Gauge
@@ -107,11 +110,31 @@ func NewMetric(slotName string) Metric {
 				"host":      hostname,
 			},
 		}),
+		cdcLatencyMilliseconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "cdc_latency",
+			Name:      "current_milliseconds",
+			Help:      "latest consumed cdc message latency in milliseconds",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
 		processLatency: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: cdcNamespace,
 			Subsystem: "process_latency",
 			Name:      "current",
 			Help:      "latest cdc process latency",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		processLatencyMilliseconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "process_latency",
+			Name:      "current_milliseconds",
+			Help:      "latest cdc process latency in milliseconds",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
 				"host":      hostname,
@@ -256,7 +279,9 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.totalUpdate,
 		m.totalDelete,
 		m.cdcLatency,
+		m.cdcLatencyMilliseconds,
 		m.processLatency,
+		m.processLatencyMilliseconds,
 		m.slotActivity,
 		m.slotCurrentLSN,
 		m.slotConfirmedFlushLSN,
@@ -287,10 +312,12 @@ func (m *metric) DeleteOpIncrement(count int64) {
 
 func (m *metric) SetCDCLatency(latency int64) {
 	m.cdcLatency.Set(float64(latency))
+	m.cdcLatencyMilliseconds.Set(float64(latency) / nanosecondsPerMillisecond)
 }
 
 func (m *metric) SetProcessLatency(latency int64) {
 	m.processLatency.Set(float64(latency))
+	m.processLatencyMilliseconds.Set(float64(latency) / nanosecondsPerMillisecond)
 }
 
 func (m *metric) SetSlotActivity(active bool) {

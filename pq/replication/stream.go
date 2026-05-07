@@ -31,15 +31,18 @@ const (
 )
 
 type ListenerContext struct {
-	Message any
-	Ack     func() error
+	Message  any
+	Ack      func() error
+	WALStart pq.LSN
+	AckLSN   pq.LSN
 }
 
 type ListenerFunc func(ctx *ListenerContext)
 
 type Message struct {
 	message  any
-	walStart int64
+	walStart pq.LSN
+	ackLSN   pq.LSN
 }
 
 type Streamer interface {
@@ -184,7 +187,8 @@ func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
 		b.outCh <- &Message{
 			message:  b.pending.message,
-			walStart: int64(lsn),
+			walStart: b.pending.walStart,
+			ackLSN:   lsn,
 		}
 		b.pending = nil
 	}
@@ -250,7 +254,8 @@ func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LS
 		if i == n-1 {
 			outCh <- &Message{
 				message:  msg.message,
-				walStart: int64(endLSN),
+				walStart: msg.walStart,
+				ackLSN:   endLSN,
 			}
 		} else {
 			outCh <- msg
@@ -426,9 +431,15 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 	switch msg := decodedMsg.(type) {
 	case *format.Begin:
 		buf.discard()
+		if s.config.Listener.EmitTransactionBoundaries {
+			buf.outCh <- &Message{message: msg, walStart: xld.WALStart, ackLSN: xld.WALStart}
+		}
 
 	case *format.Commit:
 		buf.flushWithLSN(msg.TransactionEndLSN)
+		if s.config.Listener.EmitTransactionBoundaries {
+			buf.outCh <- &Message{message: msg, walStart: xld.WALStart, ackLSN: msg.TransactionEndLSN}
+		}
 
 	case *format.StreamStart:
 		// Beginning of a streaming chunk – DML events that follow belong
@@ -442,6 +453,9 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 	case *format.StreamCommit:
 		// Final commit of a streamed transaction – emit all messages for this XID.
 		streamBuf.flushTx(msg.Xid, buf.outCh, msg.TransactionEndLSN)
+		if s.config.Listener.EmitTransactionBoundaries {
+			buf.outCh <- &Message{message: msg, walStart: xld.WALStart, ackLSN: msg.TransactionEndLSN}
+		}
 
 	case *format.StreamAbort:
 		// Streamed transaction rolled back – discard messages for this XID.
@@ -451,7 +465,8 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		// DML event (Insert, Update, Delete, Relation, …)
 		m := &Message{
 			message:  decodedMsg,
-			walStart: int64(xld.WALStart),
+			walStart: xld.WALStart,
+			ackLSN:   xld.WALStart,
 		}
 		if streamBuf.streaming {
 			streamBuf.append(m)
@@ -482,8 +497,7 @@ func (s *stream) process(ctx context.Context) {
 			}
 
 			ackFunc := func() error {
-				pos := pq.LSN(msg.walStart)
-				s.UpdateConfirmedXLogPos(pos)
+				s.UpdateConfirmedXLogPos(msg.ackLSN)
 				logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
 				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
 			}
@@ -496,8 +510,10 @@ func (s *stream) process(ctx context.Context) {
 			}
 
 			lCtx := &ListenerContext{
-				Message: msg.message,
-				Ack:     ackFunc,
+				Message:  msg.message,
+				WALStart: msg.walStart,
+				AckLSN:   msg.ackLSN,
+				Ack:      ackFunc,
 			}
 
 			switch lCtx.Message.(type) {

@@ -392,6 +392,16 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 		return
 	}
 
+	// add LSN to insert/update/delete messages
+	switch m := decodedMsg.(type) {
+	case *format.Insert:
+		m.LSN = xld.WALStart
+	case *format.Update:
+		m.LSN = xld.WALStart
+	case *format.Delete:
+		m.LSN = xld.WALStart
+	}
+
 	s.dispatchMessage(decodedMsg, xld, buf, streamBuf)
 }
 

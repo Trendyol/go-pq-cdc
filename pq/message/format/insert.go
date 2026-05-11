@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
@@ -18,6 +19,7 @@ type Insert struct {
 	Decoded        map[string]any
 	TableNamespace string
 	TableName      string
+	LSN            pq.LSN
 	OID            uint32
 	XID            uint32
 }

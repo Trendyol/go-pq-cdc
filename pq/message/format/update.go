@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/go-playground/errors"
 )
@@ -22,6 +23,7 @@ type Update struct {
 	OldDecoded     map[string]any
 	TableNamespace string
 	TableName      string
+	LSN            pq.LSN
 	OID            uint32
 	XID            uint32
 	OldTupleType   uint8

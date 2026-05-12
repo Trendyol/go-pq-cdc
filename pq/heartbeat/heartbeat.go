@@ -46,20 +46,18 @@ func (h *Heartbeat) EnsureTable(ctx context.Context, conn pq.Connection) error {
 		return fmt.Errorf("check heartbeat table existence: %w", err)
 	}
 
-	if exists {
-		logger.Info("heartbeat table already exists, skipping creation", "table", schema+"."+table)
-		return nil
-	}
-
-	if err := h.createTable(ctx, conn); err != nil {
-		return err
+	if !exists {
+		if err := h.createTable(ctx, conn); err != nil {
+			return err
+		}
+		logger.Info("heartbeat table created", "table", schema+"."+table)
 	}
 
 	if err := h.insertInitialRow(ctx, conn); err != nil {
 		return err
 	}
 
-	logger.Info("heartbeat table created", "table", schema+"."+table)
+	logger.Info("heartbeat table ready to use", "table", schema+"."+table)
 	return nil
 }
 
@@ -147,12 +145,19 @@ func (h *Heartbeat) execute(ctx context.Context) error {
 		}
 	}()
 
-	if _, err := resultReader.ReadAll(); err != nil {
+	rows, err := resultReader.ReadAll()
+	if err != nil {
 		// On error, proactively close and nil the connection so that the next
 		// heartbeat tick will try to re-establish it.
 		_ = h.conn.Close(ctx)
 		h.conn = nil
 		return fmt.Errorf("heartbeat query failed: %w", err)
+	}
+
+	if len(rows) == 0 {
+		if err := h.insertInitialRow(ctx, h.conn); err != nil {
+			return fmt.Errorf("recreate heartbeat row failed: %w", err)
+		}
 	}
 
 	return nil
@@ -162,7 +167,7 @@ func (h *Heartbeat) execute(ctx context.Context) error {
 func (h *Heartbeat) query() string {
 	schema := quoteIdentifier(h.cfg.Table.Schema)
 	table := quoteIdentifier(h.cfg.Table.Name)
-	return fmt.Sprintf(`UPDATE %s.%s SET last_heartbeat = NOW() WHERE id = 1`, schema, table)
+	return fmt.Sprintf(`UPDATE %s.%s SET last_heartbeat = NOW() WHERE id = 1 RETURNING 1`, schema, table)
 }
 
 // Close closes the heartbeat connection

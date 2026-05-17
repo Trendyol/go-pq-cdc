@@ -206,20 +206,39 @@ func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {
 		case "active_pid":
 			slotInfo.ActivePID = v.(int32)
 		case "restart_lsn":
-			slotInfo.RestartLSN, _ = pq.ParseLSN(v.(string))
+			lsn, err := pq.ParseLSN(v.(string))
+			if err != nil {
+				return nil, errors.Wrap(err, "parse restart_lsn")
+			}
+			slotInfo.RestartLSN = lsn
 		case "confirmed_flush_lsn":
-			slotInfo.ConfirmedFlushLSN, _ = pq.ParseLSN(v.(string))
+			lsn, err := pq.ParseLSN(v.(string))
+			if err != nil {
+				return nil, errors.Wrap(err, "parse confirmed_flush_lsn")
+			}
+			slotInfo.ConfirmedFlushLSN = lsn
 		case "wal_status":
 			slotInfo.WalStatus = v.(string)
 		case "current_lsn":
-			slotInfo.CurrentLSN, _ = pq.ParseLSN(v.(string))
+			lsn, err := pq.ParseLSN(v.(string))
+			if err != nil {
+				return nil, errors.Wrap(err, "parse current_lsn")
+			}
+			slotInfo.CurrentLSN = lsn
 		}
 	}
 
-	slotInfo.RetainedWALSize = slotInfo.CurrentLSN - slotInfo.RestartLSN
-	slotInfo.Lag = slotInfo.CurrentLSN - slotInfo.ConfirmedFlushLSN
+	slotInfo.RetainedWALSize = subtractLSN(slotInfo.CurrentLSN, slotInfo.RestartLSN)
+	slotInfo.Lag = subtractLSN(slotInfo.CurrentLSN, slotInfo.ConfirmedFlushLSN)
 
 	return &slotInfo, nil
+}
+
+func subtractLSN(current, previous pq.LSN) pq.LSN {
+	if current <= previous {
+		return 0
+	}
+	return current - previous
 }
 
 func decodeTextColumnData(data []byte, dataType uint32) (interface{}, error) {

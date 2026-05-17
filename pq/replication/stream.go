@@ -392,7 +392,7 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 	)
 
 	s.UpdateXLogPos(xld.ServerWALEnd)
-	s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
+	s.metric.SetCDCLatency(time.Since(xld.ServerTime).Milliseconds())
 
 	decodedMsg, err := message.New(xld.WALData, xld.ServerTime, s.relation)
 	if err != nil || decodedMsg == nil {
@@ -513,7 +513,7 @@ func (s *stream) process(ctx context.Context) {
 
 			start := time.Now().UTC()
 			s.listenerFunc(lCtx)
-			s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
+			s.metric.SetProcessLatency(time.Since(start).Milliseconds())
 		}
 	}
 }

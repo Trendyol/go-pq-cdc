@@ -42,7 +42,7 @@ type LoggerConfig struct {
 }
 
 type ExtensionSupport struct {
-	EnableTimeScaleDB bool `json:"enableTimeScaleDB" yaml:"EnableTimeScaleDB"`
+	EnableTimeScaleDB bool `json:"enableTimeScaleDB" yaml:"enableTimescaleDB"`
 }
 
 type HeartbeatConfig struct {

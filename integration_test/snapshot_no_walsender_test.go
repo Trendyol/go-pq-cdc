@@ -64,6 +64,7 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 	maxWalsendersDuringSnapshot := 0
 	var snapshotInProgress atomic.Bool
 	stopWalsenderCheck := make(chan struct{})
+	walsenderCheckDone := make(chan struct{})
 
 	messageCh := make(chan any, 200)
 	handlerFunc := func(ctx *replication.ListenerContext) {
@@ -93,6 +94,8 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 
 	// Background goroutine to check walsender count during snapshot
 	go func() {
+		defer close(walsenderCheckDone)
+
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 
@@ -101,18 +104,23 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 			case <-stopWalsenderCheck:
 				return
 			case <-ticker.C:
-				if snapshotInProgress.Load() {
-					count, err := countWalsendersForSlot(ctx, checkConn, cdcCfg.Slot.Name)
-					if err != nil {
-						t.Logf("⚠️  Failed to count walsenders: %v", err)
-						continue
-					}
-					if count > maxWalsendersDuringSnapshot {
-						maxWalsendersDuringSnapshot = count
-					}
-					if count > 0 {
-						t.Logf("⚠️  Walsender detected during snapshot: count=%d", count)
-					}
+				if !snapshotInProgress.Load() {
+					continue
+				}
+
+				count, err := countWalsendersForSlot(ctx, checkConn, cdcCfg.Slot.Name)
+				if err != nil {
+					t.Logf("⚠️  Failed to count walsenders: %v", err)
+					continue
+				}
+				if !snapshotInProgress.Load() {
+					continue
+				}
+				if count > maxWalsendersDuringSnapshot {
+					maxWalsendersDuringSnapshot = count
+				}
+				if count > 0 {
+					t.Logf("⚠️  Walsender detected during snapshot: count=%d", count)
 				}
 			}
 		}
@@ -158,6 +166,7 @@ func TestNoWalsenderDuringSnapshot(t *testing.T) {
 
 	// Stop walsender checking
 	close(stopWalsenderCheck)
+	<-walsenderCheckDone
 
 	// Wait a bit for CDC to start
 	time.Sleep(500 * time.Millisecond)

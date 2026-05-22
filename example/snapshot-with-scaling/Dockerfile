@@ -1,5 +1,5 @@
 #- Build Stage
-FROM --platform=linux/arm64 golang:1.23-alpine3.19 AS builder
+FROM --platform=linux/arm64 golang:1.24-alpine3.21 AS builder
 
 # Install git (required for go mod download)
 RUN apk add --no-cache git
@@ -19,7 +19,7 @@ RUN go mod download
 RUN CGO_ENABLED=0 go build -trimpath -a -v -o /go/bin/go-pq-cdc ./main.go
 
 #- Run Stage
-FROM --platform=linux/arm64 gcr.io/distroless/static-debian11
+FROM --platform=linux/arm64 gcr.io/distroless/static-debian12
 
 WORKDIR /app
 

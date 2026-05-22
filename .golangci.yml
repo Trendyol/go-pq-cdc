@@ -33,10 +33,6 @@ linters:
   settings:
     funlen:
       lines: 100
-    revive:
-      rules:
-        - name: exported
-          disabled: true
     gosec:
       excludes:
         - G115
@@ -46,7 +42,6 @@ linters:
     staticcheck:
       checks:
         - "all"
-        - "-S1009"
         - "-ST1000"
   exclusions:
     rules:
@@ -59,6 +54,12 @@ linters:
       - text: "Error return value of `.*Close` is not checked"
         linters:
           - errcheck
+      - text: "exported: exported .+ should have comment"
+        linters:
+          - revive
+      - text: "package-comments: should have a package comment"
+        linters:
+          - revive
 
 formatters:
   enable:

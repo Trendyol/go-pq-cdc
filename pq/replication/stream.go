@@ -11,7 +11,6 @@ import (
 
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
-	"github.com/Trendyol/go-pq-cdc/internal/slice"
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message"
@@ -384,8 +383,7 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 	}
 
 	logger.Debug("wal received",
-		"walData", string(xld.WALData),
-		"walDataByte", slice.ConvertToInt(xld.WALData),
+		"walDataLen", len(xld.WALData),
 		"walStart", xld.WALStart,
 		"walEnd", xld.ServerWALEnd,
 		"serverTime", xld.ServerTime,

@@ -356,8 +356,10 @@ the `/metrics` endpoint.
 | go_pq_cdc_update_total                              | The total number of `UPDATE` operations captured on specific tables.                                  | slot_name, host| Counter    |
 | go_pq_cdc_delete_total                              | The total number of `DELETE` operations captured on specific tables.                                  | slot_name, host| Counter    |
 | go_pq_cdc_insert_total                              | The total number of `INSERT` operations captured on specific tables.                                  | slot_name, host| Counter    |
-| go_pq_cdc_cdc_latency_current                       | The current latency in capturing data changes from PostgreSQL.                                        | slot_name, host| Gauge      |
-| go_pq_cdc_process_latency_current                   | The current latency in processing the captured data changes.                                          | slot_name, host| Gauge      |
+| go_pq_cdc_cdc_latency_current                       | The current latency in capturing data changes from PostgreSQL, in nanoseconds.                       | slot_name, host| Gauge      |
+| go_pq_cdc_cdc_latency_current_milliseconds          | The current latency in capturing data changes from PostgreSQL, in milliseconds.                      | slot_name, host| Gauge      |
+| go_pq_cdc_process_latency_current                   | The current latency in processing the captured data changes, in nanoseconds.                         | slot_name, host| Gauge      |
+| go_pq_cdc_process_latency_current_milliseconds      | The current latency in processing the captured data changes, in milliseconds.                        | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_confirmed_flush_lsn | The last confirmed flush Log Sequence Number (LSN) in the PostgreSQL replication slot.                | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_current_lsn         | The current Log Sequence Number (LSN) being processed in the PostgreSQL replication slot.             | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_is_active           | Indicates whether the PostgreSQL replication slot is currently active (1 for active, 0 for inactive). | slot_name, host| Gauge      |

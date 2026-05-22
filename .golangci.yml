@@ -1,16 +1,13 @@
-linters-settings:
-  funlen:
-    lines: 100
+version: "2"
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - bodyclose
     - dogsled
     - dupl
     - errcheck
     - errorlint
-    - exportloopref
     - funlen
     - gocheckcompilerdirectives
     - gochecknoinits
@@ -18,11 +15,8 @@ linters:
     - gocritic
     - gocyclo
     - godox
-    - gofmt
-    - goimports
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - misspell
@@ -31,17 +25,42 @@ linters:
     - nolintlint
     - revive
     - staticcheck
-    - stylecheck
     - testifylint
     - unconvert
     - unparam
     - unused
     - whitespace
+  settings:
+    funlen:
+      lines: 100
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gosec:
+      excludes:
+        - G115
+        - G117
+        - G104
+        - G304
+    staticcheck:
+      checks:
+        - "all"
+        - "-S1009"
+        - "-ST1000"
+  exclusions:
+    rules:
+      - path: (.+)_test.go
+        linters:
+          - funlen
+          - goconst
+          - dupl
+          - gosec
+      - text: "Error return value of `.*Close` is not checked"
+        linters:
+          - errcheck
 
-issues:
-  exclude-rules:
-    - path: (.+)_test.go
-      linters:
-        - funlen
-        - goconst
-        - dupl
+formatters:
+  enable:
+    - gofmt
+    - goimports

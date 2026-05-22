@@ -1,6 +1,6 @@
 module basic-snapshot-with-scaling
 
-go 1.22.4
+go 1.24
 
 replace github.com/Trendyol/go-pq-cdc => ../../
 

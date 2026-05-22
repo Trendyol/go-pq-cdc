@@ -1,6 +1,6 @@
 module github.com/Trendyol/go-pq-cdc/example/streaming-transactions
 
-go 1.22.4
+go 1.24
 
 replace github.com/Trendyol/go-pq-cdc => ../..
 

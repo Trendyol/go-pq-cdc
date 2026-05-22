@@ -181,8 +181,8 @@ func (b *messageBuffer) flush() {
 	}
 }
 
-// flushWithLSN emits the pending message (if any), rewriting its WAL position
-// to the given transaction-end LSN. Used at COMMIT.
+// flushWithLSN emits the pending message, preserving its WALStart while setting
+// AckLSN to the transaction-end LSN.
 func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
 		b.outCh <- &Message{
@@ -245,7 +245,8 @@ func (s *streamTxBuffer) stopTx() {
 }
 
 // flushTx emits every accumulated message for the given XID through outCh.
-// The last message's WAL position is rewritten to the transaction-end LSN.
+// The last message's WALStart is preserved while its AckLSN is set to the
+// transaction-end LSN.
 func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LSN) {
 	s.streaming = false
 	msgs := s.txns[xid]
@@ -482,6 +483,8 @@ func (s *stream) process(ctx context.Context) {
 		s.processEnd <- struct{}{}
 	}()
 
+	ackTracker := newTransactionAckTracker()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -496,12 +499,7 @@ func (s *stream) process(ctx context.Context) {
 				continue
 			}
 
-			ackFunc := func() error {
-				s.UpdateConfirmedXLogPos(msg.ackLSN)
-				logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
-			}
-
+			ackFunc := s.ackFuncForMessage(ctx, msg, ackTracker)
 			if s.isHeartbeatMessage(msg.message) {
 				if err := ackFunc(); err != nil {
 					logger.Error("heartbeat auto-ack failed", "error", err)
@@ -530,6 +528,88 @@ func (s *stream) process(ctx context.Context) {
 			s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
 		}
 	}
+}
+
+type transactionAckCheckpoint struct {
+	lsn   pq.LSN
+	acked bool
+}
+
+type transactionAckTracker struct {
+	checkpoints []*transactionAckCheckpoint
+	mu          sync.Mutex
+}
+
+func newTransactionAckTracker() *transactionAckTracker {
+	return &transactionAckTracker{}
+}
+
+func (t *transactionAckTracker) register(lsn pq.LSN) *transactionAckCheckpoint {
+	checkpoint := &transactionAckCheckpoint{lsn: lsn}
+	t.mu.Lock()
+	t.checkpoints = append(t.checkpoints, checkpoint)
+	t.mu.Unlock()
+	return checkpoint
+}
+
+func (t *transactionAckTracker) ack(checkpoint *transactionAckCheckpoint, advance func(pq.LSN)) {
+	if checkpoint == nil {
+		return
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	checkpoint.acked = true
+	for len(t.checkpoints) > 0 && t.checkpoints[0].acked {
+		advance(t.checkpoints[0].lsn)
+		t.checkpoints = t.checkpoints[1:]
+	}
+}
+
+func (s *stream) ackFuncForMessage(ctx context.Context, msg *Message, tracker *transactionAckTracker) func() error {
+	if !s.config.Listener.EmitTransactionBoundaries {
+		return s.advancingAckFunc(ctx, msg)
+	}
+	if isTransactionCommitBoundary(msg.message) {
+		checkpoint := tracker.register(msg.ackLSN)
+		return s.orderedCommitAckFunc(ctx, msg, tracker, checkpoint)
+	}
+	return s.nonAdvancingAckFunc(ctx, msg)
+}
+
+func isTransactionCommitBoundary(msg any) bool {
+	switch msg.(type) {
+	case *format.Commit, *format.StreamCommit:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *stream) advancingAckFunc(ctx context.Context, msg *Message) func() error {
+	return func() error {
+		s.UpdateConfirmedXLogPos(msg.ackLSN)
+		return s.sendStandbyStatusUpdate(ctx, msg)
+	}
+}
+
+func (s *stream) orderedCommitAckFunc(ctx context.Context, msg *Message, tracker *transactionAckTracker, checkpoint *transactionAckCheckpoint) func() error {
+	return func() error {
+		tracker.ack(checkpoint, s.UpdateConfirmedXLogPos)
+		return s.sendStandbyStatusUpdate(ctx, msg)
+	}
+}
+
+func (s *stream) nonAdvancingAckFunc(ctx context.Context, msg *Message) func() error {
+	return func() error {
+		return s.sendStandbyStatusUpdate(ctx, msg)
+	}
+}
+
+func (s *stream) sendStandbyStatusUpdate(ctx context.Context, msg *Message) error {
+	logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String(), "ackLSN", msg.ackLSN.String())
+	return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
 }
 
 func (s *stream) isHeartbeatMessage(msg any) bool {

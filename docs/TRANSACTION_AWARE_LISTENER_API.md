@@ -36,8 +36,9 @@ type ListenerContext struct {
 	// WALStart is the WAL start position for this decoded logical message.
 	WALStart pq.LSN
 
-	// AckLSN is the exact LSN that Ack will confirm.
-	// For commit events this is the transaction end LSN.
+	// AckLSN is the LSN associated with this message's acknowledgement.
+	// In transaction-aware mode, only Commit and StreamCommit acknowledgements
+	// advance confirmed_flush_lsn; non-commit acknowledgements are non-advancing.
 	AckLSN pq.LSN
 }
 ```
@@ -55,9 +56,9 @@ When `EmitTransactionBoundaries` is false, behavior remains row-oriented.
 When `EmitTransactionBoundaries` is true, the listener receives:
 
 - `*format.Begin`
-- row messages: `*format.Insert`, `*format.Update`, `*format.Delete`
+- decoded row and metadata messages in WAL order, such as `*format.Insert`, `*format.Update`, `*format.Delete`, `*format.Relation`, and `*format.Truncate` when PostgreSQL emits them
 - `*format.Commit`
-- buffered streamed transaction rows followed by `*format.StreamCommit`
+- buffered streamed transaction messages followed by `*format.StreamCommit`
 - snapshot events as they work today
 
 ## Semantics
@@ -65,23 +66,32 @@ When `EmitTransactionBoundaries` is true, the listener receives:
 For regular transactions:
 
 1. Emit `Begin`.
-2. Emit row events in WAL/order-preserving order.
+2. Emit decoded row and metadata events in WAL/order-preserving order.
 3. Emit `Commit`.
-4. `Commit.Ack()` confirms the transaction end LSN.
+4. `Ack()` on `Commit` is the transaction checkpoint acknowledgement.
 
 For streamed transactions:
 
-1. Do not emit rows before the streamed transaction commits.
-2. Buffer streamed rows by XID as today.
-3. On `StreamCommit`, emit the buffered rows in order.
+1. Do not emit streamed transaction messages before the streamed transaction commits.
+2. Buffer streamed messages by XID as today.
+3. On `StreamCommit`, emit the buffered messages in order.
 4. Emit `StreamCommit`.
-5. `StreamCommit.Ack()` confirms the transaction end LSN.
-6. On `StreamAbort`, discard buffered rows and emit nothing.
+5. `Ack()` on `StreamCommit` is the transaction checkpoint acknowledgement.
+6. On `StreamAbort`, discard buffered messages and emit nothing.
 
 For rollbacks:
 
 - no committed row events are emitted
 - no commit boundary is emitted
+
+For acknowledgements in transaction-aware mode:
+
+- `Ack()` on `Commit` and `StreamCommit` is the only operation that may advance `confirmed_flush_lsn`.
+- `Ack()` on non-commit messages sends a standby status update with the current confirmed LSN, but does not advance `confirmed_flush_lsn`, even when the message's `AckLSN` is a transaction-end LSN.
+- Commit acknowledgements are ordered. A later commit acknowledgement is held behind any earlier unacknowledged commit, so a later `Ack()` cannot accidentally confirm an unprojected earlier transaction.
+- `Ack()` is still cumulative at the PostgreSQL replication-slot level. Transaction-aware mode adds an ordered checkpoint guard around commit acknowledgements; consumers must still retry, block, stop the connector, or terminate the process after a projection failure instead of continuing to process later commits.
+
+Heartbeat rows are still filtered before delivery. In transaction-aware mode, heartbeat row auto-acks are non-advancing. Boundary messages around heartbeat transactions may still be visible; consumers should acknowledge every visible commit boundary or disable heartbeat for that listener mode.
 
 ## Why This Matters
 
@@ -97,10 +107,15 @@ func listener(ctx *replication.ListenerContext) {
 		txBuffer.Append(ctx.WALStart, msg)
 
 	case *format.Commit:
-		if err := projector.Apply(txBuffer.Rows(), msg.TransactionEndLSN); err != nil {
+		if err := projector.Apply(txBuffer.Rows(), ctx.AckLSN); err != nil {
+			// Do not continue to later commits after a failed projection.
+			// Retry, block, cancel the connector, or terminate the process.
+			failHard(err)
 			return
 		}
-		_ = ctx.Ack()
+		if err := ctx.Ack(); err != nil {
+			failHard(err)
+		}
 	}
 }
 ```
@@ -112,8 +127,11 @@ The important property is that replication is acknowledged only after the consum
 Covered behavior:
 
 - default mode does not emit transaction boundary messages
+- default mode keeps immediate row-oriented acknowledgement behavior
 - transaction mode emits `Begin -> rows -> Commit`
 - `Commit` context has `AckLSN == TransactionEndLSN`
+- non-commit `Ack()` does not advance `confirmed_flush_lsn` in transaction-aware mode
+- later commit acknowledgements cannot advance past an earlier unacknowledged commit in transaction-aware mode
 - multi-row transactions preserve row order
 - streamed transactions emit no rows before `StreamCommit`
 - `StreamAbort` discards buffered rows

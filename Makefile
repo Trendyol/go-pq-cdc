@@ -6,7 +6,7 @@ init: init/lint
 .PHONY: init/lint  init/vulnCheck
 init/lint:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
-	go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@v0.22.0
+	go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@v0.37.0
 
 .PHONY: init/vulnCheck
 init/vulnCheck:
@@ -25,7 +25,7 @@ audit: vendor
 .PHONY: tidy
 tidy:
 	@echo 'Tidying and verifying module dependencies...'
-	go mod tidy -compat=1.22.4
+	go mod tidy -compat=1.24
 	go mod verify
 
 .PHONY: tidy/all

@@ -616,6 +616,9 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 	for range ticker.C {
 		info, err := c.slot.Info(ctx)
 		if err != nil {
+			if goerrors.Is(err, slot.ErrorSlotClosed) {
+				return
+			}
 			logger.Warn("slot info failed on capture slot", "error", err)
 			continue
 		}

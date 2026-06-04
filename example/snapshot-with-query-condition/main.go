@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
+	"log"
+	"log/slog"
+	"os"
+	"time"
+
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
-	"log"
-	"log/slog"
-	"os"
-	"time"
 )
 
 func main() {
@@ -111,4 +112,3 @@ func handleSnapshot(s *format.Snapshot) {
 			s.ServerTime.Format("15:04:05"))
 	}
 }
-

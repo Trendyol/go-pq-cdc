@@ -5,7 +5,7 @@ init: init/lint
 
 .PHONY: init/lint  init/vulnCheck
 init/lint:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 	go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@v0.22.0
 
 .PHONY: init/vulnCheck
@@ -16,7 +16,7 @@ init/vulnCheck:
 audit: vendor
 	@echo 'Formatting code...'
 	fieldalignment -fix ./...
-	golangci-lint run -c .golangci.yml --timeout=5m -v --fix
+	golangci-lint run -c .golangci.yml -v --fix
 	@echo 'Vetting code...'
 	go vet ./...
 	@echo 'Vulnerability scanning...'
@@ -47,7 +47,7 @@ test/integration:
 lint: init/lint
 	@echo 'Formatting code...'
 	fieldalignment -fix ./...
-	golangci-lint run -c .golangci.yml --timeout=5m -v --fix
+	golangci-lint run -c .golangci.yml -v --fix
 
 .PHONY: build
 build/linux:

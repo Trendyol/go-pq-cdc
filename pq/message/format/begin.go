@@ -2,9 +2,10 @@ package format
 
 import (
 	"encoding/binary"
+	"time"
+
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/go-playground/errors"
-	"time"
 )
 
 type Begin struct {

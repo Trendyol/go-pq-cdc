@@ -12,7 +12,7 @@ func ptrInt64(v int64) *int64 { return &v }
 
 func TestAndCondition(t *testing.T) {
 	t.Run("both empty returns empty", func(t *testing.T) {
-		assert.Equal(t, "", andCondition("", ""))
+		assert.Empty(t, andCondition("", ""))
 	})
 	t.Run("only existing returns existing", func(t *testing.T) {
 		assert.Equal(t, "a = 1", andCondition("a = 1", ""))
@@ -34,7 +34,7 @@ func TestGetQueryCondition(t *testing.T) {
 		s := newSnapshotter(config.SnapshotConfig{}, publication.Tables{
 			{Name: "users", Schema: "public"},
 		})
-		assert.Equal(t, "", s.getQueryCondition("public", "users"))
+		assert.Empty(t, s.getQueryCondition("public", "users"))
 	})
 
 	t.Run("returns global condition when no per-table override", func(t *testing.T) {

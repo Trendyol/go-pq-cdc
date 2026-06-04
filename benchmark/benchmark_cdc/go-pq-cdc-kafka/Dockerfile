@@ -1,5 +1,5 @@
 #- Build Stage
-FROM --platform=linux/arm64 golang:1.24-alpine3.21 AS builder
+FROM --platform=linux/arm64 golang:1.25-alpine3.21 AS builder
 
 # Install git (required for go mod download)
 RUN apk add --no-cache git

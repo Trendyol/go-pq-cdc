@@ -25,7 +25,7 @@ audit: vendor
 .PHONY: tidy
 tidy:
 	@echo 'Tidying and verifying module dependencies...'
-	go mod tidy -compat=1.24
+	go mod tidy -compat=1.25
 	go mod verify
 
 .PHONY: tidy/all

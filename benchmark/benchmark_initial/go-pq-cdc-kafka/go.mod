@@ -1,6 +1,6 @@
 module github.com/Trendyol/go-pq-cdc/benchmark/go-pq-cdc-kafka
 
-go 1.24
+go 1.25
 
 replace github.com/Trendyol/go-pq-cdc => ../../../
 

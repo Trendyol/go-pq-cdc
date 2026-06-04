@@ -33,6 +33,7 @@ ensuring low resource consumption and high performance.
 		- [Why?](#why)
 		- [Usage](#usage)
 		- [Examples](#examples)
+		- [PostgreSQL User Permissions](#postgresql-user-permissions)
 		- [Availability](#availability)
 		- [TOAST Handling](#toast-handling)
 		- [Heartbeat-based WAL Protection](#heartbeat-based-wal-protection)
@@ -159,6 +160,44 @@ func Handler(ctx *replication.ListenerContext) {
 * [PostgreSQL to PostgreSQL](./example/postgresql)
 * [Partitioned Tables](./example/partitioned-table-mapping)
 
+### PostgreSQL User Permissions
+
+go-pq-cdc connects to PostgreSQL with a regular role. For most deployments you do **not** need a superuser. A dedicated role with the right grants is enough. The exact privileges depend on which features you enable.
+
+Minimum role for streaming CDC against a fixed table list:
+
+```sql
+CREATE ROLE cdc_user WITH LOGIN REPLICATION PASSWORD 'change_me';
+
+GRANT USAGE ON SCHEMA public TO cdc_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO cdc_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT ON TABLES TO cdc_user;
+```
+
+Add these grants when the corresponding feature is enabled:
+
+| Feature                                       | Extra grants needed                                                                                                                       |
+|-----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `publication.createIfNotExists: true`         | `GRANT CREATE ON DATABASE <db> TO cdc_user;` so the publication can be created.                                                           |
+| `slot.createIfNotExists: true`                | `REPLICATION` role attribute (already in the example above).                                                                              |
+| Heartbeat with auto-created table             | `GRANT CREATE ON SCHEMA <schema> TO cdc_user;` for the initial `CREATE TABLE`, plus `GRANT INSERT, UPDATE ON <heartbeat_table>` for the auto-managed singleton row. |
+| Snapshot mode (initial / only)                | `SELECT` on the source tables (already covered above).                                                                                    |
+| Adding tables to an existing publication      | The role must own the publication, e.g. `ALTER PUBLICATION cdc_publication OWNER TO cdc_user;`.                                           |
+
+Common failure modes when grants are missing:
+
+- `must be superuser or replication role to start walsender` — role missing `REPLICATION`.
+- `permission denied for schema <schema>` — missing `USAGE` on the schema.
+- `permission denied to create publication` — missing `CREATE` on the database.
+- `permission denied for table <heartbeat_table>` — heartbeat enabled but the role cannot `INSERT`/`UPDATE` the singleton row.
+
+`pg_hba.conf` must also allow `replication` connections from the CDC host, for example:
+
+```
+host replication cdc_user 10.0.0.0/8 scram-sha-256
+```
+
 ### Availability
 
 The go-pq-cdc operates in passive/active modes for PostgreSQL change data capture (CDC). Here's how it ensures
@@ -216,10 +255,14 @@ Each heartbeat:
 This makes WAL retention **predictable** even when application traffic on the CDC database is very low, while other
 databases on the same instance are generating heavy write load.
 
-Important:
-
-- Use a dedicated heartbeat table.
-- Include that table in `publication.tables`; otherwise heartbeat changes are not part of the replication stream.
+> **Heartbeat only cleans WAL when its writes flow through the replication slot.**
+>
+> The heartbeat table must satisfy **both** conditions below — otherwise the auto-`UPDATE`s commit successfully but the slot never decodes them, `confirmed_flush_lsn` stays frozen, and WAL keeps growing as if heartbeat were disabled:
+>
+> 1. The heartbeat table is listed in `publication.tables`. If it is not part of the publication the change is filtered out before reaching the slot.
+> 2. The heartbeat table has a `REPLICA IDENTITY` that allows the auto-`UPDATE` to be decoded — `DEFAULT` (the auto-created table already has a primary key, so this works out of the box) or `FULL`. `REPLICA IDENTITY NOTHING` will silently break WAL advancement because the `UPDATE` cannot be decoded by `pgoutput`.
+>
+> Use a dedicated heartbeat table — never reuse a business table.
 
 ```yaml
 heartbeat:
@@ -227,6 +270,19 @@ heartbeat:
     name: "my_heartbeat"
     schema: "public"
   interval: 100ms
+```
+
+Make sure the heartbeat table is included in the publication, for example:
+
+```go
+Publication: publication.Config{
+    Name:              "cdc_publication",
+    CreateIfNotExists: true,
+    Tables: publication.Tables{
+        publication.Table{Name: "users"},
+        publication.Table{Name: "my_heartbeat"}, // must be present
+    },
+},
 ```
 
 #### Migration (breaking change)

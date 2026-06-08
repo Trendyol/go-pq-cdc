@@ -97,6 +97,8 @@ func decodePublicationInfoResult(result *pgconn.Result) (*Config, error) {
 		switch fd.Name {
 		case "pubname":
 			publicationConfig.Name = v.(string)
+		case "puballtables":
+			publicationConfig.AllTables = v.(bool)
 		case "pubinsert":
 			if v.(bool) {
 				publicationConfig.Operations = append(publicationConfig.Operations, "INSERT")

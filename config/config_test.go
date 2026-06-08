@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -549,5 +550,90 @@ func TestSnapshotConfigValidateQueryCondition(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "snapshot.tables")
 		assert.Contains(t, err.Error(), `"/*"`)
+	})
+}
+
+
+func TestValidateHeartbeatInPublication(t *testing.T) {
+	validBase := func() Config {
+		return Config{
+			Host:     "localhost",
+			Username: "user",
+			Password: "pass",
+			Database: "db",
+			Slot: slot.Config{
+				Name:                        "slot",
+				CreateIfNotExists:           true,
+				SlotActivityCheckerInterval: 1000,
+			},
+			Publication: publication.Config{
+				Name:              "pub",
+				CreateIfNotExists: true,
+				Operations:        publication.Operations{publication.OperationInsert},
+			},
+		}
+	}
+
+	t.Run("passes when heartbeat table is in publication.tables", func(t *testing.T) {
+		cfg := validBase()
+		cfg.Heartbeat = HeartbeatConfig{
+			Table:    publication.Table{Name: "heartbeat_events", Schema: "public", ReplicaIdentity: publication.ReplicaIdentityFull},
+			Interval: 100 * time.Millisecond,
+		}
+		cfg.Publication.Tables = publication.Tables{
+			{Name: "users", Schema: "public", ReplicaIdentity: publication.ReplicaIdentityFull},
+			{Name: "heartbeat_events", Schema: "public", ReplicaIdentity: publication.ReplicaIdentityFull},
+		}
+
+		err := cfg.Validate()
+		require.NoError(t, err)
+	})
+
+	t.Run("fails when heartbeat table is missing from publication.tables", func(t *testing.T) {
+		cfg := validBase()
+		cfg.Heartbeat = HeartbeatConfig{
+			Table:    publication.Table{Name: "heartbeat_events", Schema: "public", ReplicaIdentity: publication.ReplicaIdentityFull},
+			Interval: 100 * time.Millisecond,
+		}
+		cfg.Publication.Tables = publication.Tables{
+			{Name: "users", Schema: "public", ReplicaIdentity: publication.ReplicaIdentityFull},
+		}
+
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "heartbeat table public.heartbeat_events is not included in publication")
+	})
+
+	t.Run("skips check for puballtables publications", func(t *testing.T) {
+		cfg := Config{
+			Heartbeat: HeartbeatConfig{
+				Table: publication.Table{Name: "heartbeat_events", Schema: "public"},
+			},
+		}
+		pubInfo := &publication.Config{
+			Name:      "pub",
+			AllTables: true,
+			Tables:    publication.Tables{{Name: "users", Schema: "public"}},
+		}
+
+		require.NoError(t, cfg.ValidateHeartbeatInPublication(pubInfo))
+	})
+
+	t.Run("runtime check uses actual publication info tables", func(t *testing.T) {
+		cfg := Config{
+			Heartbeat: HeartbeatConfig{
+				Table: publication.Table{Name: "heartbeat_events", Schema: "public"},
+			},
+		}
+		pubInfo := &publication.Config{
+			Name: "pub",
+			Tables: publication.Tables{
+				{Name: "users", Schema: "public"},
+			},
+		}
+
+		err := cfg.ValidateHeartbeatInPublication(pubInfo)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `publication "pub"`)
 	})
 }

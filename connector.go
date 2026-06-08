@@ -109,6 +109,10 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	if err != nil {
 		return nil, err
 	}
+	if err := cfg.ValidateHeartbeatInPublication(publicationInfo); err != nil {
+		conn.Close(ctx)
+		return nil, err
+	}
 	logger.Info("publication", "info", publicationInfo)
 
 	// Close the setup connection - we don't need it anymore

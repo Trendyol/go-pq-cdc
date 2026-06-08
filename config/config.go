@@ -203,6 +203,29 @@ func (c *Config) validateSnapshotSubset(pubTables publication.Tables) (publicati
 	return validatedTables, nil
 }
 
+func (c *Config) ValidateHeartbeatInPublication(pubInfo *publication.Config) error {
+	if !c.IsHeartbeatEnabled() || pubInfo == nil {
+		return nil
+	}
+	if pubInfo.AllTables {
+		return nil
+	}
+
+	schema := c.Heartbeat.Table.Schema
+	if schema == "" {
+		schema = defaultSchema
+	}
+	name := c.Heartbeat.Table.Name
+	if pubInfo.Tables.Contains(schema, name) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"heartbeat table %s.%s is not included in publication %q; add it to publication.tables so heartbeat changes reach the replication slot",
+		schema, name, pubInfo.Name,
+	)
+}
+
 func (c *Config) Validate() error {
 	var err error
 	if isEmpty(c.Host) {
@@ -240,6 +263,14 @@ func (c *Config) Validate() error {
 	if c.Heartbeat.Table.Name != "" {
 		if c.Heartbeat.Interval <= 0 {
 			err = errors.Join(err, errors.New("heartbeat.interval must be greater than 0 when heartbeat table is configured"))
+		}
+		if !c.IsSnapshotOnlyMode() && len(c.Publication.Tables) > 0 {
+			if hErr := c.ValidateHeartbeatInPublication(&publication.Config{
+				Name:   c.Publication.Name,
+				Tables: c.Publication.Tables,
+			}); hErr != nil {
+				err = errors.Join(err, hErr)
+			}
 		}
 	}
 

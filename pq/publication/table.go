@@ -77,6 +77,24 @@ func (tc Table) Validate() error {
 
 type Tables []Table
 
+const defaultTableSchema = "public"
+
+func (ts Tables) Contains(schema, name string) bool {
+	if schema == "" {
+		schema = defaultTableSchema
+	}
+	for _, t := range ts {
+		tblSchema := t.Schema
+		if tblSchema == "" {
+			tblSchema = defaultTableSchema
+		}
+		if tblSchema == schema && t.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (ts Tables) Validate() error {
 	if len(ts) == 0 {
 		return errors.New("at least one table must be defined")

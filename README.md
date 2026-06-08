@@ -260,6 +260,7 @@ databases on the same instance are generating heavy write load.
 > The heartbeat table must satisfy **both** conditions below — otherwise the auto-`UPDATE`s commit successfully but the slot never decodes them, `confirmed_flush_lsn` stays frozen, and WAL keeps growing as if heartbeat were disabled:
 >
 > 1. The heartbeat table is listed in `publication.tables`. If it is not part of the publication the change is filtered out before reaching the slot.
+>    The connector validates this at startup for selective publications and returns an error if the heartbeat table is missing.
 > 2. The heartbeat table has a `REPLICA IDENTITY` that allows the auto-`UPDATE` to be decoded — `DEFAULT` (the auto-created table already has a primary key, so this works out of the box) or `FULL`. `REPLICA IDENTITY NOTHING` will silently break WAL advancement because the `UPDATE` cannot be decoded by `pgoutput`.
 >
 > Use a dedicated heartbeat table — never reuse a business table.

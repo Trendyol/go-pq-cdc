@@ -260,6 +260,7 @@ databases on the same instance are generating heavy write load.
 > The heartbeat table must satisfy **both** conditions below — otherwise the auto-`UPDATE`s commit successfully but the slot never decodes them, `confirmed_flush_lsn` stays frozen, and WAL keeps growing as if heartbeat were disabled:
 >
 > 1. The heartbeat table is listed in `publication.tables`. If it is not part of the publication the change is filtered out before reaching the slot.
+>    The connector validates this at startup for selective publications and returns an error if the heartbeat table is missing.
 > 2. The heartbeat table has a `REPLICA IDENTITY` that allows the auto-`UPDATE` to be decoded — `DEFAULT` (the auto-created table already has a primary key, so this works out of the box) or `FULL`. `REPLICA IDENTITY NOTHING` will silently break WAL advancement because the `UPDATE` cannot be decoded by `pgoutput`.
 >
 > Use a dedicated heartbeat table — never reuse a business table.
@@ -307,6 +308,25 @@ heartbeat:
 ```
 
 You can run [Simple With Heartbeat](./example/simple-with-heartbeat) example.
+
+#### Upgrade: heartbeat table must be in publication
+
+If you use heartbeat with a **selective publication** (`publication.tables` is non-empty and the publication is not `FOR ALL TABLES`), the connector now **fails at startup** when the heartbeat table is missing from `publication.tables`.
+
+Previously, this misconfiguration could still start successfully, but heartbeat writes would not reach the replication slot and WAL retention would not improve.
+
+Before upgrading, add the heartbeat table to your publication config (or switch to a `FOR ALL TABLES` publication):
+
+```yaml
+publication:
+  name: cdc_publication
+  createIfNotExists: true
+  tables:
+    - name: users
+      schema: public
+    - name: my_heartbeat
+      schema: public
+```
 
 #### Replica Identity Requirement
 
@@ -444,5 +464,5 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 ### Breaking Changes
 
 | Date taking effect | Version | Change | How to check |
-|--------------------|---------|--------|--------------| 
-| -                  | -       | -      | -            |
+|--------------------|---------|--------|--------------|
+| Next release       | TBD     | Startup fails when heartbeat is enabled but the heartbeat table is missing from a selective publication. | Ensure `publication.tables` includes your heartbeat table, or use a `FOR ALL TABLES` publication. See [Upgrade: heartbeat table must be in publication](#upgrade-heartbeat-table-must-be-in-publication). |

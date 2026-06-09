@@ -12,6 +12,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHeartbeatAdvancesLSN(t *testing.T) {
@@ -22,6 +23,7 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 	// Use base config but customize slot / publication / heartbeat for this test
 	cdcCfg := Config
 	cdcCfg.Slot.Name = "slot_test_heartbeat_lsn"
+	cdcCfg.Publication.Tables = append(publication.Tables(nil), Config.Publication.Tables...)
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
@@ -105,6 +107,49 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 		// it should also advance when only heartbeat is producing changes.
 		assert.NotEmpty(t, initialRestart)
 		assert.NotEmpty(t, finalRestart)
+	})
+}
+
+
+func TestHeartbeatMissingFromPublicationFails(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_test_heartbeat_missing_pub"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{Name: "books", ReplicaIdentity: publication.ReplicaIdentityFull},
+	}
+
+	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
+		postgresConn, err := newPostgresConn()
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+			t.FailNow()
+		}
+
+		// Heartbeat enabled but heartbeat table intentionally omitted from publication.tables
+		cdcCfg.Heartbeat = config.HeartbeatConfig{
+			Table: publication.Table{
+				Name:   "heartbeat_events",
+				Schema: "public",
+			},
+			Interval: 2 * time.Second,
+		}
+
+		t.Cleanup(func() {
+			assert.NoError(t, RestoreDB(ctx))
+			assert.NoError(t, postgresConn.Close(ctx))
+		})
+
+		_, err = cdc.NewConnector(ctx, cdcCfg, func(ctx *replication.ListenerContext) {
+			_ = ctx.Ack()
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "heartbeat table public.heartbeat_events is not included in publication")
 	})
 }
 

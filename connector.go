@@ -94,24 +94,11 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return nil, err
 	}
 
-	// Create heartbeat table BEFORE publication setup (if configured)
-	// This ensures the table exists when publication tries to set replica identity
-	var hb *heartbeat.Heartbeat
-	if cfg.IsHeartbeatEnabled() {
-		hb = heartbeat.New(cfg.DSN(), cfg.Heartbeat)
-		if err := hb.EnsureTable(ctx, conn); err != nil {
-			conn.Close(ctx)
-			return nil, errors.Wrap(err, "create heartbeat table")
-		}
-	}
-
-	publicationInfo, err := initializePublication(ctx, cfg, conn)
+	hb, publicationInfo, err := setupHeartbeatAndPublication(ctx, cfg, conn)
 	if err != nil {
+		conn.Close(ctx)
 		return nil, err
 	}
-	logger.Info("publication", "info", publicationInfo)
-
-	// Close the setup connection - we don't need it anymore
 	conn.Close(ctx)
 
 	m := metric.NewMetric(cfg.Slot.Name)
@@ -133,16 +120,9 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 
 	prometheusRegistry := metric.NewRegistry(m)
 
-	var tdb *timescaledb.TimescaleDB
-	if cfg.ExtensionSupport.EnableTimeScaleDB {
-		tdb, err = timescaledb.NewTimescaleDB(ctx, cfg.DSN())
-		if err != nil {
-			return nil, err
-		}
-		_, err = tdb.FindHyperTables(ctx)
-		if err != nil {
-			return nil, err
-		}
+	tdb, err := initializeTimescaleDB(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	return &connector{
@@ -192,6 +172,40 @@ func newSnapshotOnlyConnector(ctx context.Context, cfg config.Config, listenerFu
 		readyCh:            make(chan struct{}, 1),
 		// CDC components left nil: system, stream, slot
 	}, nil
+}
+
+func setupHeartbeatAndPublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*heartbeat.Heartbeat, *publication.Config, error) {
+	var hb *heartbeat.Heartbeat
+	if cfg.IsHeartbeatEnabled() {
+		hb = heartbeat.New(cfg.DSN(), cfg.Heartbeat)
+		if err := hb.EnsureTable(ctx, conn); err != nil {
+			return nil, nil, errors.Wrap(err, "create heartbeat table")
+		}
+	}
+
+	publicationInfo, err := initializePublication(ctx, cfg, conn)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := cfg.ValidateHeartbeatInPublication(publicationInfo); err != nil {
+		return nil, nil, err
+	}
+	logger.Info("publication", "info", publicationInfo)
+	return hb, publicationInfo, nil
+}
+
+func initializeTimescaleDB(ctx context.Context, cfg config.Config) (*timescaledb.TimescaleDB, error) {
+	if !cfg.ExtensionSupport.EnableTimeScaleDB {
+		return nil, nil
+	}
+	tdb, err := timescaledb.NewTimescaleDB(ctx, cfg.DSN())
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tdb.FindHyperTables(ctx); err != nil {
+		return nil, err
+	}
+	return tdb, nil
 }
 
 // initializePublication sets up and creates the publication

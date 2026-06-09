@@ -553,7 +553,6 @@ func TestSnapshotConfigValidateQueryCondition(t *testing.T) {
 	})
 }
 
-
 func TestValidateHeartbeatInPublication(t *testing.T) {
 	validBase := func() Config {
 		return Config{

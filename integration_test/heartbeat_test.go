@@ -23,6 +23,7 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 	// Use base config but customize slot / publication / heartbeat for this test
 	cdcCfg := Config
 	cdcCfg.Slot.Name = "slot_test_heartbeat_lsn"
+	cdcCfg.Publication.Tables = append(publication.Tables(nil), Config.Publication.Tables...)
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
@@ -116,6 +117,9 @@ func TestHeartbeatMissingFromPublicationFails(t *testing.T) {
 	ctx := context.Background()
 	cdcCfg := Config
 	cdcCfg.Slot.Name = "slot_test_heartbeat_missing_pub"
+	cdcCfg.Publication.Tables = publication.Tables{
+		{Name: "books", ReplicaIdentity: publication.ReplicaIdentityFull},
+	}
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()

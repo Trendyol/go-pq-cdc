@@ -309,6 +309,25 @@ heartbeat:
 
 You can run [Simple With Heartbeat](./example/simple-with-heartbeat) example.
 
+#### Upgrade: heartbeat table must be in publication
+
+If you use heartbeat with a **selective publication** (`publication.tables` is non-empty and the publication is not `FOR ALL TABLES`), the connector now **fails at startup** when the heartbeat table is missing from `publication.tables`.
+
+Previously, this misconfiguration could still start successfully, but heartbeat writes would not reach the replication slot and WAL retention would not improve.
+
+Before upgrading, add the heartbeat table to your publication config (or switch to a `FOR ALL TABLES` publication):
+
+```yaml
+publication:
+  name: cdc_publication
+  createIfNotExists: true
+  tables:
+    - name: users
+      schema: public
+    - name: my_heartbeat
+      schema: public
+```
+
 #### Replica Identity Requirement
 
 For this TOAST reconstruction to work, PostgreSQL must send the old tuple.
@@ -445,5 +464,5 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 ### Breaking Changes
 
 | Date taking effect | Version | Change | How to check |
-|--------------------|---------|--------|--------------| 
-| -                  | -       | -      | -            |
+|--------------------|---------|--------|--------------|
+| Next release       | TBD     | Startup fails when heartbeat is enabled but the heartbeat table is missing from a selective publication. | Ensure `publication.tables` includes your heartbeat table, or use a `FOR ALL TABLES` publication. See [Upgrade: heartbeat table must be in publication](#upgrade-heartbeat-table-must-be-in-publication). |

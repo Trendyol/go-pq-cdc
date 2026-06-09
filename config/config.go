@@ -207,7 +207,8 @@ func (c *Config) ValidateHeartbeatInPublication(pubInfo *publication.Config) err
 	if !c.IsHeartbeatEnabled() || pubInfo == nil {
 		return nil
 	}
-	if pubInfo.AllTables {
+
+	if c.Publication.AllTables || pubInfo.AllTables {
 		return nil
 	}
 
@@ -216,14 +217,14 @@ func (c *Config) ValidateHeartbeatInPublication(pubInfo *publication.Config) err
 		schema = defaultSchema
 	}
 	name := c.Heartbeat.Table.Name
-	if pubInfo.Tables.Contains(schema, name) {
-		return nil
+	if !pubInfo.Tables.Contains(schema, name) {
+		return fmt.Errorf(
+			"heartbeat table %s.%s is not included in publication %q; add it to publication.tables so heartbeat changes reach the replication slot",
+			schema, name, pubInfo.Name,
+		)
 	}
 
-	return fmt.Errorf(
-		"heartbeat table %s.%s is not included in publication %q; add it to publication.tables so heartbeat changes reach the replication slot",
-		schema, name, pubInfo.Name,
-	)
+	return nil
 }
 
 func (c *Config) Validate() error {
@@ -259,12 +260,11 @@ func (c *Config) Validate() error {
 		err = errors.Join(err, cErr)
 	}
 
-	// Heartbeat validation
-	if c.Heartbeat.Table.Name != "" {
+	if c.IsHeartbeatEnabled() {
 		if c.Heartbeat.Interval <= 0 {
 			err = errors.Join(err, errors.New("heartbeat.interval must be greater than 0 when heartbeat table is configured"))
 		}
-		if !c.IsSnapshotOnlyMode() && len(c.Publication.Tables) > 0 {
+		if !c.IsSnapshotOnlyMode() && !c.Publication.AllTables && len(c.Publication.Tables) > 0 {
 			if hErr := c.ValidateHeartbeatInPublication(&publication.Config{
 				Name:   c.Publication.Name,
 				Tables: c.Publication.Tables,

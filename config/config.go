@@ -28,6 +28,7 @@ type Config struct {
 	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
 	Port             int                `json:"port" yaml:"port"`
 	Metric           MetricConfig       `json:"metric" yaml:"metric"`
+	Listener         ListenerConfig     `json:"listener" yaml:"listener"`
 	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
 	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
 }
@@ -48,6 +49,10 @@ type ExtensionSupport struct {
 type HeartbeatConfig struct {
 	Table    publication.Table `json:"table" yaml:"table"`
 	Interval time.Duration     `json:"interval" yaml:"interval"`
+}
+
+type ListenerConfig struct {
+	EmitTransactionBoundaries bool `json:"emitTransactionBoundaries" yaml:"emitTransactionBoundaries"`
 }
 
 // DSN returns a normal PostgreSQL connection string for regular database operations

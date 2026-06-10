@@ -70,6 +70,18 @@ type stream struct {
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
 	messageCloseOnce    sync.Once
+	// connMu serializes every use of conn while streaming. The sink goroutine
+	// reads with ReceiveMessage, which toggles the connection's socket deadline
+	// via pgconn's context watcher (SetDeadline(now) to interrupt the read, then
+	// SetDeadline(zero) to clear it). Standby status updates are written straight
+	// to the frontend, bypassing pgconn's own lock, and may be sent from the
+	// process goroutine or — when the consumer defers Ack — from a third
+	// goroutine entirely. A status-update write that lands in ReceiveMessage's
+	// deadline-cancel window inherits the past deadline and fails with an i/o
+	// timeout, corrupting the connection and panicking the sink. Holding connMu
+	// across the read and every write makes them mutually exclusive so that can't
+	// happen. connMu is always acquired before mu, never the reverse.
+	connMu sync.Mutex
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
@@ -290,7 +302,14 @@ func (s *stream) sink(ctx context.Context) {
 func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer) (corrupted bool) {
 	for {
 		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(300*time.Millisecond))
+		// Hold connMu only for the read itself. ReceiveMessage's deferred Unwatch
+		// (which clears the socket deadline) has run by the time it returns, so the
+		// deadline-toggle window is fully contained here; releasing before the
+		// channel sends in handleXLogData keeps acks from blocking the sink and
+		// vice versa.
+		s.connMu.Lock()
 		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
+		s.connMu.Unlock()
 		cancel()
 
 		if err != nil {
@@ -300,7 +319,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 			}
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
-					if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
+					if err = s.sendStandbyStatusUpdate(ctx); err != nil {
 						logger.Error("send stand by status update", "error", err)
 						return true
 					}
@@ -363,7 +382,7 @@ func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
 	}
 
 	if pkm.ReplyRequested {
-		if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
+		if err = s.sendStandbyStatusUpdate(ctx); err != nil {
 			logger.Error("standby status update", "error", err)
 			return err
 		}
@@ -485,7 +504,7 @@ func (s *stream) process(ctx context.Context) {
 				pos := pq.LSN(msg.walStart)
 				s.UpdateConfirmedXLogPos(pos)
 				logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
-				return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
+				return s.sendStandbyStatusUpdate(ctx)
 			}
 
 			if s.isHeartbeatMessage(msg.message) {
@@ -683,6 +702,17 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 
 	logger.Info("fetched snapshot LSN from database", "slotName", s.config.Slot.Name, "snapshotLSN", snapshotLSN.String())
 	return snapshotLSN, nil
+}
+
+// sendStandbyStatusUpdate writes a standby status update under connMu so it can
+// never overlap the sink loop's ReceiveMessage, which toggles the connection's
+// socket deadline. Every status-update write — idle keepalive, reply-on-request,
+// and consumer Ack — must go through here rather than calling
+// SendStandbyStatusUpdate directly. See the connMu field comment.
+func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+	return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walReceivedPosition, walFlushedPosition uint64) error {

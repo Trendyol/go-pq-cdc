@@ -31,7 +31,13 @@ var (
 )
 
 func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
-	if !c.cfg.CreateIfNotExists {
+	configured := make(Tables, 0, len(c.cfg.Tables))
+	for _, t := range c.cfg.Tables {
+		if t.ReplicaIdentity != "" {
+			configured = append(configured, t)
+		}
+	}
+	if len(configured) == 0 {
 		return nil
 	}
 
@@ -42,9 +48,7 @@ func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 		return err
 	}
 
-	diff := c.cfg.Tables.Diff(tables)
-
-	for _, d := range diff {
+	for _, d := range configured.Diff(tables) {
 		if err = c.AlterTableReplicaIdentity(ctx, d); err != nil {
 			return err
 		}

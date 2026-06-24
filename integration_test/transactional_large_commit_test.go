@@ -118,6 +118,12 @@ func TestLargeTransactionalCommit(t *testing.T) {
 	// --- MEMORY CHECK ------------------------------------------------------
 	var memAfter runtime.MemStats
 	runtime.ReadMemStats(&memAfter)
-	allocMB := (memAfter.Alloc - memBefore.Alloc) / (1024 * 1024)
+	// Alloc is current live heap and can shrink if a GC runs between the two
+	// reads; guard the unsigned subtraction so a drop doesn't underflow to a
+	// bogus huge value. No growth is trivially within bounds.
+	var allocMB uint64
+	if memAfter.Alloc > memBefore.Alloc {
+		allocMB = (memAfter.Alloc - memBefore.Alloc) / (1024 * 1024)
+	}
 	assert.Less(t, allocMB, uint64(memoryUpperMB), "memory usage grew too much: %d MB", allocMB)
 }

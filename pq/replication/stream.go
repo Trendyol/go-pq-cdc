@@ -500,11 +500,16 @@ func (s *stream) process(ctx context.Context) {
 				continue
 			}
 
+			// Ack only advances the confirmed position in memory; the standby
+			// status update is flushed to Postgres by the sink loop (idle-timeout
+			// and keepalive-reply paths). Sending it here per message serializes
+			// every ack behind the sink's connMu-held read, collapsing throughput
+			// to a few messages/sec while a buffered transaction is drained.
+			// ponytail: coalesced via sink idle/keepalive flush; add a periodic
+			// in-sink flush if retention lag under sustained no-gap load matters.
 			ackFunc := func() error {
-				pos := pq.LSN(msg.walStart)
-				s.UpdateConfirmedXLogPos(pos)
-				logger.Debug("send stand by status update", "xLogPos", s.LoadConfirmedXLogPos().String())
-				return s.sendStandbyStatusUpdate(ctx)
+				s.UpdateConfirmedXLogPos(pq.LSN(msg.walStart))
+				return nil
 			}
 
 			if s.isHeartbeatMessage(msg.message) {

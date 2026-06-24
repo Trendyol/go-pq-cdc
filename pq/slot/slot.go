@@ -192,7 +192,9 @@ func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {
 			return nil, err
 		}
 
-		if v == nil {
+		// NULL/empty LSN columns (e.g. confirmed_flush_lsn on a physical or
+		// not-yet-reserved slot) must be skipped; ParseLSN("") returns a cryptic EOF.
+		if v == nil || v == "" {
 			continue
 		}
 

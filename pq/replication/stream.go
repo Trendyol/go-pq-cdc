@@ -584,6 +584,7 @@ func (s *stream) Close(ctx context.Context) {
 	}
 
 	if !s.conn.IsClosed() {
+		s.flushFinalStandbyStatusUpdate(ctx)
 		_ = s.conn.Close(ctx)
 		logger.Info("postgres connection closed")
 	}
@@ -718,6 +719,17 @@ func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
 	return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
+}
+
+func (s *stream) flushFinalStandbyStatusUpdate(ctx context.Context) {
+	if s.LoadConfirmedXLogPos() == 0 {
+		return
+	}
+	if err := s.sendStandbyStatusUpdate(ctx); err != nil {
+		logger.Warn("final standby status update failed, updates may duplicate on restart", "error", err)
+		return
+	}
+	logger.Debug("final standby status update sent")
 }
 
 func SendStandbyStatusUpdate(_ context.Context, conn pq.Connection, walReceivedPosition, walFlushedPosition uint64) error {

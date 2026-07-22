@@ -40,6 +40,9 @@ type Type uint8
 // StreamCommit/StreamAbort messages this function returns) — it must NOT be
 // process-global, since one process may run several replication streams.
 func New(data []byte, streamedTransaction bool, serverTime time.Time, relation map[uint32]*format.Relation) (any, error) {
+	if len(data) == 0 {
+		return nil, errors.New("empty message data")
+	}
 	switch Type(data[0]) {
 	case BeginByte:
 		return format.NewBegin(data)

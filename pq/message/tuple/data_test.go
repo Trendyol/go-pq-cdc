@@ -57,6 +57,33 @@ func TestNewData(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid tuple data type: D")
 	})
+
+	t.Run("should return error when text column has no length bytes", func(t *testing.T) {
+		truncated := []byte{tupleDataType, 0, 1, DataTypeText}
+		_, err := NewData(truncated, tupleDataType, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data length")
+	})
+
+	t.Run("should return error when column data is shorter than its length", func(t *testing.T) {
+		truncated := []byte{tupleDataType, 0, 1, DataTypeText, 0, 0, 0, 10, 'a', 'b'}
+		_, err := NewData(truncated, tupleDataType, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data length")
+	})
+
+	t.Run("should return error when column count exceeds data", func(t *testing.T) {
+		truncated := []byte{tupleDataType, 0, 2, DataTypeNull}
+		_, err := NewData(truncated, tupleDataType, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data length")
+	})
+
+	t.Run("should return error when tuple data ends before type byte", func(t *testing.T) {
+		_, err := NewData([]byte{0x00}, tupleDataType, 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data length")
+	})
 }
 
 func TestData_DecodeWithColumn(t *testing.T) {

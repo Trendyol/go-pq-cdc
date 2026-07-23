@@ -55,38 +55,62 @@ func (m *Relation) decode(data []byte, streamedTransaction bool) error {
 
 	m.Name, usedByteCount = decodeString(data[skipByte:])
 	if usedByteCount < 0 {
-		return errors.New("relation message namespace decode error")
+		return errors.New("relation message name decode error")
 	}
 	skipByte += usedByteCount
 
+	if skipByte >= len(data) {
+		return errors.New("relation message missing replica identity")
+	}
 	m.ReplicaID = data[skipByte]
 	skipByte++
 
+	if len(data)-skipByte < 2 {
+		return errors.New("relation message missing column count")
+	}
 	m.ColumnNumbers = binary.BigEndian.Uint16(data[skipByte:])
 	skipByte += 2
 
 	m.Columns = make([]tuple.RelationColumn, m.ColumnNumbers)
 	for i := range m.Columns {
-		col := tuple.RelationColumn{}
-		col.Flags = data[skipByte]
-		skipByte++
-
-		col.Name, usedByteCount = decodeString(data[skipByte:])
-		if usedByteCount < 0 {
-			return errors.Newf("relation message columns[%d].name decode error", i)
+		col, used, err := decodeRelationColumn(data[skipByte:], i)
+		if err != nil {
+			return err
 		}
-		skipByte += usedByteCount
-
-		col.DataType = binary.BigEndian.Uint32(data[skipByte:])
-		skipByte += 4
-
-		col.TypeModifier = binary.BigEndian.Uint32(data[skipByte:])
-		skipByte += 4
-
 		m.Columns[i] = col
+		skipByte += used
 	}
 
 	return nil
+}
+
+// decodeRelationColumn decodes one column descriptor from the start of data and
+// returns the column together with the number of bytes it consumed.
+func decodeRelationColumn(data []byte, i int) (tuple.RelationColumn, int, error) {
+	var col tuple.RelationColumn
+
+	if len(data) == 0 {
+		return col, 0, errors.Newf("relation message columns[%d] missing flags", i)
+	}
+	col.Flags = data[0]
+	skip := 1
+
+	name, used := decodeString(data[skip:])
+	if used < 0 {
+		return col, 0, errors.Newf("relation message columns[%d].name decode error", i)
+	}
+	col.Name = name
+	skip += used
+
+	if len(data)-skip < 8 {
+		return col, 0, errors.Newf("relation message columns[%d] missing type info", i)
+	}
+	col.DataType = binary.BigEndian.Uint32(data[skip:])
+	skip += 4
+	col.TypeModifier = binary.BigEndian.Uint32(data[skip:])
+	skip += 4
+
+	return col, skip, nil
 }
 
 func decodeString(data []byte) (string, int) {

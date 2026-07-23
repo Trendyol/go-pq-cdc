@@ -3,8 +3,10 @@ package replication
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	goerrors "errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -336,15 +338,57 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 			continue
 		}
 
-		switch copyData.Data[0] {
-		case message.PrimaryKeepaliveMessageByteID:
-			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
-				return true
-			}
-		case message.XLogDataByteID:
-			s.handleXLogData(copyData.Data[1:], buf, streamBuf)
+		if fatal := s.dispatchCopyData(ctx, copyData, buf, streamBuf); fatal {
+			return true
 		}
 	}
+}
+
+// dispatchCopyData routes a single CopyData frame to the keepalive or WAL data
+// handler. It recovers from any decode panic so that one malformed replication
+// frame is logged and skipped instead of unwinding the sink goroutine and
+// crashing the whole process, mirroring how handleXLogData already treats decode
+// errors as non fatal. A skipped frame is never delivered or acked, so the
+// confirmed flush position does not advance past it here. The recover is scoped
+// to the dispatch only, so the intentional panic in sink stays intact. A true
+// return means a genuine connection error the caller must treat as corrupted.
+func (s *stream) dispatchCopyData(ctx context.Context, copyData *pgproto3.CopyData, buf *messageBuffer, streamBuf *streamTxBuffer) (fatal bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("recovered from decode panic, skipping frame",
+				"panic", r,
+				"frame", hexPreview(copyData.Data),
+				"stack", string(debug.Stack()))
+		}
+	}()
+
+	if len(copyData.Data) == 0 {
+		logger.Warn("received empty CopyData frame, skipping")
+		return false
+	}
+
+	switch copyData.Data[0] {
+	case message.PrimaryKeepaliveMessageByteID:
+		if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
+			return true
+		}
+	case message.XLogDataByteID:
+		s.handleXLogData(copyData.Data[1:], buf, streamBuf)
+	}
+	return false
+}
+
+// maxFramePreview bounds how many bytes of a frame the recovered panic log hex
+// encodes, so one oversized frame cannot produce an enormous log line.
+const maxFramePreview = 64
+
+// hexPreview hex encodes at most the first maxFramePreview bytes of data and
+// notes how many bytes were omitted.
+func hexPreview(data []byte) string {
+	if len(data) <= maxFramePreview {
+		return hex.EncodeToString(data)
+	}
+	return fmt.Sprintf("%s...(%d more bytes)", hex.EncodeToString(data[:maxFramePreview]), len(data)-maxFramePreview)
 }
 
 // extractCopyData validates a raw backend message. It returns the CopyData

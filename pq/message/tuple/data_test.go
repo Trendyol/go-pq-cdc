@@ -105,3 +105,86 @@ func TestData_DecodeWithColumn(t *testing.T) {
 		assert.Equal(t, "123", decoded["unknown_col"]) // Fallback to string
 	})
 }
+
+func TestNewData_TruncatedReturnsError(t *testing.T) {
+	t.Run("text column missing length bytes", func(t *testing.T) {
+		data := []byte{DataTypeText, 0, 1, DataTypeText}
+		_, err := NewData(data, DataTypeText, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data too short for column length")
+	})
+
+	t.Run("column length exceeds remaining bytes", func(t *testing.T) {
+		data := []byte{DataTypeText, 0, 1, DataTypeText, 0, 0, 0, 10, 'a', 'b'}
+		_, err := NewData(data, DataTypeText, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds remaining")
+	})
+
+	t.Run("column count exceeds available data", func(t *testing.T) {
+		data := []byte{DataTypeText, 0, 2, DataTypeNull}
+		_, err := NewData(data, DataTypeText, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data too short for column type")
+	})
+
+	t.Run("skip byte past end of data", func(t *testing.T) {
+		_, err := NewData([]byte{0x00}, DataTypeText, 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tuple data too short: want byte")
+	})
+}
+
+// Decode requires two bytes for the column count after the type byte. One byte
+// is the boundary the guard exists for.
+func TestData_DecodeColumnCountGuard(t *testing.T) {
+	_, err := NewData([]byte{'D', 0x00}, 'D', 0)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tuple data too short for column count: want 2 bytes, have 1")
+}
+
+// Exactly two bytes after the skip is the minimum valid payload: a zero column
+// tuple. It must decode cleanly.
+func TestData_DecodeZeroColumnsBoundary(t *testing.T) {
+	d := &Data{}
+
+	err := d.Decode([]byte{0, 0}, 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, uint16(0), d.ColumnNumber)
+	assert.Equal(t, 2, d.SkipByte)
+	assert.Empty(t, d.Columns)
+}
+
+// A tuple with fewer columns than the relation defines is normal, for example a
+// key only old tuple, and must keep decoding after the over wide guard was added.
+func TestDecodeWithColumn_FewerTupleColumnsThanRelation(t *testing.T) {
+	d := &Data{
+		ColumnNumber: 1,
+		Columns: DataColumns{
+			{DataType: DataTypeText, Data: []byte("53"), Length: 2},
+		},
+	}
+
+	decoded, err := d.DecodeWithColumn([]RelationColumn{
+		{Name: "id", DataType: pgtype.Int4OID},
+		{Name: "name", DataType: pgtype.TextOID},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"id": int32(53)}, decoded)
+}
+
+func TestDecodeWithColumn_TooFewRelationColumns(t *testing.T) {
+	d := &Data{
+		ColumnNumber: 2,
+		Columns: DataColumns{
+			{DataType: DataTypeNull},
+			{DataType: DataTypeNull},
+		},
+	}
+	_, err := d.DecodeWithColumn([]RelationColumn{{Name: "id"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "relation defines")
+}

@@ -92,4 +92,57 @@ func TestTruncate_New(t *testing.T) {
 		assert.Nil(t, msg)
 		assert.Contains(t, err.Error(), "truncate message relation IDs length")
 	})
+
+	t.Run("returns error when relation count is absurdly large", func(t *testing.T) {
+		data := []byte{
+			'T',
+			0xFF, 0xFF, 0xFF, 0xFF, // relation count
+			0, // options
+		}
+
+		msg, err := NewTruncate(data, false, relations, now)
+
+		require.Error(t, err)
+		assert.Nil(t, msg)
+		// The wanted size is the full unsigned width times four, which proves the
+		// count no longer wraps through int on 32 bit builds.
+		assert.Contains(t, err.Error(), "truncate message relation IDs length must be 17179869180 byte")
+	})
+}
+
+func TestTruncate_StreamedGuards(t *testing.T) {
+	now := time.Now()
+	relations := map[uint32]*Relation{}
+
+	t.Run("returns error when streamed truncate is too short", func(t *testing.T) {
+		msg, err := NewTruncate([]byte{'T', 0, 0, 0, 9}, true, relations, now)
+
+		require.Error(t, err)
+		assert.Nil(t, msg)
+		assert.Contains(t, err.Error(), "streamed transaction truncate message length must be at least 10 byte, but got 5")
+	})
+
+	t.Run("returns error when streamed relation count is absurdly large", func(t *testing.T) {
+		data := []byte{
+			'T',
+			0, 0, 0, 9, // xid
+			0xFF, 0xFF, 0xFF, 0xFF, // relation count
+			0, // options
+		}
+
+		msg, err := NewTruncate(data, true, relations, now)
+
+		require.Error(t, err)
+		assert.Nil(t, msg)
+		assert.Contains(t, err.Error(), "truncate message relation IDs length must be 17179869180 byte")
+	})
+}
+
+// Zero relations is the minimum valid truncate payload and must decode.
+func TestTruncate_ZeroRelationsBoundary(t *testing.T) {
+	msg, err := NewTruncate([]byte{'T', 0, 0, 0, 0, 0}, false, map[uint32]*Relation{}, time.Now())
+
+	require.NoError(t, err)
+	assert.Empty(t, msg.RelationOIDs)
+	assert.Empty(t, msg.Relations)
 }

@@ -45,7 +45,7 @@ func TestNewBegin(t *testing.T) {
 		// Then
 		require.Error(t, err)
 		assert.Nil(t, begin)
-		assert.Contains(t, err.Error(), "begin message length must be at least 20 byte")
+		assert.Contains(t, err.Error(), "begin message length must be at least 21 byte")
 	})
 
 	t.Run("should decode begin message with minimum valid length", func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestBegin_decode(t *testing.T) {
 
 		// Then
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "begin message length must be at least 20 byte")
+		assert.Contains(t, err.Error(), "begin message length must be at least 21 byte")
 	})
 
 	t.Run("should return error when data length is exactly 19 bytes", func(t *testing.T) {
@@ -132,7 +132,7 @@ func TestBegin_decode(t *testing.T) {
 
 		// Then
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "begin message length must be at least 20 byte, but got 19")
+		assert.Contains(t, err.Error(), "begin message length must be at least 21 byte, but got 19")
 	})
 
 	t.Run("should decode when data length is exactly 21 bytes", func(t *testing.T) {
@@ -150,4 +150,18 @@ func TestBegin_decode(t *testing.T) {
 		assert.Equal(t, pgTimeForTest(0), begin.CommitTime)
 		assert.Equal(t, uint32(0), begin.Xid)
 	})
+}
+
+// The old guard accepted exactly 20 bytes and the Xid read then walked past the
+// buffer. Length 20 is the critical boundary for begin messages: it must fail
+// with the length error, never panic.
+func TestBegin_ExactlyTwentyBytesReturnsError(t *testing.T) {
+	data := make([]byte, 20)
+	data[0] = 'B'
+
+	begin, err := NewBegin(data)
+
+	require.Error(t, err)
+	assert.Nil(t, begin)
+	assert.Contains(t, err.Error(), "begin message length must be at least 21 byte, but got 20")
 }

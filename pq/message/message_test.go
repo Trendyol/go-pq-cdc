@@ -62,3 +62,12 @@ func TestNewDecodesStreamedRelation(t *testing.T) {
 	assert.Equal(t, "id", rel.Columns[0].Name)
 	assert.Equal(t, rel, relations[16390])
 }
+
+func TestNewRejectsEmptyData(t *testing.T) {
+	for _, data := range [][]byte{{}, nil} {
+		msg, err := New(data, false, time.Now(), map[uint32]*format.Relation{})
+		require.Error(t, err)
+		assert.Nil(t, msg)
+		assert.Contains(t, err.Error(), "empty message data")
+	}
+}

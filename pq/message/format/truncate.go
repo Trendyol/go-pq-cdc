@@ -58,14 +58,15 @@ func (m *Truncate) decode(data []byte, streamedTransaction bool) error {
 		return errors.Newf("truncate message length must be at least %d byte, but got %d", skipByte+5, len(data))
 	}
 
-	relationCount := int(binary.BigEndian.Uint32(data[skipByte:]))
+	relationCountU := binary.BigEndian.Uint32(data[skipByte:])
 	skipByte += 4
 	m.Options = data[skipByte]
 	skipByte++
 
-	if len(data) < skipByte+(relationCount*4) {
-		return errors.Newf("truncate message relation IDs length must be %d byte, but got %d", relationCount*4, len(data)-skipByte)
+	if uint64(relationCountU)*4 > uint64(len(data)-skipByte) {
+		return errors.Newf("truncate message relation IDs length must be %d byte, but got %d", uint64(relationCountU)*4, len(data)-skipByte)
 	}
+	relationCount := int(relationCountU)
 
 	m.Cascade = m.Options&TruncateOptionCascade != 0
 	m.RestartIdentity = m.Options&TruncateOptionRestartIdentity != 0

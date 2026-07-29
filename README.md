@@ -260,6 +260,7 @@ databases on the same instance are generating heavy write load.
 > The heartbeat table must satisfy **both** conditions below — otherwise the auto-`UPDATE`s commit successfully but the slot never decodes them, `confirmed_flush_lsn` stays frozen, and WAL keeps growing as if heartbeat were disabled:
 >
 > 1. The heartbeat table is listed in `publication.tables`. If it is not part of the publication the change is filtered out before reaching the slot.
+>    The connector validates this at startup for selective publications and returns an error if the heartbeat table is missing.
 > 2. The heartbeat table has a `REPLICA IDENTITY` that allows the auto-`UPDATE` to be decoded — `DEFAULT` (the auto-created table already has a primary key, so this works out of the box) or `FULL`. `REPLICA IDENTITY NOTHING` will silently break WAL advancement because the `UPDATE` cannot be decoded by `pgoutput`.
 >
 > Use a dedicated heartbeat table — never reuse a business table.
@@ -308,6 +309,25 @@ heartbeat:
 
 You can run [Simple With Heartbeat](./example/simple-with-heartbeat) example.
 
+#### Upgrade: heartbeat table must be in publication
+
+If you use heartbeat with a **selective publication** (`publication.tables` is non-empty and the publication is not `FOR ALL TABLES`), the connector now **fails at startup** when the heartbeat table is missing from `publication.tables`.
+
+Previously, this misconfiguration could still start successfully, but heartbeat writes would not reach the replication slot and WAL retention would not improve.
+
+Before upgrading, add the heartbeat table to your publication config (or switch to a `FOR ALL TABLES` publication):
+
+```yaml
+publication:
+  name: cdc_publication
+  createIfNotExists: true
+  tables:
+    - name: users
+      schema: public
+    - name: my_heartbeat
+      schema: public
+```
+
 #### Replica Identity Requirement
 
 For this TOAST reconstruction to work, PostgreSQL must send the old tuple.
@@ -348,7 +368,7 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `publication.operations`                | []string |   yes    |    -    | Set PostgreSQL publication operations. List of operations to track; all or a subset can be specified. | **INSERT:** Track insert operations. <br> **UPDATE:** Track update operations. <br> **DELETE:** Track delete operations.                           |
 | `publication.tables`                    | []Table  |   yes    |    -    | Set tables which are tracked by data change capture                                                   | Define multiple tables as needed.                                                                                                                  |
 | `publication.tables[i].name`            |  string  |   yes    |    -    | Set the data change captured table name                                                               | Must be a valid table name in the specified database.                                                                                              |
-| `publication.tables[i].replicaIdentity` |  string  |   yes    |    -    | Set the data change captured table replica identity [`DEFAULT`, `FULL`, `NOTHING`, `USING INDEX`]     | **DEFAULT:** Captures primary key old values. <br> **FULL:** Captures all old row columns. <br> **NOTHING:** Captures no old row data (typically insert-only scenarios; update/delete matching can fail). <br> **USING INDEX:** Captures old values from a chosen unique index. |
+| `publication.tables[i].replicaIdentity` |  string  |   yes    |    -    | Set the data change captured table replica identity [`DEFAULT`, `FULL`, `NOTHING`, `USING INDEX`]     | **DEFAULT:** Captures primary key old values. <br> **FULL:** Captures all old row columns. <br> **NOTHING:** Captures no old row data (typically insert-only scenarios; update/delete matching can fail). <br> **USING INDEX:** Captures old values from a chosen unique index. <br><br> Applied independently of `createIfNotExists`: if set, the connector runs `ALTER TABLE ... REPLICA IDENTITY` when the table's current identity differs (requires DDL privilege on the table). |
 | `publication.tables[i].replicaIdentityIndex` |  string  |    no*   |    -    | Unique index name used when `replicaIdentity` is `USING INDEX`.                                        | Required only for `USING INDEX`, ignored otherwise.                                                   |
 | `publication.tables[i].schema`          |  string  |    no    | public  | Set the data change captured table schema name                                                        | Must be a valid table name in the specified database.                                                                                              |
 | `publication.tables[i].columns`                   | []string |    no    |   -   | Only include these columns in replication and snapshotting                                            | Must not be set when `replicaIdentity` is `FULL`; only compatible with `DEFAULT`.                                                                 |
@@ -444,5 +464,5 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 ### Breaking Changes
 
 | Date taking effect | Version | Change | How to check |
-|--------------------|---------|--------|--------------| 
-| -                  | -       | -      | -            |
+|--------------------|---------|--------|--------------|
+| Next release       | TBD     | Startup fails when heartbeat is enabled but the heartbeat table is missing from a selective publication. | Ensure `publication.tables` includes your heartbeat table, or use a `FOR ALL TABLES` publication. See [Upgrade: heartbeat table must be in publication](#upgrade-heartbeat-table-must-be-in-publication). |

@@ -1,9 +1,11 @@
 package replication
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +68,32 @@ func TestStreamSinkExitStopsProcessor(t *testing.T) {
 	}
 }
 
+func TestStreamCloseFlushesFinalConfirmedLSN(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	var written bytes.Buffer
+	conn := &standbyCaptureConn{
+		fe: pgproto3.NewFrontend(strings.NewReader(""), &written),
+	}
+
+	stream := NewStream("", config.Config{}, metric.NewMetric("test_slot"), func(*ListenerContext) {}).(*stream)
+	stream.conn = conn
+	stream.UpdateXLogPos(200)
+	stream.UpdateConfirmedXLogPos(150)
+
+	stream.Close(context.Background())
+
+	if written.Len() == 0 {
+		t.Fatal("expected final standby status update to be written")
+	}
+	if !bytes.Contains(written.Bytes(), []byte{StandbyStatusUpdateByteID}) {
+		t.Fatal("expected standby status update payload")
+	}
+	if !conn.closed {
+		t.Fatal("expected connection to be closed")
+	}
+}
+
 func requireCloseReturns(t *testing.T, stream Streamer, msg string) {
 	t.Helper()
 
@@ -105,5 +133,35 @@ func (receiveErrorConn) Frontend() *pgproto3.Frontend {
 }
 
 func (receiveErrorConn) Exec(context.Context, string) *pgconn.MultiResultReader {
+	return nil
+}
+
+type standbyCaptureConn struct {
+	fe     *pgproto3.Frontend
+	closed bool
+}
+
+func (c *standbyCaptureConn) Connect(context.Context) error {
+	return nil
+}
+
+func (c *standbyCaptureConn) IsClosed() bool {
+	return c.closed
+}
+
+func (c *standbyCaptureConn) Close(context.Context) error {
+	c.closed = true
+	return nil
+}
+
+func (c *standbyCaptureConn) ReceiveMessage(context.Context) (pgproto3.BackendMessage, error) {
+	return nil, errors.New("receive failed")
+}
+
+func (c *standbyCaptureConn) Frontend() *pgproto3.Frontend {
+	return c.fe
+}
+
+func (c *standbyCaptureConn) Exec(context.Context, string) *pgconn.MultiResultReader {
 	return nil
 }

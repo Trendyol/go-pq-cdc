@@ -13,6 +13,7 @@ type Config struct {
 	Operations        Operations `json:"operations" yaml:"operations"`
 	Tables            Tables     `json:"tables" yaml:"tables"`
 	CreateIfNotExists bool       `json:"createIfNotExists" yaml:"createIfNotExists"`
+	AllTables         bool       `json:"-" yaml:"-"`
 }
 
 func (c Config) Validate() error {

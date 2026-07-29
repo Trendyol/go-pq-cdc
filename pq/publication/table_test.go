@@ -99,3 +99,15 @@ func TestTablesDiffReplicaIdentityIndex(t *testing.T) {
 		assert.Empty(t, diff[0].ReplicaIdentityIndex)
 	})
 }
+
+func TestTablesContains(t *testing.T) {
+	tables := Tables{
+		{Name: "users", Schema: "public"},
+		{Name: "events", Schema: "tenant_a"},
+	}
+
+	assert.True(t, tables.Contains("public", "users"))
+	assert.True(t, tables.Contains("", "users"))
+	assert.True(t, tables.Contains("tenant_a", "events"))
+	assert.False(t, tables.Contains("public", "orders"))
+}

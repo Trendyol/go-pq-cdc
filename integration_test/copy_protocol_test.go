@@ -2,6 +2,10 @@ package integration
 
 import (
 	"context"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
@@ -9,9 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 func TestCopyProtocol(t *testing.T) {
@@ -47,7 +48,7 @@ func TestCopyProtocol(t *testing.T) {
 			t.FailNow()
 		}
 
-		connector2, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+		connector2, err := cdc.NewConnector(ctx, cdc2Cfg, handlerFunc)
 		if !assert.NoError(t, err) {
 			t.FailNow()
 		}
@@ -60,6 +61,7 @@ func TestCopyProtocol(t *testing.T) {
 
 		t.Cleanup(func() {
 			pool.Close()
+			connector.Close()
 			connector2.Close()
 			assert.NoError(t, RestoreDB(ctx))
 		})

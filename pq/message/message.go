@@ -33,9 +33,13 @@ var ErrorByteNotSupported = errors.New("message byte not supported")
 
 type Type uint8
 
-var streamedTransaction bool
-
-func New(data []byte, serverTime time.Time, relation map[uint32]*format.Relation) (any, error) {
+// New decodes a single pgoutput logical replication message. streamedTransaction
+// reports whether the stream is currently inside a streamed in-progress
+// transaction chunk (proto v2), in which case DML and Relation messages carry an
+// XID prefix. The caller owns that state (it flips on the StreamStart/StreamStop/
+// StreamCommit/StreamAbort messages this function returns) — it must NOT be
+// process-global, since one process may run several replication streams.
+func New(data []byte, streamedTransaction bool, serverTime time.Time, relation map[uint32]*format.Relation) (any, error) {
 	switch Type(data[0]) {
 	case BeginByte:
 		return format.NewBegin(data)
@@ -50,16 +54,12 @@ func New(data []byte, serverTime time.Time, relation map[uint32]*format.Relation
 	case TruncateByte:
 		return format.NewTruncate(data, streamedTransaction, relation, serverTime)
 	case StreamStartByte:
-		streamedTransaction = true
 		return format.NewStreamStart(data)
 	case StreamStopByte:
-		streamedTransaction = false
 		return &format.StreamStop{}, nil
 	case StreamAbortByte:
-		streamedTransaction = false
 		return format.NewStreamAbort(data)
 	case StreamCommitByte:
-		streamedTransaction = false
 		return format.NewStreamCommit(data)
 	case RelationByte:
 		msg, err := format.NewRelation(data, streamedTransaction)

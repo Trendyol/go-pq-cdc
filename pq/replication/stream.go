@@ -59,8 +59,9 @@ type Streamer interface {
 }
 
 type stream struct {
-	conn                pq.Connection
 	metric              metric.Metric
+	conn                pq.Connection
+	cancel              context.CancelFunc
 	system              *pq.IdentifySystemResult
 	relation            map[uint32]*format.Relation
 	messageCH           chan *Message
@@ -70,26 +71,14 @@ type stream struct {
 	mu                  *sync.RWMutex
 	config              config.Config
 	lastXLogPos         pq.LSN
-	confirmedXLogPos    pq.LSN
 	snapshotLSN         pq.LSN
-	openFromSnapshotLSN bool
+	confirmedXLogPos    pq.LSN
+	messageCloseOnce    sync.Once
+	connMu              sync.Mutex
 	closed              atomic.Bool
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
-	messageCloseOnce    sync.Once
-	cancel              context.CancelFunc
-	// connMu serializes every use of conn while streaming. The sink goroutine
-	// reads with ReceiveMessage, which toggles the connection's socket deadline
-	// via pgconn's context watcher (SetDeadline(now) to interrupt the read, then
-	// SetDeadline(zero) to clear it). Standby status updates are written straight
-	// to the frontend, bypassing pgconn's own lock, and may be sent from the
-	// process goroutine or — when the consumer defers Ack — from a third
-	// goroutine entirely. A status-update write that lands in ReceiveMessage's
-	// deadline-cancel window inherits the past deadline and fails with an i/o
-	// timeout, corrupting the connection and panicking the sink. Holding connMu
-	// across the read and every write makes them mutually exclusive so that can't
-	// happen. connMu is always acquired before mu, never the reverse.
-	connMu sync.Mutex
+	openFromSnapshotLSN bool
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
@@ -253,10 +242,10 @@ func (b *messageBuffer) buffer(msg *Message) {
 // how PostgreSQL's own logical replication worker handles streaming: it writes
 // to temporary storage and only applies on commit.
 type streamTxBuffer struct {
+	ctx       context.Context
 	txns      map[uint32][]*Message
 	activeXid uint32
 	streaming bool
-	ctx       context.Context
 }
 
 // startTx marks the beginning of a streaming chunk for the given XID.
@@ -329,7 +318,7 @@ func (s *stream) sink(ctx context.Context) {
 		// The reader can also initiate shutdown after an unexpected disconnect.
 		// Do not let a synchronous application listener turn that path into an
 		// unbounded wait when the stream context has no deadline.
-		closeCtx, cancel := context.WithTimeout(context.Background(), streamShutdownTimeout)
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), streamShutdownTimeout)
 		defer cancel()
 		if err := s.Close(closeCtx); err != nil {
 			logger.Error("replication stream shutdown failed", "error", err)
@@ -345,7 +334,7 @@ func (s *stream) sink(ctx context.Context) {
 // connection is in a corrupted state and the caller should panic.
 func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer) (corrupted bool) {
 	for {
-		msgCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(300*time.Millisecond))
+		msgCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), time.Now().Add(300*time.Millisecond))
 		// Hold connMu only for the read itself. ReceiveMessage's deferred Unwatch
 		// (which clears the socket deadline) has run by the time it returns, so the
 		// deadline-toggle window is fully contained here; releasing before the
@@ -367,11 +356,11 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
 					if err = s.sendStandbyStatusUpdate(ctx); err != nil {
-						if handleReplicationConnectionTermination(err) {
-							return false
+						terminated := handleReplicationConnectionTermination(err)
+						if !terminated {
+							logger.Error("send stand by status update", "error", err)
 						}
-						logger.Error("send stand by status update", "error", err)
-						return true
+						return !terminated
 					}
 					logger.Debug("send stand by status update")
 				}
@@ -389,10 +378,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 		switch copyData.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
 			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
-				if handleReplicationConnectionTermination(err) {
-					return false
-				}
-				return true
+				return !handleReplicationConnectionTermination(err)
 			}
 		case message.XLogDataByteID:
 			s.handleXLogData(copyData.Data[1:], buf, streamBuf)
@@ -629,13 +615,15 @@ func (s *stream) Close(ctx context.Context) error {
 	// may be blocked outside this package; waiting for it before closing the
 	// socket can leave the walsender connection open for the whole shutdown
 	// timeout.
+	s.connMu.Lock()
 	if !s.conn.IsClosed() {
-		s.flushFinalStandbyStatusUpdate(ctx)
+		s.flushFinalStandbyStatusUpdateLocked(ctx)
 		if err := s.conn.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 		logger.Info("postgres connection closed")
 	}
+	s.connMu.Unlock()
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -836,11 +824,13 @@ func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
 	return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
 }
 
-func (s *stream) flushFinalStandbyStatusUpdate(ctx context.Context) {
+// flushFinalStandbyStatusUpdateLocked sends the final confirmed position.
+// The caller must hold connMu.
+func (s *stream) flushFinalStandbyStatusUpdateLocked(ctx context.Context) {
 	if s.LoadConfirmedXLogPos() == 0 {
 		return
 	}
-	if err := s.sendStandbyStatusUpdate(ctx); err != nil {
+	if err := SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
 		logger.Warn("final standby status update failed, updates may duplicate on restart", "error", err)
 		return
 	}

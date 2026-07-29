@@ -185,8 +185,8 @@ func TestStreamStopsOnUnexpectedEOFWithoutPanic(t *testing.T) {
 
 func TestReplicationConnectionTerminationErrors(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{name: "EOF", err: io.EOF},
 		{name: "unexpected EOF", err: io.ErrUnexpectedEOF},

@@ -80,7 +80,7 @@ func TestPostgresRestartCancelsReplicationShutdown(t *testing.T) {
 	require.NoError(t, Container.Start(ctx))
 
 	// Wait until PostgreSQL accepts connections again before checking the slot.
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	var restartedConn = postgresConn
 	for time.Now().Before(deadline) {
 		restartedConn, err = newPostgresConn()

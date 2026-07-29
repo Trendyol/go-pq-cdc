@@ -5,8 +5,11 @@ import (
 	"encoding/binary"
 	goerrors "errors"
 	"fmt"
+	"io"
+	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -28,9 +31,13 @@ var (
 
 const (
 	StandbyStatusUpdateByteID = 'r'
+	streamShutdownTimeout     = 30 * time.Second
+	postgresAdminShutdown     = "57P01"
+	postgresCrashShutdown     = "57P02"
 )
 
 type ListenerContext struct {
+	Context context.Context
 	Message any
 	Ack     func() error
 }
@@ -45,7 +52,7 @@ type Message struct {
 type Streamer interface {
 	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
-	Close(ctx context.Context)
+	Close(ctx context.Context) error
 	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
 	OpenFromSnapshotLSN()
@@ -70,6 +77,7 @@ type stream struct {
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
 	messageCloseOnce    sync.Once
+	cancel              context.CancelFunc
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
@@ -121,9 +129,11 @@ func (s *stream) Open(ctx context.Context) error {
 
 	s.sinkStarted.Store(true)
 	s.processStarted.Store(true)
+	runCtx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
 
-	go s.sink(ctx)
-	go s.process(ctx)
+	go s.sink(runCtx)
+	go s.process(runCtx)
 
 	logger.Info("cdc stream started")
 
@@ -168,13 +178,28 @@ func (s *stream) setup(ctx context.Context) error {
 type messageBuffer struct {
 	pending *Message
 	outCh   chan<- *Message
+	ctx     context.Context
+}
+
+func (b *messageBuffer) send(msg *Message) bool {
+	ctx := b.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case b.outCh <- msg:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // flush emits the pending message (if any) with its original WAL position.
 func (b *messageBuffer) flush() {
 	if b.pending != nil {
-		b.outCh <- b.pending
-		b.pending = nil
+		if b.send(b.pending) {
+			b.pending = nil
+		}
 	}
 }
 
@@ -182,9 +207,11 @@ func (b *messageBuffer) flush() {
 // to the given transaction-end LSN. Used at COMMIT.
 func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
-		b.outCh <- &Message{
+		if !b.send(&Message{
 			message:  b.pending.message,
 			walStart: int64(lsn),
+		}) {
+			return
 		}
 		b.pending = nil
 	}
@@ -217,6 +244,7 @@ type streamTxBuffer struct {
 	txns      map[uint32][]*Message
 	activeXid uint32
 	streaming bool
+	ctx       context.Context
 }
 
 // startTx marks the beginning of a streaming chunk for the given XID.
@@ -247,13 +275,21 @@ func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LS
 	msgs := s.txns[xid]
 	n := len(msgs)
 	for i, msg := range msgs {
+		out := msg
 		if i == n-1 {
-			outCh <- &Message{
+			out = &Message{
 				message:  msg.message,
 				walStart: int64(endLSN),
 			}
-		} else {
-			outCh <- msg
+		}
+		ctx := s.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		select {
+		case outCh <- out:
+		case <-ctx.Done():
+			return
 		}
 	}
 	delete(s.txns, xid)
@@ -269,7 +305,8 @@ func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
 	buf := &messageBuffer{outCh: s.messageCH}
-	streamBuf := &streamTxBuffer{}
+	buf.ctx = ctx
+	streamBuf := &streamTxBuffer{ctx: ctx}
 	corrupted := s.sinkLoop(ctx, buf, streamBuf)
 	s.messageCloseOnce.Do(func() {
 		close(s.messageCH)
@@ -277,7 +314,14 @@ func (s *stream) sink(ctx context.Context) {
 
 	s.sinkEnd <- struct{}{}
 	if !s.closed.Load() {
-		s.Close(ctx)
+		// The reader can also initiate shutdown after an unexpected disconnect.
+		// Do not let a synchronous application listener turn that path into an
+		// unbounded wait when the stream context has no deadline.
+		closeCtx, cancel := context.WithTimeout(context.Background(), streamShutdownTimeout)
+		defer cancel()
+		if err := s.Close(closeCtx); err != nil {
+			logger.Error("replication stream shutdown failed", "error", err)
+		}
 		if corrupted {
 			panic("corrupted connection")
 		}
@@ -298,9 +342,15 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 				logger.Info("stream stopped")
 				return false
 			}
+			if handleReplicationConnectionTermination(err) {
+				return false
+			}
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
 					if err = SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
+						if handleReplicationConnectionTermination(err) {
+							return false
+						}
 						logger.Error("send stand by status update", "error", err)
 						return true
 					}
@@ -320,6 +370,9 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 		switch copyData.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
 			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
+				if handleReplicationConnectionTermination(err) {
+					return false
+				}
 				return true
 			}
 		case message.XLogDataByteID:
@@ -496,6 +549,7 @@ func (s *stream) process(ctx context.Context) {
 			}
 
 			lCtx := &ListenerContext{
+				Context: ctx,
 				Message: msg.message,
 				Ack:     ackFunc,
 			}
@@ -536,9 +590,29 @@ func (s *stream) isHeartbeatMessage(msg any) bool {
 	return false
 }
 
-func (s *stream) Close(ctx context.Context) {
+func (s *stream) Close(ctx context.Context) error {
 	if !s.closed.CompareAndSwap(false, true) {
-		return
+		return nil
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, streamShutdownTimeout)
+		defer cancel()
+	}
+	var errs []error
+
+	// Close the PostgreSQL socket first. A listener callback is synchronous and
+	// may be blocked outside this package; waiting for it before closing the
+	// socket can leave the walsender connection open for the whole shutdown
+	// timeout.
+	if !s.conn.IsClosed() {
+		if err := s.conn.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		logger.Info("postgres connection closed")
+	}
+	if s.cancel != nil {
+		s.cancel()
 	}
 
 	if s.sinkStarted.Load() {
@@ -547,6 +621,7 @@ func (s *stream) Close(ctx context.Context) {
 			logger.Info("postgres message sink stopped")
 		case <-ctx.Done():
 			logger.Warn("timed out waiting for postgres message sink", "error", ctx.Err())
+			errs = append(errs, errors.Wrap(ctx.Err(), "wait for postgres message sink"))
 		}
 	}
 
@@ -556,13 +631,53 @@ func (s *stream) Close(ctx context.Context) {
 			logger.Info("postgres message process stopped")
 		case <-ctx.Done():
 			logger.Warn("timed out waiting for postgres message process", "error", ctx.Err())
+			errs = append(errs, errors.Wrap(ctx.Err(), "wait for postgres message process"))
 		}
 	}
 
-	if !s.conn.IsClosed() {
-		_ = s.conn.Close(ctx)
-		logger.Info("postgres connection closed")
+	return goerrors.Join(errs...)
+}
+
+func isReplicationConnectionTerminationError(err error) bool {
+	if goerrors.Is(err, io.EOF) ||
+		goerrors.Is(err, io.ErrUnexpectedEOF) ||
+		goerrors.Is(err, net.ErrClosed) ||
+		goerrors.Is(err, syscall.ECONNRESET) ||
+		goerrors.Is(err, syscall.EPIPE) {
+		return true
 	}
+
+	return false
+}
+
+func isPostgresShutdownError(err error) bool {
+	var pgErr *pgconn.PgError
+	if goerrors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case postgresAdminShutdown, postgresCrashShutdown:
+			return true
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+func handleReplicationConnectionTermination(err error) bool {
+	if isPostgresShutdownError(err) {
+		logger.Info("postgres replication connection closed", "error", err)
+		return true
+	}
+	if isReplicationConnectionTerminationError(err) {
+		if goerrors.Is(err, io.ErrUnexpectedEOF) {
+			logger.Error("postgres replication connection terminated unexpectedly", "error", err)
+		} else {
+			logger.Info("postgres replication connection closed", "error", err)
+		}
+		return true
+	}
+	return false
 }
 
 func (s *stream) GetSystemInfo() *pq.IdentifySystemResult {

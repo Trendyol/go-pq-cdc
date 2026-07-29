@@ -592,7 +592,9 @@ func (c *connector) Close() {
 		c.heartbeat.Close(ctx)
 	}
 	if c.stream != nil {
-		c.stream.Close(ctx)
+		if err := c.stream.Close(ctx); err != nil {
+			logger.Error("replication stream shutdown failed", "error", err)
+		}
 	}
 
 	// Shutdown HTTP server

@@ -642,7 +642,7 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 	logger.Info("slot capturing...")
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	for range ticker {
+	for range ticker.C {
 		info, err := c.slot.Info(ctx)
 		if err != nil {
 			if goerrors.Is(err, slot.ErrorSlotClosed) {

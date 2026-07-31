@@ -209,11 +209,21 @@ func initializeTimescaleDB(ctx context.Context, cfg config.Config) (*timescaledb
 	return tdb, nil
 }
 
-// initializePublication sets up and creates the publication
+// initializePublication sets up and creates the publication.
+//
+// Replica identity DDL (SetReplicaIdentities) is gated on CreateIfNotExists so that
+// createIfNotExists: false consistently means "the connector manages no DDL" across
+// the publication, the slot, and replica identity. This allows least-privilege CDC
+// roles (SELECT + REPLICATION, no table ownership / ALTER) to start the connector
+// against a publication and slot that are provisioned out-of-band. When
+// CreateIfNotExists is true the connector applies configured replica identities as
+// before. See https://github.com/Trendyol/go-pq-cdc/issues/158 for the rationale.
 func initializePublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*publication.Config, error) {
 	pub := publication.New(cfg.Publication, conn)
-	if err := pub.SetReplicaIdentities(ctx); err != nil {
-		return nil, err
+	if cfg.Publication.CreateIfNotExists {
+		if err := pub.SetReplicaIdentities(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return pub.Create(ctx)
 }
@@ -632,7 +642,7 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 	logger.Info("slot capturing...")
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
+	for range ticker {
 		info, err := c.slot.Info(ctx)
 		if err != nil {
 			if goerrors.Is(err, slot.ErrorSlotClosed) {

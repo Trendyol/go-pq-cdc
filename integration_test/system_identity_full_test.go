@@ -349,7 +349,7 @@ func TestReplicaIdentityUsingIndexMissingIndexReturnsError(t *testing.T) {
 	})
 }
 
-func TestReplicaIdentityAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
+func TestReplicaIdentityNotAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
 	ctx := context.Background()
 
 	cdcCfg := cloneConnectorConfig()
@@ -394,8 +394,11 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
 
+		// CreateIfNotExists is false, so the connector must not issue
+		// ALTER TABLE ... REPLICA IDENTITY: books stays at DEFAULT even
+		// though the config asks for FULL.
 		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
-		assert.Equal(t, publication.ReplicaIdentityFull, identity)
+		assert.Equal(t, publication.ReplicaIdentityDefault, identity)
 	})
 }
 

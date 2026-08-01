@@ -394,9 +394,7 @@ func TestReplicaIdentityNotAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
 
-		// CreateIfNotExists is false, so the connector must not issue
-		// ALTER TABLE ... REPLICA IDENTITY: books stays at DEFAULT even
-		// though the config asks for FULL.
+		// no ALTER issued: books stays at DEFAULT.
 		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
 		assert.Equal(t, publication.ReplicaIdentityDefault, identity)
 	})
@@ -420,8 +418,7 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsTrue(t *testing.T) {
 			t.FailNow()
 		}
 
-		// books starts at DEFAULT (no ALTER applied yet); the connector
-		// creates the publication itself since CreateIfNotExists is true.
+		// connector creates the publication itself.
 		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
 		require.Equal(t, publication.ReplicaIdentityDefault, identity)
 
@@ -440,8 +437,7 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsTrue(t *testing.T) {
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
 
-		// CreateIfNotExists is true, so the connector applies the configured
-		// replica identity: books is altered from DEFAULT to FULL.
+		// altered to FULL.
 		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
 		assert.Equal(t, publication.ReplicaIdentityFull, identity)
 	})

@@ -25,8 +25,8 @@ func NewBegin(data []byte) (*Begin, error) {
 func (b *Begin) decode(data []byte) error {
 	skipByte := 1
 
-	if len(data) < 20 {
-		return errors.Newf("begin message length must be at least 20 byte, but got %d", len(data))
+	if len(data) < 21 {
+		return errors.Newf("begin message length must be at least 21 byte, but got %d", len(data))
 	}
 
 	b.FinalLSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))

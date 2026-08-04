@@ -44,7 +44,7 @@ func TestNewDecodesStreamedRelation(t *testing.T) {
 		0, 0, 64, 6, // OID 16390
 		'p', 'u', 'b', 'l', 'i', 'c', 0,
 		't', 0,
-		'd', // replica identity
+		'd',  // replica identity
 		0, 1, // column count
 		1, 'i', 'd', 0, 0, 0, 0, 23, 255, 255, 255, 255,
 	}

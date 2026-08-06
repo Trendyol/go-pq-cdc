@@ -57,6 +57,52 @@ func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
 	return nil
 }
 
+func (c *Publication) ValidateReplicaIdentities(ctx context.Context) error {
+	configured := make(Tables, 0, len(c.cfg.Tables))
+	for _, t := range c.cfg.Tables {
+		if t.ReplicaIdentity != "" {
+			configured = append(configured, t)
+		}
+	}
+	if len(configured) == 0 {
+		return nil
+	}
+
+	c.warnNothingReplicaIdentityWithUpdateDelete()
+
+	tables, err := c.GetReplicaIdentities(ctx)
+	if err != nil {
+		return err
+	}
+
+	mismatches := configured.Diff(tables)
+	if len(mismatches) > 0 {
+		var details strings.Builder
+		for i, mismatch := range mismatches {
+			if i > 0 {
+				details.WriteString("; ")
+			}
+			details.WriteString(fmt.Sprintf("%s.%s: configured=%s, actual=%s",
+				mismatch.Schema, mismatch.Name, mismatch.ReplicaIdentity, c.findActualIdentity(tables, mismatch)))
+		}
+		return fmt.Errorf("replica identity mismatch: %s", details.String())
+	}
+
+	return nil
+}
+
+func (c *Publication) findActualIdentity(tables []Table, configured Table) string {
+	for _, t := range tables {
+		if t.Schema == configured.Schema && t.Name == configured.Name {
+			if t.ReplicaIdentity == "" {
+				return ReplicaIdentityDefault
+			}
+			return t.ReplicaIdentity
+		}
+	}
+	return "unknown"
+}
+
 func (c *Publication) warnNothingReplicaIdentityWithUpdateDelete() {
 	hasUpdateDelete := c.cfg.Operations.Contains(OperationUpdate) || c.cfg.Operations.Contains(OperationDelete)
 	if !hasUpdateDelete {

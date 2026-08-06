@@ -1,0 +1,7 @@
+{"ts":"2026-07-30T11:06:55.999Z","hook":"session-init","projectRoot":"/Users/fatih.altuntas1/Desktop/tpay/go-pq-cdc","gitBranch":"main"}
+{"ts":"2026-07-30T11:07:05.116Z","hook":"iteration-context","action":"skip","iterationCount":1}
+{"ts":"2026-07-30T11:08:03.453Z","hook":"stop-notify","projectName":"go-pq-cdc","duration":"1m 7s","iterations":0}
+{"ts":"2026-08-06T10:16:14.578Z","hook":"session-init","projectRoot":"/Users/fatih.altuntas1/Desktop/tpay/go-pq-cdc","gitBranch":"pr-159"}
+{"ts":"2026-08-06T10:16:17.770Z","hook":"iteration-context","action":"skip","iterationCount":1}
+{"ts":"2026-08-06T10:17:43.940Z","hook":"iteration-context","action":"skip","iterationCount":2}
+{"ts":"2026-08-06T10:18:18.805Z","hook":"iteration-context","action":"skip","iterationCount":3}

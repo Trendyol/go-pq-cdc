@@ -30,34 +30,40 @@ var (
 	}
 )
 
-func (c *Publication) SetReplicaIdentities(ctx context.Context) error {
-	configured := make(Tables, 0, len(c.cfg.Tables))
-	for _, t := range c.cfg.Tables {
-		if t.ReplicaIdentity != "" {
-			configured = append(configured, t)
-		}
-	}
-	if len(configured) == 0 {
-		return nil
-	}
-
-	c.warnNothingReplicaIdentityWithUpdateDelete()
-
-	tables, err := c.GetReplicaIdentities(ctx)
+func (c *Publication) ApplyReplicaIdentities(ctx context.Context) error {
+	mismatches, _, err := c.replicaIdentityMismatches(ctx)
 	if err != nil {
 		return err
 	}
-
-	for _, d := range configured.Diff(tables) {
+	for _, d := range mismatches {
 		if err = c.AlterTableReplicaIdentity(ctx, d); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func (c *Publication) ValidateReplicaIdentities(ctx context.Context) error {
+func (c *Publication) CheckReplicaIdentities(ctx context.Context) error {
+	mismatches, actual, err := c.replicaIdentityMismatches(ctx)
+	if err != nil {
+		return err
+	}
+	if len(mismatches) == 0 {
+		return nil
+	}
+
+	var details strings.Builder
+	for i, mismatch := range mismatches {
+		if i > 0 {
+			details.WriteString("; ")
+		}
+		details.WriteString(fmt.Sprintf("%s.%s: configured=%s, actual=%s",
+			mismatch.Schema, mismatch.Name, formatReplicaIdentity(mismatch), findActualIdentity(actual, mismatch)))
+	}
+	return fmt.Errorf("replica identity mismatch: %s", details.String())
+}
+
+func (c *Publication) replicaIdentityMismatches(ctx context.Context) (Tables, []Table, error) {
 	configured := make(Tables, 0, len(c.cfg.Tables))
 	for _, t := range c.cfg.Tables {
 		if t.ReplicaIdentity != "" {
@@ -65,42 +71,52 @@ func (c *Publication) ValidateReplicaIdentities(ctx context.Context) error {
 		}
 	}
 	if len(configured) == 0 {
-		return nil
+		return nil, nil, nil
 	}
 
 	c.warnNothingReplicaIdentityWithUpdateDelete()
 
-	tables, err := c.GetReplicaIdentities(ctx)
+	actual, err := c.GetReplicaIdentities(ctx)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	mismatches := configured.Diff(tables)
-	if len(mismatches) > 0 {
-		var details strings.Builder
-		for i, mismatch := range mismatches {
-			if i > 0 {
-				details.WriteString("; ")
-			}
-			details.WriteString(fmt.Sprintf("%s.%s: configured=%s, actual=%s",
-				mismatch.Schema, mismatch.Name, mismatch.ReplicaIdentity, c.findActualIdentity(tables, mismatch)))
-		}
-		return fmt.Errorf("replica identity mismatch: %s", details.String())
-	}
-
-	return nil
+	return identityOnlyTables(configured).Diff(actual), actual, nil
 }
 
-func (c *Publication) findActualIdentity(tables []Table, configured Table) string {
+// identityOnlyTables keeps only fields used for replica-identity comparison so
+// Diff does not treat publication Columns/Partitioned as identity mismatches.
+func identityOnlyTables(tables Tables) Tables {
+	out := make(Tables, len(tables))
+	for i, t := range tables {
+		out[i] = Table{
+			Schema:               t.Schema,
+			Name:                 t.Name,
+			ReplicaIdentity:      t.ReplicaIdentity,
+			ReplicaIdentityIndex: t.ReplicaIdentityIndex,
+		}
+	}
+	return out
+}
+
+func findActualIdentity(tables []Table, configured Table) string {
 	for _, t := range tables {
 		if t.Schema == configured.Schema && t.Name == configured.Name {
-			if t.ReplicaIdentity == "" {
-				return ReplicaIdentityDefault
-			}
-			return t.ReplicaIdentity
+			return formatReplicaIdentity(t)
 		}
 	}
 	return "unknown"
+}
+
+func formatReplicaIdentity(t Table) string {
+	identity := t.ReplicaIdentity
+	if identity == "" {
+		identity = ReplicaIdentityDefault
+	}
+	if identity == ReplicaIdentityUsingIndex && t.ReplicaIdentityIndex != "" {
+		return fmt.Sprintf("%s %s", identity, t.ReplicaIdentityIndex)
+	}
+	return identity
 }
 
 func (c *Publication) warnNothingReplicaIdentityWithUpdateDelete() {
@@ -111,7 +127,7 @@ func (c *Publication) warnNothingReplicaIdentityWithUpdateDelete() {
 
 	for _, table := range c.cfg.Tables {
 		if table.ReplicaIdentity == ReplicaIdentityNothing {
-			logger.Warn(
+			logger.Error(
 				"table uses REPLICA IDENTITY NOTHING with UPDATE/DELETE publication operations",
 				"table", qualifiedTableName(table),
 				"note", "NOTHING is typically suitable for insert-only scenarios",

@@ -211,23 +211,19 @@ func initializeTimescaleDB(ctx context.Context, cfg config.Config) (*timescaledb
 
 // initializePublication sets up and creates the publication.
 //
-// Replica identity is validated or applied depending on CreateIfNotExists:
-// - When CreateIfNotExists is true: SetReplicaIdentities applies configured identities.
-// - When CreateIfNotExists is false: ValidateReplicaIdentities checks that existing
-//   identities match the configuration, without requiring ALTER TABLE permission.
-//
-// This allows least-privilege CDC roles (SELECT + REPLICATION, no table ownership)
-// to work with pre-provisioned publications and replicas. See #158 for rationale.
+// Replica identity is applied or checked depending on CreateIfNotExists:
+// - When CreateIfNotExists is true: ApplyReplicaIdentities may ALTER TABLE.
+// - When CreateIfNotExists is false: CheckReplicaIdentities is read-only; any
+//   failure is logged as Error with a manual-action hint and does not stop startup.
+//   See #158 for rationale.
 func initializePublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*publication.Config, error) {
 	pub := publication.New(cfg.Publication, conn)
 	if cfg.Publication.CreateIfNotExists {
-		if err := pub.SetReplicaIdentities(ctx); err != nil {
+		if err := pub.ApplyReplicaIdentities(ctx); err != nil {
 			return nil, err
 		}
-	} else {
-		if err := pub.ValidateReplicaIdentities(ctx); err != nil {
-			return nil, err
-		}
+	} else if err := pub.CheckReplicaIdentities(ctx); err != nil {
+		logger.Error("replica identity check failed; take manual action to ALTER TABLE ... REPLICA IDENTITY to match the config", "error", err)
 	}
 	return pub.Create(ctx)
 }

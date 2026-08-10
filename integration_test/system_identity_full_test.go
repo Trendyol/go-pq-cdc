@@ -349,7 +349,7 @@ func TestReplicaIdentityUsingIndexMissingIndexReturnsError(t *testing.T) {
 	})
 }
 
-func TestReplicaIdentityMismatchDetectedWhenCreateIfNotExistsFalse(t *testing.T) {
+func TestReplicaIdentityMismatchLoggedWhenCreateIfNotExistsFalse(t *testing.T) {
 	ctx := context.Background()
 
 	cdcCfg := cloneConnectorConfig()
@@ -383,10 +383,10 @@ func TestReplicaIdentityMismatchDetectedWhenCreateIfNotExistsFalse(t *testing.T)
 			_ = ctx.Ack()
 		}
 
-		// Connector should fail because replica identity doesn't match config.
+		// Connector should start; mismatch is logged, not fatal.
 		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if assert.Error(t, err) {
-			assert.ErrorContains(t, err, "replica identity mismatch")
+		if !assert.NoError(t, err) {
+			t.FailNow()
 		}
 
 		t.Cleanup(func() {
@@ -394,10 +394,14 @@ func TestReplicaIdentityMismatchDetectedWhenCreateIfNotExistsFalse(t *testing.T)
 			assert.NoError(t, pgExec(ctx, postgresConn, "DROP PUBLICATION IF EXISTS "+cdcCfg.Publication.Name))
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
+
+		// Identity left untouched (no ALTER TABLE).
+		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		assert.Equal(t, publication.ReplicaIdentityDefault, identity)
 	})
 }
 
-func TestReplicaIdentityValidationSucceedsWhenCreateIfNotExistsFalse(t *testing.T) {
+func TestReplicaIdentityCheckSucceedsWhenCreateIfNotExistsFalse(t *testing.T) {
 	ctx := context.Background()
 
 	cdcCfg := cloneConnectorConfig()

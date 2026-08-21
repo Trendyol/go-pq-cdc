@@ -53,6 +53,7 @@ type Streamer interface {
 	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
 	Close(ctx context.Context) error
+	Disconnected() <-chan struct{}
 	GetSystemInfo() *pq.IdentifySystemResult
 	GetMetric() metric.Metric
 	OpenFromSnapshotLSN()
@@ -79,6 +80,7 @@ type stream struct {
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
 	openFromSnapshotLSN bool
+	disconnectedCh        chan struct{}
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
@@ -95,8 +97,13 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		lastXLogPos: 0,
 		sinkEnd:     make(chan struct{}, 1),
 		processEnd:  make(chan struct{}, 1),
+		disconnectedCh: make(chan struct{}, 1),
 		mu:          &sync.RWMutex{},
 	}
+}
+
+func (s *stream) Disconnected() <-chan struct{} {
+	return s.disconnectedCh
 }
 
 func (s *stream) Connect(ctx context.Context) error {
@@ -314,19 +321,20 @@ func (s *stream) sink(ctx context.Context) {
 	})
 
 	s.sinkEnd <- struct{}{}
-	if !s.closed.Load() {
-		// The reader can also initiate shutdown after an unexpected disconnect.
-		// Do not let a synchronous application listener turn that path into an
-		// unbounded wait when the stream context has no deadline.
+	if s.closed.Load() {
+		return
+	}
+
+	if corrupted {
 		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), streamShutdownTimeout)
 		defer cancel()
 		if err := s.Close(closeCtx); err != nil {
 			logger.Error("replication stream shutdown failed", "error", err)
 		}
-		if corrupted {
-			panic("corrupted connection")
-		}
+		panic("corrupted connection")
 	}
+
+	s.finalizeUnexpectedDisconnect(ctx)
 }
 
 // sinkLoop reads raw replication messages and dispatches them until the
@@ -649,6 +657,52 @@ func (s *stream) Close(ctx context.Context) error {
 	}
 
 	return goerrors.Join(errs...)
+}
+
+func (s *stream) finalizeUnexpectedDisconnect(ctx context.Context) {
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), streamShutdownTimeout)
+	defer cancel()
+
+	s.connMu.Lock()
+	if !s.conn.IsClosed() {
+		s.flushFinalStandbyStatusUpdateLocked(closeCtx)
+		if err := s.conn.Close(closeCtx); err != nil {
+			logger.Error("replication stream disconnect close failed", "error", err)
+		}
+		logger.Info("postgres replication connection closed for reconnect")
+	}
+	s.connMu.Unlock()
+
+	if s.cancel != nil {
+		s.cancel()
+	}
+
+	if s.processStarted.Load() {
+		select {
+		case <-s.processEnd:
+			logger.Info("postgres message process stopped for reconnect")
+		case <-closeCtx.Done():
+			logger.Warn("timed out waiting for postgres message process during reconnect", "error", closeCtx.Err())
+		}
+	}
+
+	s.resetRuntimeState()
+
+	select {
+	case s.disconnectedCh <- struct{}{}:
+	default:
+	}
+}
+
+func (s *stream) resetRuntimeState() {
+	s.messageCH = make(chan *Message, 1000)
+	s.sinkEnd = make(chan struct{}, 1)
+	s.processEnd = make(chan struct{}, 1)
+	s.messageCloseOnce = sync.Once{}
+	s.sinkStarted.Store(false)
+	s.processStarted.Store(false)
+	s.cancel = nil
+	s.relation = make(map[uint32]*format.Relation)
 }
 
 func isReplicationConnectionTerminationError(err error) bool {

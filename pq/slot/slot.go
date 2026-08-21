@@ -125,9 +125,16 @@ func (s *Slot) Info(ctx context.Context) (*Info, error) {
 }
 
 func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
+	if err := s.conn.Connect(ctx); err != nil {
+		return nil, errors.Wrap(err, "slot connect")
+	}
+
 	resultReader := s.conn.Exec(ctx, s.statusSQL)
 	results, err := resultReader.ReadAll()
 	if err != nil {
+		// Drop the broken connection so the next metrics tick reconnects lazily,
+		// mirroring the heartbeat module's behaviour.
+		_ = s.conn.Close(ctx)
 		return nil, errors.Wrap(err, "replication slot info result")
 	}
 

@@ -273,22 +273,8 @@ func (c *connector) Start(ctx context.Context) {
 		return
 	}
 
-	// Normal CDC flow (unchanged for backward compatibility)
-	c.CaptureSlot(ctx)
-
-	if err := c.stream.Connect(ctx); err != nil {
-		logger.Error("stream connection failed", "error", err)
-		return
-	}
-
-	err := c.stream.Open(ctx)
-	if err != nil {
-		if goerrors.Is(err, replication.ErrorSlotInUse) {
-			logger.Info("capture failed")
-			c.Start(ctx)
-			return
-		}
-		logger.Error("postgres stream open", "error", err)
+	if err := c.startReplication(ctx); err != nil {
+		logger.Error("initial replication start failed", "error", err)
 		return
 	}
 
@@ -308,8 +294,109 @@ func (c *connector) Start(ctx context.Context) {
 
 	c.readyCh <- struct{}{}
 
-	<-c.cancelCh
-	logger.Debug("cancel channel triggered")
+	c.runUntilShutdown(ctx)
+}
+
+func (c *connector) startReplication(ctx context.Context) error {
+	c.CaptureSlot(ctx)
+
+	if err := c.stream.Connect(ctx); err != nil {
+		return errors.Wrap(err, "stream connection")
+	}
+
+	if err := c.stream.Open(ctx); err != nil {
+		if goerrors.Is(err, replication.ErrorSlotInUse) {
+			logger.Info("capture failed, retrying slot capture")
+			return c.startReplication(ctx)
+		}
+		return errors.Wrap(err, "postgres stream open")
+	}
+
+	return nil
+}
+
+func (c *connector) runUntilShutdown(ctx context.Context) {
+	disconnectCh := c.stream.Disconnected()
+
+	for {
+		select {
+		case <-c.cancelCh:
+			logger.Debug("cancel channel triggered")
+			return
+		case <-ctx.Done():
+			logger.Debug("context cancelled")
+			return
+		case <-disconnectCh:
+			logger.Warn("replication stream disconnected, attempting reconnect")
+			if err := c.reconnectReplication(ctx); err != nil {
+				logger.Error("replication reconnect failed", "error", err)
+				return
+			}
+			logger.Info("replication stream reconnected")
+		}
+	}
+}
+
+func (c *connector) reconnectReplication(ctx context.Context) error {
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		select {
+		case <-c.cancelCh:
+			return nil
+		default:
+		}
+
+		c.CaptureSlot(ctx)
+
+		if err := c.stream.Connect(ctx); err != nil {
+			logger.Warn("stream reconnect connect failed", "error", err, "backoff", backoff)
+			if !sleepWithContext(ctx, backoff) {
+				return ctx.Err()
+			}
+			backoff = minDuration(backoff*2, maxBackoff)
+			continue
+		}
+
+		if err := c.stream.Open(ctx); err != nil {
+			if goerrors.Is(err, replication.ErrorSlotInUse) {
+				logger.Info("slot in use during reconnect, recapturing")
+				continue
+			}
+			logger.Warn("stream reconnect open failed", "error", err, "backoff", backoff)
+			if !sleepWithContext(ctx, backoff) {
+				return ctx.Err()
+			}
+			backoff = minDuration(backoff*2, maxBackoff)
+			continue
+		}
+
+		return nil
+	}
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (c *connector) shouldTakeSnapshot(ctx context.Context) bool {
@@ -634,22 +721,29 @@ func (c *connector) CaptureSlot(ctx context.Context) {
 	logger.Info("slot capturing...")
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		info, err := c.slot.Info(ctx)
-		if err != nil {
-			if goerrors.Is(err, slot.ErrorSlotClosed) {
-				return
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.cancelCh:
+			return
+		case <-ticker.C:
+			info, err := c.slot.Info(ctx)
+			if err != nil {
+				if goerrors.Is(err, slot.ErrorSlotClosed) {
+					return
+				}
+				logger.Warn("slot info failed on capture slot", "error", err)
+				continue
 			}
-			logger.Warn("slot info failed on capture slot", "error", err)
-			continue
-		}
 
-		if info.Active {
-			continue
-		}
+			if info.Active {
+				continue
+			}
 
-		logger.Debug("capture slot", "slotInfo", info)
-		break
+			logger.Debug("capture slot", "slotInfo", info)
+			return
+		}
 	}
 }
 

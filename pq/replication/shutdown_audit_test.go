@@ -178,8 +178,13 @@ func TestStreamStopsOnUnexpectedEOFWithoutPanic(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("sink did not stop after PostgreSQL returned EOF")
 	}
-	if !stream.closed.Load() {
-		t.Fatal("sink did not mark the stream closed after EOF")
+	if stream.closed.Load() {
+		t.Fatal("unexpected disconnect should not permanently close the stream")
+	}
+	select {
+	case <-stream.Disconnected():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("disconnect signal was not emitted after EOF")
 	}
 }
 

@@ -4,7 +4,57 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestIdentityOnlyTables(t *testing.T) {
+	t.Run("should ignore columns and partitioned so Diff matches on identity only", func(t *testing.T) {
+		configured := Tables{
+			{
+				Name:            "books",
+				Schema:          "public",
+				ReplicaIdentity: ReplicaIdentityFull,
+				Columns:         []string{"id", "name"},
+				Partitioned:     true,
+			},
+		}
+		actual := Tables{
+			{
+				Name:            "books",
+				Schema:          "public",
+				ReplicaIdentity: ReplicaIdentityFull,
+			},
+		}
+
+		require.NotEmpty(t, configured.Diff(actual), "Diff includes Columns/Partitioned by design")
+
+		diff := identityOnlyTables(configured).Diff(actual)
+		assert.Empty(t, diff)
+	})
+
+	t.Run("should still detect replica identity mismatches", func(t *testing.T) {
+		configured := Tables{
+			{
+				Name:            "books",
+				Schema:          "public",
+				ReplicaIdentity: ReplicaIdentityFull,
+				Columns:         []string{"id"},
+			},
+		}
+		actual := Tables{
+			{
+				Name:            "books",
+				Schema:          "public",
+				ReplicaIdentity: ReplicaIdentityDefault,
+			},
+		}
+
+		diff := identityOnlyTables(configured).Diff(actual)
+		require.Len(t, diff, 1)
+		assert.Equal(t, ReplicaIdentityFull, diff[0].ReplicaIdentity)
+		assert.Empty(t, diff[0].Columns)
+	})
+}
 
 func TestMapReplicaIdentity(t *testing.T) {
 	t.Run("should map postgres relreplident codes", func(t *testing.T) {

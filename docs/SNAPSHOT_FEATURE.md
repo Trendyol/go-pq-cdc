@@ -1349,7 +1349,8 @@ publication:
 
 | Scenario | Recommended Override |
 |----------|---------------------|
-| Integer PK but values are hash-based (non-sequential) | `ctid_block` |
+| Integer PK but values are hash-based (non-sequential) | `ctid_block` (also auto-detected when PK span ≫ row count) |
+| Sparse integer PK (large gaps / deleted IDs) | Auto falls back to `ctid_block`; force `integer_range` only if you need range scans |
 | UUID/string PK | Auto-detected as `ctid_block` |
 | Sequential integer PK | Auto-detected as `integer_range` |
 | Want maximum control | Explicit strategy per table |

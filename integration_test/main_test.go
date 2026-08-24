@@ -110,9 +110,8 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 	}
 
 	err := testcontainers.WithWaitStrategy(
-		wait.ForLog("database system is ready to accept connections").
-			WithOccurrence(2).
-			WithStartupTimeout(5 * time.Second)).Customize(&genericContainerReq)
+		wait.ForExec([]string{"pg_isready", "-U", "postgres", "-d", cfg.Database}).
+			WithStartupTimeout(30 * time.Second)).Customize(&genericContainerReq)
 	if err != nil {
 		return testcontainers.GenericContainerRequest{}, err
 	}

@@ -36,4 +36,4 @@ jobs:
         run: |
           make test/integration
         env:
-          POSTGRES_TEST_IMAGE: ${{ matrix.version }}
+          POSTGRES_VERSION: ${{ matrix.version }}

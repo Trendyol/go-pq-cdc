@@ -713,9 +713,18 @@ func (s *Snapshotter) createChunksAutoDetectConn(ctx context.Context, conn pq.Co
 
 	if ok {
 		if rangeChunks := s.createRangeChunksWithConn(ctx, conn, slotName, table, pkColumn); len(rangeChunks) > 0 {
-			return rangeChunks
+			if s.shouldFallbackSparseIntegerRange(ctx, conn, table, rangeChunks) {
+				logger.Warn("[chunk] integer_range would create excessive chunks for sparse PK, falling back to CTID",
+					"table", table.Name,
+					"numChunks", len(rangeChunks),
+					"chunkSize", s.config.ChunkSize,
+				)
+			} else {
+				return rangeChunks
+			}
+		} else {
+			logger.Warn("[chunk] range chunking unavailable, trying CTID", "table", table.Name)
 		}
-		logger.Warn("[chunk] range chunking unavailable, trying CTID", "table", table.Name)
 	}
 
 	// Strategy 2: CTID block partitioning (works for any table, very fast)
@@ -726,6 +735,23 @@ func (s *Snapshotter) createChunksAutoDetectConn(ctx context.Context, conn pq.Co
 	// Strategy 3: Fallback to offset-based (slow but always works)
 	logger.Warn("[chunk] CTID partitioning unavailable, falling back to OFFSET", "table", table.Name)
 	return s.createOffsetChunksWithConn(ctx, conn, slotName, table)
+}
+
+// shouldFallbackSparseIntegerRange returns true when auto integer_range would create far more
+// chunks than row count justifies (sparse / hash-like PK spans).
+func (s *Snapshotter) shouldFallbackSparseIntegerRange(ctx context.Context, conn pq.Connection, table publication.Table, rangeChunks []*Chunk) bool {
+	if len(rangeChunks) == 0 || rangeChunks[0].RangeStart == nil {
+		return false
+	}
+
+	rowCount, err := s.getTableRawCountWithConn(ctx, conn, table.Schema, table.Name)
+	if err != nil {
+		logger.Warn("[chunk] failed to read row count for sparse integer_range check",
+			"table", table.Name, "error", err)
+		return false
+	}
+
+	return integerRangeIsSparse(int64(len(rangeChunks)), rowCount, s.config.ChunkSize)
 }
 
 func (s *Snapshotter) createRangeChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table, pkColumn string) []*Chunk {
@@ -753,8 +779,7 @@ func (s *Snapshotter) createRangeChunksWithConn(ctx context.Context, conn pq.Con
 	}
 
 	chunkSize := s.config.ChunkSize
-	totalRange := (maxValue - minValue) + 1
-	numChunks := (totalRange + chunkSize - 1) / chunkSize
+	numChunks := integerRangeChunkCount(minValue, maxValue, chunkSize)
 	chunks := make([]*Chunk, 0, numChunks)
 
 	for i := int64(0); i < numChunks; i++ {
@@ -791,6 +816,27 @@ func (s *Snapshotter) createRangeChunksWithConn(ctx context.Context, conn pq.Con
 		"rangeMax", maxValue,
 	)
 	return chunks
+}
+
+// integerRangeChunkCount is the chunk count formula for integer_range partitioning:
+// ceil((max-min+1) / chunkSize). Sparse PKs (large max-min, few rows) explode chunk count.
+func integerRangeChunkCount(minValue, maxValue, chunkSize int64) int64 {
+	totalRange := (maxValue - minValue) + 1
+	return (totalRange + chunkSize - 1) / chunkSize
+}
+
+// integerRangeIsSparse is true when PK-span chunk count is more than 2x the chunks
+// needed for the same rowCount at chunkSize (auto-detect then prefers ctid_block).
+func integerRangeIsSparse(numChunks, rowCount, chunkSize int64) bool {
+	if numChunks <= 0 || rowCount <= 0 || chunkSize <= 0 {
+		return false
+	}
+	idealChunks := (rowCount + chunkSize - 1) / chunkSize
+	threshold := idealChunks * 2
+	if threshold < 1 {
+		threshold = 1
+	}
+	return numChunks > threshold
 }
 
 // createCTIDBlockChunksWithConn creates chunks based on PostgreSQL physical block locations

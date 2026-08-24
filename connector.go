@@ -209,11 +209,21 @@ func initializeTimescaleDB(ctx context.Context, cfg config.Config) (*timescaledb
 	return tdb, nil
 }
 
-// initializePublication sets up and creates the publication
+// initializePublication sets up and creates the publication.
+//
+// Replica identity is applied or checked depending on CreateIfNotExists:
+// - When CreateIfNotExists is true: ApplyReplicaIdentities may ALTER TABLE.
+// - When CreateIfNotExists is false: CheckReplicaIdentities is read-only; any
+//   failure is logged as Error with a manual-action hint and does not stop startup.
+//   See #158 for rationale.
 func initializePublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*publication.Config, error) {
 	pub := publication.New(cfg.Publication, conn)
-	if err := pub.SetReplicaIdentities(ctx); err != nil {
-		return nil, err
+	if cfg.Publication.CreateIfNotExists {
+		if err := pub.ApplyReplicaIdentities(ctx); err != nil {
+			return nil, err
+		}
+	} else if err := pub.CheckReplicaIdentities(ctx); err != nil {
+		logger.Error("replica identity check failed; take manual action to ALTER TABLE ... REPLICA IDENTITY to match the config", "error", err)
 	}
 	return pub.Create(ctx)
 }

@@ -349,11 +349,11 @@ func TestReplicaIdentityUsingIndexMissingIndexReturnsError(t *testing.T) {
 	})
 }
 
-func TestReplicaIdentityAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
+func TestReplicaIdentityMismatchLoggedWhenCreateIfNotExistsFalse(t *testing.T) {
 	ctx := context.Background()
 
 	cdcCfg := cloneConnectorConfig()
-	cdcCfg.Slot.Name = "slot_test_replica_identity_create_false"
+	cdcCfg.Slot.Name = "slot_test_replica_identity_mismatch"
 	cdcCfg.Publication.CreateIfNotExists = false
 	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityFull
 
@@ -375,7 +375,105 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
 			t.FailNow()
 		}
 
-		// books starts at DEFAULT (no ALTER applied yet).
+		// books starts at DEFAULT (mismatch: config wants FULL).
+		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		require.Equal(t, publication.ReplicaIdentityDefault, identity)
+
+		handlerFunc := func(ctx *replication.ListenerContext) {
+			_ = ctx.Ack()
+		}
+
+		// Connector should start; mismatch is logged, not fatal.
+		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		t.Cleanup(func() {
+			assert.NoError(t, RestoreDB(ctx))
+			assert.NoError(t, pgExec(ctx, postgresConn, "DROP PUBLICATION IF EXISTS "+cdcCfg.Publication.Name))
+			assert.NoError(t, postgresConn.Close(ctx))
+		})
+
+		// Identity left untouched (no ALTER TABLE).
+		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		assert.Equal(t, publication.ReplicaIdentityDefault, identity)
+	})
+}
+
+func TestReplicaIdentityCheckSucceedsWhenCreateIfNotExistsFalse(t *testing.T) {
+	ctx := context.Background()
+
+	cdcCfg := cloneConnectorConfig()
+	cdcCfg.Slot.Name = "slot_test_replica_identity_validation_success"
+	cdcCfg.Publication.CreateIfNotExists = false
+	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityFull
+
+	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
+		postgresConn, err := newPostgresConn()
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+			t.FailNow()
+		}
+
+		// Publication must pre-exist.
+		err = pgExec(ctx, postgresConn, fmt.Sprintf(
+			"CREATE PUBLICATION %s FOR TABLE books WITH (publish = 'insert, update, delete');",
+			cdcCfg.Publication.Name))
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		// Pre-configure books to FULL to match the config.
+		err = pgExec(ctx, postgresConn, "ALTER TABLE books REPLICA IDENTITY FULL;")
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		handlerFunc := func(ctx *replication.ListenerContext) {
+			_ = ctx.Ack()
+		}
+
+		// Connector should start successfully (validation passes).
+		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		t.Cleanup(func() {
+			assert.NoError(t, RestoreDB(ctx))
+			assert.NoError(t, pgExec(ctx, postgresConn, "DROP PUBLICATION IF EXISTS "+cdcCfg.Publication.Name))
+			assert.NoError(t, postgresConn.Close(ctx))
+		})
+
+		// Confirm books stayed at FULL (no ALTER issued by connector).
+		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		assert.Equal(t, publication.ReplicaIdentityFull, identity)
+	})
+}
+
+func TestReplicaIdentityAppliedWhenCreateIfNotExistsTrue(t *testing.T) {
+	ctx := context.Background()
+
+	cdcCfg := cloneConnectorConfig()
+	cdcCfg.Slot.Name = "slot_test_replica_identity_create_true"
+	cdcCfg.Publication.CreateIfNotExists = true
+	cdcCfg.Publication.Tables[0].ReplicaIdentity = publication.ReplicaIdentityFull
+
+	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
+		postgresConn, err := newPostgresConn()
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+
+		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
+			t.FailNow()
+		}
+
+		// connector creates the publication itself.
 		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
 		require.Equal(t, publication.ReplicaIdentityDefault, identity)
 
@@ -394,6 +492,7 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsFalse(t *testing.T) {
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
 
+		// altered to FULL.
 		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
 		assert.Equal(t, publication.ReplicaIdentityFull, identity)
 	})

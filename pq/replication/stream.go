@@ -351,16 +351,17 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 				return false
 			}
 			if handleReplicationConnectionTermination(err) {
-				return false
+				// Connection is gone while we are still running. Close and panic
+				// so the process restarts with a fresh replication connection.
+				return true
 			}
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
 					if err = s.sendStandbyStatusUpdate(ctx); err != nil {
-						terminated := handleReplicationConnectionTermination(err)
-						if !terminated {
+						if !handleReplicationConnectionTermination(err) {
 							logger.Error("send stand by status update", "error", err)
 						}
-						return !terminated
+						return true
 					}
 					logger.Debug("send stand by status update")
 				}
@@ -378,7 +379,8 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 		switch copyData.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
 			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
-				return !handleReplicationConnectionTermination(err)
+				handleReplicationConnectionTermination(err)
+				return true
 			}
 		case message.XLogDataByteID:
 			s.handleXLogData(copyData.Data[1:], buf, streamBuf)

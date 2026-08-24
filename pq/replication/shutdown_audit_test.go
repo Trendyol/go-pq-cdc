@@ -161,26 +161,76 @@ func TestListenerReceivesCancellationDuringStreamClose(t *testing.T) {
 	}
 }
 
-func TestStreamStopsOnUnexpectedEOFWithoutPanic(t *testing.T) {
+func TestSinkLoopTreatsConnectionTerminationAsCorrupted(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	tests := []struct {
+		err  error
+		name string
+	}{
+		{name: "EOF", err: io.EOF},
+		{name: "unexpected EOF", err: io.ErrUnexpectedEOF},
+		{name: "closed network connection", err: net.ErrClosed},
+		{name: "connection reset", err: syscall.ECONNRESET},
+		{name: "broken pipe", err: syscall.EPIPE},
+		{name: "admin shutdown", err: &pgconn.PgError{Code: postgresAdminShutdown}},
+		{name: "crash shutdown", err: &pgconn.PgError{Code: postgresCrashShutdown}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := NewStream("", config.Config{}, metric.NewMetric("test"), func(*ListenerContext) {}).(*stream)
+			stream.conn = receiveErrConn{err: tt.err}
+
+			corrupted := stream.sinkLoop(
+				context.Background(),
+				&messageBuffer{outCh: make(chan *Message, 1)},
+				&streamTxBuffer{},
+			)
+			if !corrupted {
+				t.Fatal("expected connection termination while running to be treated as corrupted so the process restarts")
+			}
+		})
+	}
+}
+
+func TestSinkLoopDoesNotTreatTerminationAsCorruptedWhenAlreadyClosed(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	stream := NewStream("", config.Config{}, metric.NewMetric("test"), func(*ListenerContext) {}).(*stream)
+	stream.conn = receiveErrConn{err: io.ErrUnexpectedEOF}
+	stream.closed.Store(true)
+
+	corrupted := stream.sinkLoop(
+		context.Background(),
+		&messageBuffer{outCh: make(chan *Message, 1)},
+		&streamTxBuffer{},
+	)
+	if corrupted {
+		t.Fatal("expected an already-closed stream to stop without being treated as corrupted")
+	}
+}
+
+func TestSinkPanicsAfterClosingOnUnexpectedDisconnect(t *testing.T) {
 	logger.InitLogger(logger.NewSlog(slog.LevelError))
 
 	stream := NewStream("", config.Config{}, metric.NewMetric("test"), func(*ListenerContext) {}).(*stream)
 	stream.conn = eofConn{}
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		stream.sink(context.Background())
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("expected panic after unexpected disconnect so the process restarts with a fresh connection")
+		}
+		if recovered != "corrupted connection" {
+			t.Fatalf("unexpected panic value: %v", recovered)
+		}
+		if !stream.closed.Load() {
+			t.Fatal("expected the stream to close before panicking")
+		}
 	}()
 
-	select {
-	case <-done:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("sink did not stop after PostgreSQL returned EOF")
-	}
-	if !stream.closed.Load() {
-		t.Fatal("sink did not mark the stream closed after EOF")
-	}
+	stream.sink(context.Background())
 }
 
 func TestReplicationConnectionTerminationErrors(t *testing.T) {
@@ -245,6 +295,24 @@ func (c *shutdownAuditConn) ReceiveMessage(context.Context) (pgproto3.BackendMes
 func (c *shutdownAuditConn) Frontend() *pgproto3.Frontend { return nil }
 
 func (c *shutdownAuditConn) Exec(context.Context, string) *pgconn.MultiResultReader { return nil }
+
+type receiveErrConn struct {
+	err error
+}
+
+func (receiveErrConn) Connect(context.Context) error { return nil }
+
+func (receiveErrConn) IsClosed() bool { return false }
+
+func (receiveErrConn) Close(context.Context) error { return nil }
+
+func (c receiveErrConn) ReceiveMessage(context.Context) (pgproto3.BackendMessage, error) {
+	return nil, c.err
+}
+
+func (receiveErrConn) Frontend() *pgproto3.Frontend { return nil }
+
+func (receiveErrConn) Exec(context.Context, string) *pgconn.MultiResultReader { return nil }
 
 type eofConn struct{}
 

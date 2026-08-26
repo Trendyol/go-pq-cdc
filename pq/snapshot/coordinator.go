@@ -1026,10 +1026,7 @@ func isIntegerType(dataType string) bool {
 }
 
 func (s *Snapshotter) getPrimaryKeyBoundsWithConn(ctx context.Context, conn pq.Connection, table publication.Table, pkColumn string) (int64, int64, bool, error) {
-	query := fmt.Sprintf(`
-		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
-		FROM %s.%s
-	`, pkColumn, pkColumn, table.Schema, table.Name)
+	query := s.buildPrimaryKeyBoundsQuery(table, pkColumn)
 
 	results, err := s.execQuery(ctx, conn, query)
 	if err != nil {
@@ -1056,6 +1053,17 @@ func (s *Snapshotter) getPrimaryKeyBoundsWithConn(ctx context.Context, conn pq.C
 	}
 
 	return minValue, maxValue, true, nil
+}
+
+func (s *Snapshotter) buildPrimaryKeyBoundsQuery(table publication.Table, pkColumn string) string {
+	query := fmt.Sprintf(`
+		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
+		FROM %s.%s
+	`, pkColumn, pkColumn, table.Schema, table.Name)
+	if queryCondition := s.getQueryCondition(table.Schema, table.Name); queryCondition != "" {
+		query += " WHERE (" + queryCondition + ")"
+	}
+	return query
 }
 
 // parseRow converts PostgreSQL row data to map with proper type conversion

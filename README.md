@@ -426,6 +426,22 @@ Streaming behavior for `proto_version: 2`:
 - `STREAM ABORT` discards all buffered events for that transaction.
 - This prevents rolled-back streamed transactions from leaking to consumers.
 
+### Commit LSN and reading from a standby
+
+Every CDC event exposes `ctx.CommitLSN`: the WAL position of the commit record of the transaction that produced it
+(pgoutput `Begin.FinalLSN`, or `StreamCommit.CommitLSN` for streamed transactions). Snapshot events carry `0`.
+
+`visibilityGuard` only describes the primary. A consumer that reads from a standby, or through a pooler that may route
+to one, has to wait until the standby has replayed that commit record. The rule is **strict**:
+
+```sql
+SELECT pg_last_wal_replay_lsn() > '<ctx.CommitLSN>'::pg_lsn;
+```
+
+`pg_last_wal_replay_lsn()` reports the end of the last replayed record, so it equals `CommitLSN` right before the commit
+record itself is applied; `>=` is not enough. On PostgreSQL 17+ `pg_wal_replay_wait('<ctx.CommitLSN>')` can replace
+polling, followed by the same strict check. `ctx.CommitLSN.String()` prints the `pg_lsn` text form (`X/X`).
+
 ### Exposed Metrics
 
 The client collects relevant metrics related to PostgreSQL change data capture (CDC) and makes them available at

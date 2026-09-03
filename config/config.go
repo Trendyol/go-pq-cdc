@@ -17,19 +17,56 @@ import (
 const defaultSchema = "public"
 
 type Config struct {
-	Logger           LoggerConfig       `json:"logger" yaml:"logger"`
-	Host             string             `json:"host" yaml:"host"`
-	Username         string             `json:"username" yaml:"username"`
-	Password         string             `json:"password" yaml:"password"`
-	Database         string             `json:"database" yaml:"database"`
-	Publication      publication.Config `json:"publication" yaml:"publication"`
-	Heartbeat        HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
-	Slot             slot.Config        `json:"slot" yaml:"slot"`
-	Snapshot         SnapshotConfig     `json:"snapshot" yaml:"snapshot"`
-	Port             int                `json:"port" yaml:"port"`
-	Metric           MetricConfig       `json:"metric" yaml:"metric"`
-	DebugMode        bool               `json:"debugMode" yaml:"debugMode"`
-	ExtensionSupport ExtensionSupport   `json:"extensionSupport" yaml:"extensionSupport"`
+	Logger           LoggerConfig          `json:"logger" yaml:"logger"`
+	Host             string                `json:"host" yaml:"host"`
+	Username         string                `json:"username" yaml:"username"`
+	Password         string                `json:"password" yaml:"password"`
+	Database         string                `json:"database" yaml:"database"`
+	Publication      publication.Config    `json:"publication" yaml:"publication"`
+	Heartbeat        HeartbeatConfig       `json:"heartbeat" yaml:"heartbeat"`
+	Slot             slot.Config           `json:"slot" yaml:"slot"`
+	VisibilityGuard  VisibilityGuardConfig `json:"visibilityGuard" yaml:"visibilityGuard"`
+	Snapshot         SnapshotConfig        `json:"snapshot" yaml:"snapshot"`
+	Port             int                   `json:"port" yaml:"port"`
+	Metric           MetricConfig          `json:"metric" yaml:"metric"`
+	DebugMode        bool                  `json:"debugMode" yaml:"debugMode"`
+	ExtensionSupport ExtensionSupport      `json:"extensionSupport" yaml:"extensionSupport"`
+}
+
+// VisibilityGuardConfig holds the first message of every transaction until the
+// transaction is visible to new snapshots on the primary. See
+// docs/visibility-gate-design.md.
+type VisibilityGuardConfig struct {
+	FailMode     VisibilityFailMode `json:"failMode" yaml:"failMode"`
+	Timeout      time.Duration      `json:"timeout" yaml:"timeout"`
+	PollInterval time.Duration      `json:"pollInterval" yaml:"pollInterval"`
+	Enabled      bool               `json:"enabled" yaml:"enabled"`
+}
+
+type VisibilityFailMode string
+
+const (
+	// VisibilityFailClosed restarts the stream on a timeout or guard error; the message is redelivered.
+	VisibilityFailClosed VisibilityFailMode = "closed"
+	// VisibilityFailOpen logs a warning and dispatches anyway on a timeout; guard errors still restart the stream.
+	VisibilityFailOpen VisibilityFailMode = "open"
+)
+
+func (v *VisibilityGuardConfig) Validate() error {
+	if !v.Enabled {
+		return nil
+	}
+	var err error
+	if v.FailMode != VisibilityFailClosed && v.FailMode != VisibilityFailOpen {
+		err = errors.Join(err, errors.New("visibilityGuard.failMode must be 'closed' or 'open'"))
+	}
+	if v.Timeout <= 0 {
+		err = errors.Join(err, errors.New("visibilityGuard.timeout must be greater than 0"))
+	}
+	if v.PollInterval <= 0 {
+		err = errors.Join(err, errors.New("visibilityGuard.pollInterval must be greater than 0"))
+	}
+	return err
 }
 
 type MetricConfig struct {
@@ -95,6 +132,18 @@ func (c *Config) SetDefault() {
 
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
+	}
+
+	if c.VisibilityGuard.Enabled {
+		if c.VisibilityGuard.FailMode == "" {
+			c.VisibilityGuard.FailMode = VisibilityFailClosed
+		}
+		if c.VisibilityGuard.Timeout == 0 {
+			c.VisibilityGuard.Timeout = 10 * time.Second
+		}
+		if c.VisibilityGuard.PollInterval == 0 {
+			c.VisibilityGuard.PollInterval = 5 * time.Millisecond
+		}
 	}
 
 	// Set default schema names for tables
@@ -252,6 +301,10 @@ func (c *Config) Validate() error {
 		}
 
 		if cErr := c.Slot.Validate(); cErr != nil {
+			err = errors.Join(err, cErr)
+		}
+
+		if cErr := c.VisibilityGuard.Validate(); cErr != nil {
 			err = errors.Join(err, cErr)
 		}
 	}

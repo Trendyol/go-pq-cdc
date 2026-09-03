@@ -47,6 +47,9 @@ type ListenerFunc func(ctx *ListenerContext)
 type Message struct {
 	message  any
 	walStart int64
+	// xid is the top-level transaction the message belongs to (Begin.Xid or
+	// StreamStart.Xid); the visibility guard gates on it.
+	xid uint32
 }
 
 type Streamer interface {
@@ -61,6 +64,7 @@ type Streamer interface {
 type stream struct {
 	metric              metric.Metric
 	conn                pq.Connection
+	guard               *visibilityGuard
 	cancel              context.CancelFunc
 	system              *pq.IdentifySystemResult
 	relation            map[uint32]*format.Relation
@@ -128,6 +132,16 @@ func (s *stream) Open(ctx context.Context) error {
 		return errors.Wrap(err, "replication setup")
 	}
 
+	// Opened after setup so the ErrorSlotInUse retry loop never churns guard
+	// connections; bound to this replication session (same host, same timeline).
+	if s.config.VisibilityGuard.Enabled {
+		guard, err := openVisibilityGuard(ctx, s.config.DSN(), s.config.VisibilityGuard, s.system.Timeline, s.metric)
+		if err != nil {
+			return errors.Wrap(err, "visibility guard")
+		}
+		s.guard = guard
+	}
+
 	s.sinkStarted.Store(true)
 	s.processStarted.Store(true)
 	runCtx, cancel := context.WithCancel(ctx)
@@ -180,6 +194,7 @@ type messageBuffer struct {
 	pending *Message
 	outCh   chan<- *Message
 	ctx     context.Context
+	xid     uint32 // current transaction, from Begin
 }
 
 func (b *messageBuffer) send(msg *Message) bool {
@@ -211,6 +226,7 @@ func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 		if !b.send(&Message{
 			message:  b.pending.message,
 			walStart: int64(lsn),
+			xid:      b.pending.xid,
 		}) {
 			return
 		}
@@ -309,6 +325,7 @@ func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LS
 			out = &Message{
 				message:  msg.message,
 				walStart: int64(endLSN),
+				xid:      msg.xid,
 			}
 		}
 		ctx := s.ctx
@@ -532,6 +549,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 	switch msg := decodedMsg.(type) {
 	case *format.Begin:
 		buf.discard()
+		buf.xid = msg.Xid
 
 	case *format.Commit:
 		buf.flushWithLSN(msg.TransactionEndLSN)
@@ -561,8 +579,10 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 			walStart: int64(xld.WALStart),
 		}
 		if streamBuf.streaming {
+			m.xid = streamBuf.activeXid
 			streamBuf.append(m, messageXid(decodedMsg))
 		} else {
+			m.xid = buf.xid
 			buf.buffer(m)
 		}
 	}
@@ -588,19 +608,44 @@ func messageXid(msg any) uint32 {
 
 func (s *stream) process(ctx context.Context) {
 	logger.Info("postgres message process started")
-	defer func() {
-		s.processEnd <- struct{}{}
-	}()
+	err := s.processLoop(ctx)
+	s.processEnd <- struct{}{}
+	if err == nil || s.closed.Load() {
+		return
+	}
+
+	// Same restart path as the sink's corrupted connection: shut the stream
+	// down (flushing the confirmed LSN) and crash so the process restarts with
+	// fresh connections. The gated message was never acked, so it is redelivered.
+	logger.Error("visibility guard failed, restarting stream", "error", err)
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), streamShutdownTimeout)
+	defer cancel()
+	if cErr := s.Close(closeCtx); cErr != nil {
+		logger.Error("replication stream shutdown failed", "error", cErr)
+	}
+	panic(err)
+}
+
+// processLoop delivers messages to the listener until the context is done or
+// the message channel is closed. It returns an error only when the visibility
+// guard can no longer certify visibility (failMode: closed, or a guard error).
+//
+// Everything in messageCH is committed on the server as long as two_phase is
+// off: ReorderBufferCommit is reached only from DecodeCommit, and this library
+// never requests two_phase. The gate therefore only waits for the commit to
+// become visible, never for it to happen.
+func (s *stream) processLoop(ctx context.Context) error {
+	var lastGatedXid uint32
 
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Info("postgres message process stopped")
-			return
+			return nil
 		case msg, ok := <-s.messageCH:
 			if !ok {
 				logger.Info("postgres message process stopped")
-				return
+				return nil
 			}
 			if msg == nil {
 				continue
@@ -625,6 +670,20 @@ func (s *stream) process(ctx context.Context) {
 				continue
 			}
 
+			// Gate once per transaction, on its first message.
+			if s.guard != nil && msg.xid != lastGatedXid {
+				if err := s.gate(ctx, msg.xid); err != nil {
+					if ctx.Err() != nil {
+						// Shutting down mid-wait: never dispatch an uncertified message.
+						// It stays un-acked and is redelivered after restart.
+						logger.Info("postgres message process stopped")
+						return nil
+					}
+					return err
+				}
+				lastGatedXid = msg.xid
+			}
+
 			lCtx := &ListenerContext{
 				Context: ctx,
 				Message: msg.message,
@@ -644,6 +703,23 @@ func (s *stream) process(ctx context.Context) {
 			s.listenerFunc(lCtx)
 			s.metric.SetProcessLatency(time.Since(start).Nanoseconds())
 		}
+	}
+}
+
+// gate waits until xid is visible on the primary. A timeout is fatal under
+// failMode closed and a logged, counted pass-through under failMode open; any
+// other guard error is fatal in both modes.
+func (s *stream) gate(ctx context.Context, xid uint32) error {
+	err := s.guard.wait(ctx, xid)
+	switch {
+	case err == nil:
+		return nil
+	case goerrors.Is(err, ErrVisibilityTimeout) && s.config.VisibilityGuard.FailMode == config.VisibilityFailOpen:
+		logger.Warn("visibility guard timeout, dispatching anyway (failMode: open)", "xid", xid, "error", err)
+		s.metric.VisibilityFailOpenIncrement()
+		return nil
+	default:
+		return fmt.Errorf("%w: %w", ErrVisibilityGuard, err)
 	}
 }
 
@@ -678,10 +754,16 @@ func (s *stream) Close(ctx context.Context) error {
 	}
 	var errs []error
 
-	// Close the PostgreSQL socket first. A listener callback is synchronous and
-	// may be blocked outside this package; waiting for it before closing the
-	// socket can leave the walsender connection open for the whole shutdown
-	// timeout.
+	// Cancel first so a process goroutine blocked in the visibility guard (or a
+	// context-aware listener) returns instead of waiting out its timeout.
+	if s.cancel != nil {
+		s.cancel()
+	}
+
+	// Close the PostgreSQL socket before waiting on the goroutines. A listener
+	// callback is synchronous and may be blocked outside this package; waiting
+	// for it before closing the socket can leave the walsender connection open
+	// for the whole shutdown timeout.
 	s.connMu.Lock()
 	if !s.conn.IsClosed() {
 		s.flushFinalStandbyStatusUpdateLocked(ctx)
@@ -691,9 +773,6 @@ func (s *stream) Close(ctx context.Context) error {
 		logger.Info("postgres connection closed")
 	}
 	s.connMu.Unlock()
-	if s.cancel != nil {
-		s.cancel()
-	}
 
 	if s.sinkStarted.Load() {
 		select {
@@ -713,6 +792,15 @@ func (s *stream) Close(ctx context.Context) error {
 			logger.Warn("timed out waiting for postgres message process", "error", ctx.Err())
 			errs = append(errs, errors.Wrap(ctx.Err(), "wait for postgres message process"))
 		}
+	}
+
+	// Only the process goroutine uses the guard connection; close it after that
+	// goroutine has stopped so the close never races an in-flight poll.
+	if s.guard != nil {
+		if err := s.guard.close(ctx); err != nil {
+			errs = append(errs, errors.Wrap(err, "close visibility guard"))
+		}
+		logger.Info("visibility guard connection closed")
 	}
 
 	return goerrors.Join(errs...)

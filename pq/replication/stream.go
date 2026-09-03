@@ -242,26 +242,54 @@ func (b *messageBuffer) buffer(msg *Message) {
 // how PostgreSQL's own logical replication worker handles streaming: it writes
 // to temporary storage and only applies on commit.
 type streamTxBuffer struct {
-	ctx       context.Context
-	txns      map[uint32][]*Message
+	ctx  context.Context
+	txns map[uint32][]*Message
+	// subXacts records, per top-level XID, every sub-transaction XID in the
+	// order it first appeared together with the txns index of its first
+	// message. STREAM ABORT for a sub-transaction truncates txns at that
+	// index, mirroring PostgreSQL's worker.c stream_abort_internal.
+	subXacts  map[uint32][]subXact
 	activeXid uint32
 	streaming bool
+}
+
+type subXact struct {
+	xid   uint32
+	index int
 }
 
 // startTx marks the beginning of a streaming chunk for the given XID.
 func (s *streamTxBuffer) startTx(xid uint32) {
 	if s.txns == nil {
 		s.txns = make(map[uint32][]*Message)
+		s.subXacts = make(map[uint32][]subXact)
 	}
 	s.activeXid = xid
 	s.streaming = true
 }
 
 // append adds a message to the currently active streaming transaction.
-func (s *streamTxBuffer) append(msg *Message) {
-	if msg != nil {
-		s.txns[s.activeXid] = append(s.txns[s.activeXid], msg)
+// xid is the (sub)transaction the message was decoded with; a value other
+// than the active top-level XID marks a sub-transaction.
+func (s *streamTxBuffer) append(msg *Message, xid uint32) {
+	if msg == nil {
+		return
 	}
+	if xid != s.activeXid && !s.hasSubXact(xid) {
+		s.subXacts[s.activeXid] = append(s.subXacts[s.activeXid], subXact{xid: xid, index: len(s.txns[s.activeXid])})
+	}
+	s.txns[s.activeXid] = append(s.txns[s.activeXid], msg)
+}
+
+func (s *streamTxBuffer) hasSubXact(xid uint32) bool {
+	subs := s.subXacts[s.activeXid]
+	// Scan from the tail: a message almost always belongs to the most recent sub-transaction.
+	for i := len(subs) - 1; i >= 0; i-- {
+		if subs[i].xid == xid {
+			return true
+		}
+	}
+	return false
 }
 
 // stopTx marks the end of the current streaming chunk.
@@ -294,12 +322,29 @@ func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LS
 		}
 	}
 	delete(s.txns, xid)
+	delete(s.subXacts, xid)
 }
 
-// discardTx drops all accumulated messages for the given XID without emitting.
-func (s *streamTxBuffer) discardTx(xid uint32) {
+// abortTx handles STREAM ABORT. subXid == xid rolls back the whole
+// transaction. Otherwise only the sub-transaction is rolled back: every
+// message from its first appearance onwards is dropped (later sub-transactions
+// are nested in or follow it, so they are gone too); messages before it stay.
+func (s *streamTxBuffer) abortTx(xid, subXid uint32) {
 	s.streaming = false
-	delete(s.txns, xid)
+	if subXid == xid {
+		delete(s.txns, xid)
+		delete(s.subXacts, xid)
+		return
+	}
+	subs := s.subXacts[xid]
+	for i := len(subs) - 1; i >= 0; i-- {
+		if subs[i].xid == subXid {
+			s.txns[xid] = s.txns[xid][:subs[i].index]
+			s.subXacts[xid] = subs[:i]
+			return
+		}
+	}
+	// Unknown sub-transaction: none of its changes reached us, nothing to drop.
 }
 
 func (s *stream) sink(ctx context.Context) {
@@ -480,7 +525,8 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 //
 // For streaming transactions (proto v2) messages are accumulated in the
 // streamTxBuffer across STREAM START / STREAM STOP chunks. They are only
-// emitted to the consumer on STREAM COMMIT and discarded on STREAM ABORT.
+// emitted to the consumer on STREAM COMMIT and discarded on STREAM ABORT
+// (whole transaction or, for a sub-transaction abort, only its own changes).
 // This prevents uncommitted data from being delivered.
 func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffer, streamBuf *streamTxBuffer) {
 	switch msg := decodedMsg.(type) {
@@ -504,8 +550,9 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		streamBuf.flushTx(msg.Xid, buf.outCh, msg.TransactionEndLSN)
 
 	case *format.StreamAbort:
-		// Streamed transaction rolled back – discard messages for this XID.
-		streamBuf.discardTx(msg.Xid)
+		// Whole transaction (SubXid == Xid) or a single sub-transaction
+		// (ROLLBACK TO SAVEPOINT, plpgsql EXCEPTION block) rolled back.
+		streamBuf.abortTx(msg.Xid, msg.SubXid)
 
 	default:
 		// DML event (Insert, Update, Delete, Relation, …)
@@ -514,11 +561,29 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 			walStart: int64(xld.WALStart),
 		}
 		if streamBuf.streaming {
-			streamBuf.append(m)
+			streamBuf.append(m, messageXid(decodedMsg))
 		} else {
 			buf.buffer(m)
 		}
 	}
+}
+
+// messageXid returns the (sub)transaction XID a streamed message was decoded
+// with (proto v2 prefixes every message inside STREAM START/STOP with it).
+func messageXid(msg any) uint32 {
+	switch m := msg.(type) {
+	case *format.Insert:
+		return m.XID
+	case *format.Update:
+		return m.XID
+	case *format.Delete:
+		return m.XID
+	case *format.Truncate:
+		return m.XID
+	case *format.Relation:
+		return m.XID
+	}
+	return 0
 }
 
 func (s *stream) process(ctx context.Context) {

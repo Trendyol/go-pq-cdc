@@ -391,6 +391,10 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `heartbeat.table.schema`                |  string  |    no    | public  | Schema of the heartbeat table.                                                                          | Defaults to `public` when omitted.                                                                            |
 | `heartbeat.interval`                    | duration |    no    | 100ms   | Interval between heartbeat updates when heartbeat is configured. Must be greater than 0.               | Any valid Go duration string (e.g. `100ms`, `1s`, `5s`, `1m`).                                                |
 | `extensionSupport.enableTimescaleDB`    |   bool   |    no    |  false  | Enable support for TimescaleDB hypertables. Ensures proper handling of compressed chunks during replication. |                                                                                                                                                    |
+| `visibilityGuard.enabled`               |   bool   |    no    |  false  | Hold the first event of every transaction until the transaction is visible to new snapshots on the primary (closes the logical-decoding read-after-write window; see `docs/visibility-gate-design.md`). | Opens one extra regular connection to the same host as the replication connection. Heartbeat events bypass the gate.                                |
+| `visibilityGuard.failMode`              |  string  |    no    | closed  | What to do when a transaction is not visible within `timeout`                                          | **closed:** restart the stream; the event is redelivered from the confirmed LSN. **open:** log a warning, count it, dispatch anyway. Guard errors (replica, failover, connection loss) restart the stream in both modes. |
+| `visibilityGuard.timeout`               | duration |    no    |  10s    | Maximum time to wait per transaction                                                                   | Must be less than half of the server's `wal_sender_timeout` (checked at startup, skipped when it is `0`): keepalive replies stop while the gate blocks. |
+| `visibilityGuard.pollInterval`          | duration |    no    |  5ms    | First poll interval; doubles up to 250ms with jitter                                                   |                                                                                                                                                    |
 
 ### API
 
@@ -447,6 +451,9 @@ the `/metrics` endpoint.
 | go_pq_cdc_snapshot_completed_chunks                 | Number of chunks completed in snapshot.                                                                | slot_name, host| Gauge      |
 | go_pq_cdc_snapshot_total_rows                       | Total number of rows read during snapshot.                                                             | slot_name, host| Counter    |
 | go_pq_cdc_snapshot_duration_seconds                 | Duration of the last snapshot operation in seconds.                                                    | slot_name, host| Gauge      |
+| go_pq_cdc_visibility_wait_duration_seconds          | Time the visibility guard held a transaction until it became visible on the primary.                   | slot_name, host| Histogram  |
+| go_pq_cdc_visibility_timeout_total                  | Number of visibility guard waits that reached `visibilityGuard.timeout`.                               | slot_name, host| Counter    |
+| go_pq_cdc_visibility_fail_open_total                | Number of transactions dispatched after a visibility guard timeout (`failMode: open`).                 | slot_name, host| Counter    |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
 ### Grafana Dashboard

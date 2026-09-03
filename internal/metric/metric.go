@@ -2,6 +2,7 @@ package metric
 
 import (
 	"os"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -35,6 +36,11 @@ type Metric interface {
 	SetSnapshotCompletedChunks(completed int)
 	SetSnapshotActiveWorkers(workers int)
 
+	// Visibility guard metrics
+	ObserveVisibilityWait(d time.Duration)
+	VisibilityTimeoutIncrement()
+	VisibilityFailOpenIncrement()
+
 	PrometheusCollectors() []prometheus.Collector
 }
 
@@ -64,6 +70,11 @@ type metric struct {
 	snapshotTotalChunks     prometheus.Gauge
 	snapshotCompletedChunks prometheus.Gauge
 	snapshotActiveWorkers   prometheus.Gauge
+
+	// Visibility guard metrics
+	visibilityWaitDuration  prometheus.Histogram
+	visibilityTimeoutTotal  prometheus.Counter
+	visibilityFailOpenTotal prometheus.Counter
 }
 
 //nolint:funlen
@@ -270,6 +281,37 @@ func NewMetric(slotName string) Metric {
 				"host":      hostname,
 			},
 		}),
+		visibilityWaitDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "visibility",
+			Name:      "wait_duration_seconds",
+			Help:      "time the visibility guard held a transaction until it became visible on the primary",
+			Buckets:   prometheus.ExponentialBuckets(0.001, 2, 15),
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		visibilityTimeoutTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "visibility",
+			Name:      "timeout_total",
+			Help:      "number of visibility guard waits that reached visibilityGuard.timeout",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		visibilityFailOpenTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "visibility",
+			Name:      "fail_open_total",
+			Help:      "number of messages dispatched after a visibility guard timeout (failMode: open)",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
 	}
 }
 
@@ -295,6 +337,9 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.snapshotTotalChunks,
 		m.snapshotCompletedChunks,
 		m.snapshotActiveWorkers,
+		m.visibilityWaitDuration,
+		m.visibilityTimeoutTotal,
+		m.visibilityFailOpenTotal,
 	}
 }
 
@@ -379,4 +424,16 @@ func (m *metric) SetSnapshotCompletedChunks(completed int) {
 
 func (m *metric) SetSnapshotActiveWorkers(workers int) {
 	m.snapshotActiveWorkers.Set(float64(workers))
+}
+
+func (m *metric) ObserveVisibilityWait(d time.Duration) {
+	m.visibilityWaitDuration.Observe(d.Seconds())
+}
+
+func (m *metric) VisibilityTimeoutIncrement() {
+	m.visibilityTimeoutTotal.Inc()
+}
+
+func (m *metric) VisibilityFailOpenIncrement() {
+	m.visibilityFailOpenTotal.Inc()
 }

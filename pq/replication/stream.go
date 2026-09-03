@@ -40,6 +40,15 @@ type ListenerContext struct {
 	Context context.Context
 	Message any
 	Ack     func() error
+	// CommitLSN is the start of the commit record of the transaction that
+	// produced Message (pgoutput Begin.FinalLSN, StreamCommit.CommitLSN for
+	// streamed transactions). Zero for snapshot events.
+	//
+	// A standby has applied that transaction only once
+	// pg_last_wal_replay_lsn() > CommitLSN. The comparison is strict:
+	// pg_last_wal_replay_lsn() reports the end of the last replayed record, so
+	// it equals CommitLSN right before the commit record itself is applied.
+	CommitLSN pq.LSN
 }
 
 type ListenerFunc func(ctx *ListenerContext)
@@ -50,6 +59,9 @@ type Message struct {
 	// xid is the top-level transaction the message belongs to (Begin.Xid or
 	// StreamStart.Xid); the visibility guard gates on it.
 	xid uint32
+	// commitLSN is the start of the transaction's commit record, exposed as
+	// ListenerContext.CommitLSN.
+	commitLSN pq.LSN
 }
 
 type Streamer interface {
@@ -191,10 +203,11 @@ func (s *stream) setup(ctx context.Context) error {
 // All preceding messages are emitted immediately with their original position.
 // This keeps memory usage O(1) regardless of transaction size.
 type messageBuffer struct {
-	pending *Message
-	outCh   chan<- *Message
-	ctx     context.Context
-	xid     uint32 // current transaction, from Begin
+	pending   *Message
+	outCh     chan<- *Message
+	ctx       context.Context
+	xid       uint32 // current transaction, from Begin
+	commitLSN pq.LSN // current transaction's commit record, from Begin.FinalLSN
 }
 
 func (b *messageBuffer) send(msg *Message) bool {
@@ -224,9 +237,10 @@ func (b *messageBuffer) flush() {
 func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
 		if !b.send(&Message{
-			message:  b.pending.message,
-			walStart: int64(lsn),
-			xid:      b.pending.xid,
+			message:   b.pending.message,
+			walStart:  int64(lsn),
+			xid:       b.pending.xid,
+			commitLSN: b.pending.commitLSN,
 		}) {
 			return
 		}
@@ -314,18 +328,21 @@ func (s *streamTxBuffer) stopTx() {
 }
 
 // flushTx emits every accumulated message for the given XID through outCh.
-// The last message's WAL position is rewritten to the transaction-end LSN.
-func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, endLSN pq.LSN) {
+// Every message is stamped with the commit LSN (known only at STREAM COMMIT);
+// the last message's WAL position is rewritten to the transaction-end LSN.
+func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, commitLSN, endLSN pq.LSN) {
 	s.streaming = false
 	msgs := s.txns[xid]
 	n := len(msgs)
 	for i, msg := range msgs {
+		msg.commitLSN = commitLSN
 		out := msg
 		if i == n-1 {
 			out = &Message{
-				message:  msg.message,
-				walStart: int64(endLSN),
-				xid:      msg.xid,
+				message:   msg.message,
+				walStart:  int64(endLSN),
+				xid:       msg.xid,
+				commitLSN: commitLSN,
 			}
 		}
 		ctx := s.ctx
@@ -550,6 +567,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 	case *format.Begin:
 		buf.discard()
 		buf.xid = msg.Xid
+		buf.commitLSN = msg.FinalLSN
 
 	case *format.Commit:
 		buf.flushWithLSN(msg.TransactionEndLSN)
@@ -565,7 +583,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 
 	case *format.StreamCommit:
 		// Final commit of a streamed transaction – emit all messages for this XID.
-		streamBuf.flushTx(msg.Xid, buf.outCh, msg.TransactionEndLSN)
+		streamBuf.flushTx(msg.Xid, buf.outCh, msg.CommitLSN, msg.TransactionEndLSN)
 
 	case *format.StreamAbort:
 		// Whole transaction (SubXid == Xid) or a single sub-transaction
@@ -583,6 +601,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 			streamBuf.append(m, messageXid(decodedMsg))
 		} else {
 			m.xid = buf.xid
+			m.commitLSN = buf.commitLSN
 			buf.buffer(m)
 		}
 	}
@@ -685,9 +704,10 @@ func (s *stream) processLoop(ctx context.Context) error {
 			}
 
 			lCtx := &ListenerContext{
-				Context: ctx,
-				Message: msg.message,
-				Ack:     ackFunc,
+				Context:   ctx,
+				Message:   msg.message,
+				Ack:       ackFunc,
+				CommitLSN: msg.commitLSN,
 			}
 
 			switch lCtx.Message.(type) {

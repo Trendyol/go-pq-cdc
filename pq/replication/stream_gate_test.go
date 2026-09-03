@@ -22,6 +22,7 @@ type gatedStream struct {
 	q        *scriptedQuery
 	m        *countingMetric
 	received []uint32 // xids delivered to the listener
+	commits  []pq.LSN // CommitLSN seen by the listener, in delivery order
 }
 
 func newGatedStream(t *testing.T, cfg config.Config, rows [][]string) *gatedStream {
@@ -30,6 +31,7 @@ func newGatedStream(t *testing.T, cfg config.Config, rows [][]string) *gatedStre
 	gs := &gatedStream{q: &scriptedQuery{rows: rows}}
 	gs.s = NewStream("", cfg, nil, func(ctx *ListenerContext) {
 		gs.received = append(gs.received, ctx.Message.(*format.Insert).XID)
+		gs.commits = append(gs.commits, ctx.CommitLSN)
 		_ = ctx.Ack()
 	}).(*stream)
 	guard, m := testGuard(gs.q.query)
@@ -49,7 +51,7 @@ func (gs *gatedStream) run(msgs ...*Message) error {
 }
 
 func insertMsg(xid uint32, lsn int64) *Message {
-	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: lsn, xid: xid}
+	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: lsn, xid: xid, commitLSN: pq.LSN(lsn)}
 }
 
 func guardCfg(mode config.VisibilityFailMode) config.Config {
@@ -139,46 +141,43 @@ func TestGateDisabledDoesNotTouchGuard(t *testing.T) {
 
 	require.NoError(t, gs.run(insertMsg(200, 1)))
 	assert.Equal(t, []uint32{200}, gs.received)
+	assert.Equal(t, []pq.LSN{1}, gs.commits, "ListenerContext.CommitLSN comes from Message.commitLSN")
 	assert.Equal(t, int32(0), gs.q.calls.Load())
 }
 
-func TestDispatchStampsXidOnNonStreamingAndStreamingPaths(t *testing.T) {
+func TestDispatchStampsXidAndCommitLSNOnNonStreamingAndStreamingPaths(t *testing.T) {
 	out := make(chan *Message, 10)
 	s := &stream{}
 	buf := &messageBuffer{outCh: out}
 	streamBuf := &streamTxBuffer{}
 	dispatch := func(msg any, lsn uint64) { s.dispatchMessage(msg, XLogData{WALStart: pq.LSN(lsn)}, buf, streamBuf) }
 
-	// Non-streaming: BEGIN(100) a b COMMIT → both carry 100; the last one is rebuilt by flushWithLSN.
-	dispatch(&format.Begin{Xid: 100}, 1)
+	// Non-streaming: BEGIN(100, final 40) a b COMMIT → both carry xid 100 and commit 40 (from Begin.FinalLSN);
+	// the last one is rebuilt by flushWithLSN.
+	dispatch(&format.Begin{Xid: 100, FinalLSN: 40}, 1)
 	dispatch(&format.Insert{TableName: "a"}, 2)
 	dispatch(&format.Insert{TableName: "b"}, 3)
-	dispatch(&format.Commit{TransactionEndLSN: 50}, 4)
-	// Streaming: STREAM START(200) c(sub 201) d STREAM STOP STREAM COMMIT → both carry the top-level 200.
+	dispatch(&format.Commit{CommitLSN: 40, TransactionEndLSN: 50}, 4)
+	// Streaming: STREAM START(200) c(sub 201) d STREAM STOP STREAM COMMIT(commit 90, end 99) → both carry the
+	// top-level 200 and commit 90, which is only known at STREAM COMMIT.
 	dispatch(&format.StreamStart{Xid: 200}, 5)
 	dispatch(&format.Insert{XID: 201, TableName: "c"}, 6)
 	dispatch(&format.Insert{XID: 200, TableName: "d"}, 7)
 	dispatch(&format.StreamStop{}, 8)
-	dispatch(&format.StreamCommit{Xid: 200, TransactionEndLSN: 99}, 9)
+	dispatch(&format.StreamCommit{Xid: 200, CommitLSN: 90, TransactionEndLSN: 99}, 9)
 	close(out)
 
-	var got []struct {
-		name string
-		xid  uint32
-		lsn  int64
+	type stamped struct {
+		name   string
+		xid    uint32
+		lsn    int64
+		commit pq.LSN
 	}
+	var got []stamped
 	for m := range out {
-		got = append(got, struct {
-			name string
-			xid  uint32
-			lsn  int64
-		}{m.message.(*format.Insert).TableName, m.xid, m.walStart})
+		got = append(got, stamped{m.message.(*format.Insert).TableName, m.xid, m.walStart, m.commitLSN})
 	}
-	assert.Equal(t, []struct {
-		name string
-		xid  uint32
-		lsn  int64
-	}{{"a", 100, 2}, {"b", 100, 50}, {"c", 200, 6}, {"d", 200, 99}}, got)
+	assert.Equal(t, []stamped{{"a", 100, 2, 40}, {"b", 100, 50, 40}, {"c", 200, 6, 90}, {"d", 200, 99, 90}}, got)
 }
 
 func TestCloseCancelsBeforeClosingGuardAndAfterProcessExit(t *testing.T) {

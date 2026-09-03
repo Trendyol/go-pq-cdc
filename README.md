@@ -41,6 +41,9 @@ ensuring low resource consumption and high performance.
 		- [Configuration](#configuration)
 		- [Protocol Version \& Streaming Transactions](#protocol-version--streaming-transactions)
 		- [API](#api)
+		- [Visibility Guard](#visibility-guard)
+		- [Commit LSN and reading from a standby](#commit-lsn-and-reading-from-a-standby)
+		- [Failover slots (PostgreSQL 17+)](#failover-slots-postgresql-17)
 		- [Exposed Metrics](#exposed-metrics)
 		- [Grafana Dashboard](#grafana-dashboard)
 		- [Compatibility](#compatibility)
@@ -392,7 +395,7 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `heartbeat.table.schema`                |  string  |    no    | public  | Schema of the heartbeat table.                                                                          | Defaults to `public` when omitted.                                                                            |
 | `heartbeat.interval`                    | duration |    no    | 100ms   | Interval between heartbeat updates when heartbeat is configured. Must be greater than 0.               | Any valid Go duration string (e.g. `100ms`, `1s`, `5s`, `1m`).                                                |
 | `extensionSupport.enableTimescaleDB`    |   bool   |    no    |  false  | Enable support for TimescaleDB hypertables. Ensures proper handling of compressed chunks during replication. |                                                                                                                                                    |
-| `visibilityGuard.enabled`               |   bool   |    no    |  false  | Hold the first event of every transaction until the transaction is visible to new snapshots on the primary (closes the logical-decoding read-after-write window; see `docs/visibility-gate-design.md`). | Opens one extra regular connection to the same host as the replication connection. Heartbeat events bypass the gate.                                |
+| `visibilityGuard.enabled`               |   bool   |    no    |  false  | Hold the first event of every transaction until the transaction is visible to new snapshots on the primary (closes the logical-decoding read-after-write window; see [Visibility Guard](#visibility-guard)). | Opens one extra regular connection to the same host as the replication connection. Heartbeat events bypass the gate.                                |
 | `visibilityGuard.failMode`              |  string  |    no    | closed  | What to do when a transaction is not visible within `timeout`                                          | **closed:** restart the stream; the event is redelivered from the confirmed LSN. **open:** log a warning, count it, dispatch anyway. Guard errors (replica, failover, connection loss) restart the stream in both modes. |
 | `visibilityGuard.timeout`               | duration |    no    |  10s    | Maximum time to wait per transaction                                                                   | Must be less than half of the server's `wal_sender_timeout` (checked at startup, skipped when it is `0`): keepalive replies stop while the gate blocks. |
 | `visibilityGuard.pollInterval`          | duration |    no    |  5ms    | First poll interval; doubles up to 250ms with jitter                                                   |                                                                                                                                                    |
@@ -426,6 +429,61 @@ Streaming behavior for `proto_version: 2`:
 - Events are emitted only on `STREAM COMMIT`.
 - `STREAM ABORT` discards all buffered events for that transaction.
 - This prevents rolled-back streamed transactions from leaking to consumers.
+
+### Visibility Guard
+
+**Mechanism.** The logical walsender streams a transaction as soon as its commit record is flushed to WAL. The rows
+become visible to new snapshots only later, when the committing backend finishes (`ProcArrayEndTransaction`), and with
+`synchronous_standby_names` set (Patroni `synchronous_mode`) that step first waits for the synchronous standby's
+acknowledgement. A consumer that receives the event and immediately reads the primary can therefore miss the row
+(read-after-write); the same ordering allows a "phantom" event if the primary dies before the standby received the
+commit. `visibilityGuard` closes this window: before dispatching the first event of every transaction it polls a
+regular connection on the same host until the transaction's xid is no longer in progress in `pg_current_snapshot()`
+(`txid_current_snapshot()` before PostgreSQL 13). Later events of the same transaction pass without a wait; heartbeat
+events bypass the gate.
+
+```yaml
+visibilityGuard:
+  enabled: true
+  failMode: closed   # closed | open
+  timeout: 10s       # must be < wal_sender_timeout / 2
+  pollInterval: 5ms  # doubles up to 250ms, with jitter
+```
+
+**Guarantee.** Everything delivered to the handler is committed on the server (with or without the guard). With the
+guard on, a fresh snapshot taken on the same primary after the handler was called also sees the row.
+
+**Limits.** The guarantee does not cover:
+
+- Reads from a standby, or through a pooler that may route to one. Use the strict `CommitLSN` rule in
+  [Commit LSN and reading from a standby](#commit-lsn-and-reading-from-a-standby). In Patroni deployments this is the
+  more likely cause of "the row is not there yet" than the primary-side window.
+- The consumer's own open `REPEATABLE READ` or `SERIALIZABLE` transaction: its snapshot predates the commit.
+- Later changes: the row may already be updated or deleted when the consumer reads it.
+- Row-level security and the privileges of the reading role.
+
+Consumer-side retry and self-contained outbox payloads remain the recommended pattern; the guard removes the common
+case, not the need for them.
+
+**Failure handling.** `failMode: closed` (default): a timeout or any guard error (server in recovery, timeline changed,
+connection lost) restarts the stream with the error class `visibility guard unreachable`; the held event is not acked
+and is redelivered from the confirmed LSN. `failMode: open`: after `timeout` the event is dispatched with a warning and
+`go_pq_cdc_visibility_fail_open_total` is incremented; guard errors still restart the stream. `timeout` must stay below
+half of the server's `wal_sender_timeout` (checked at startup, skipped when it is `0`) because keepalive replies stop
+while the gate blocks. Waits are recorded in `go_pq_cdc_visibility_wait_duration_seconds`, timeouts in
+`go_pq_cdc_visibility_timeout_total`.
+
+**Synchronous replication corollary.** With `synchronous_standby_names` set, a transaction becomes visible on the
+primary only after the synchronous standby acknowledged it at the configured `synchronous_commit` level. A fail-closed
+guard therefore also prevents phantom events on a Patroni failover, without PostgreSQL 17 failover slots: an event is
+dispatched only once the standby that may be promoted has the commit. This holds unless:
+
+- Patroni runs `synchronous_mode` without `synchronous_mode_strict` and no standby is available: synchronous
+  replication is switched off and commits stop waiting.
+- The committing backend is cancelled or terminated while waiting for the standby: it commits locally and becomes
+  visible without the acknowledgement (the server logs a WARNING).
+- The session used `synchronous_commit = local` or `off`.
+- `synchronous_commit = remote_write`: the standby received the WAL but has not flushed it.
 
 ### Commit LSN and reading from a standby
 

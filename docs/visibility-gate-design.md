@@ -1,6 +1,6 @@
 # Visibility gate — implementation handoff
 
-Status: **design agreed, not implemented.** Decided 2026-09-03 by a three-round consensus between Codex, Claude Opus 4.8 and Claude Fable 5.1, each verifying claims against PostgreSQL `master` sources. Full report (mechanism, verdict tables, decisions): https://claude.ai/code/artifact/555f3849-212d-4de4-ad33-0a10d01eb93d
+Status: **implemented** (PRs #166–#169 and the README sections "Visibility Guard", "Commit LSN and reading from a standby", "Failover slots"); kept as the design record. Decided 2026-09-03 by a three-round consensus between Codex, Claude Opus 4.8 and Claude Fable 5.1, each verifying claims against PostgreSQL `master` sources. Full report (mechanism, verdict tables, decisions): https://claude.ai/code/artifact/555f3849-212d-4de4-ad33-0a10d01eb93d
 
 ## Problem in two sentences
 

@@ -379,6 +379,7 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive.                                                                                                                  |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
 | `slot.protoVersion`                     |   int    |    no    |    2    | `pgoutput` protocol version used in `START_REPLICATION`                                               | `1`: PostgreSQL 10+ compatibility, no streaming transaction protocol messages. `2`: PostgreSQL 14+, enables streaming/messages options.           |
+| `slot.failover`                         |   bool   |    no    |  false  | Create the slot with `FAILOVER true` (PostgreSQL 17+) so standbys running `sync_replication_slots` keep a synchronized copy; an existing slot is altered with `ALTER_REPLICATION_SLOT … (FAILOVER true)`. | Rejected with a clear error on older servers. Needs `synchronized_standby_slots` on the primary, see [Failover slots](#failover-slots-postgresql-17). |
 | `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
 | `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial`, `never`, or `snapshot_only`                                                 | **initial:** Take snapshot only if no previous snapshot exists, then start CDC. <br> **never:** Skip snapshot, start CDC immediately. <br> **snapshot_only:** Take snapshot and exit (no CDC, no replication slot required). |
 | `snapshot.chunkSize`                    |  int64   |    no    |  8000   | Number of rows per chunk during snapshot                                                              | Adjust based on table size. Larger chunks = fewer chunks but more memory per chunk.                                                               |
@@ -441,6 +442,29 @@ SELECT pg_last_wal_replay_lsn() > '<ctx.CommitLSN>'::pg_lsn;
 `pg_last_wal_replay_lsn()` reports the end of the last replayed record, so it equals `CommitLSN` right before the commit
 record itself is applied; `>=` is not enough. On PostgreSQL 17+ `pg_wal_replay_wait('<ctx.CommitLSN>')` can replace
 polling, followed by the same strict check. `ctx.CommitLSN.String()` prints the `pg_lsn` text form (`X/X`).
+
+### Failover slots (PostgreSQL 17+)
+
+`slot.failover: true` creates the replication slot with `FAILOVER true`, or issues
+`ALTER_REPLICATION_SLOT … (FAILOVER true)` for an existing slot, so a standby running `sync_replication_slots` keeps a
+synchronized copy and the slot survives a failover without WAL loss. Servers older than 17 reject the option with a clear
+error. Required setup:
+
+- **Primary:** `synchronized_standby_slots = 'standby_physical_slot'`. The logical walsender then waits for the listed
+  physical slots before sending a change, so no event is delivered ahead of the standby that may become the next
+  primary. With the parameter empty there is no waiting: the synchronized slot can lag behind what consumers have already
+  seen, and those events are redelivered after failover.
+- **Standby:** `sync_replication_slots = on`, `hot_standby_feedback = on`, `primary_slot_name` set, and `dbname` in
+  `primary_conninfo`.
+- An inactive slot listed in `synchronized_standby_slots` stalls the logical walsender; remove it from the list before
+  taking that standby down for good.
+- Patroni 4.1.0+ leaves `failover = true` slots alone (no copy, no `pg_replication_slot_advance`) but does not set
+  `synchronized_standby_slots`; set it through `postgresql.parameters`.
+- If the slot is active for another process when go-pq-cdc starts (rolling deployment), the `ALTER` is skipped with a
+  warning and retried on the next start.
+
+Complementary to `visibilityGuard`: the guard closes the read-after-write window on the primary, the failover slot keeps
+the consumer position across a promotion.
 
 ### Exposed Metrics
 

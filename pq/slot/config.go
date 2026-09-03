@@ -14,6 +14,10 @@ type Config struct {
 	//   2 – requires PostgreSQL 14+; supports streaming large in-progress transactions (default).
 	ProtoVersion      int  `json:"protoVersion" yaml:"protoVersion"`
 	CreateIfNotExists bool `json:"createIfNotExists" yaml:"createIfNotExists"`
+	// Failover creates the slot with FAILOVER true (PostgreSQL 17+) so standbys
+	// running sync_replication_slots keep a synchronized copy; an existing slot
+	// is altered. Rejected with a clear error on older servers.
+	Failover bool `json:"failover" yaml:"failover"`
 }
 
 func (c Config) Validate() error {

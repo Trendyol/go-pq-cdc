@@ -90,6 +90,20 @@ func TestGetQueryCondition(t *testing.T) {
 	})
 }
 
+func TestBuildPrimaryKeyBoundsQueryWithCondition(t *testing.T) {
+	s := &Snapshotter{
+		config: config.SnapshotConfig{QueryCondition: "deleted_at IS NULL"},
+	}
+
+	query := s.buildPrimaryKeyBoundsQuery(publication.Table{
+		Schema: "public",
+		Name:   "users",
+	}, "id")
+
+	assert.Contains(t, query, "FROM public.users")
+	assert.Contains(t, query, "WHERE (deleted_at IS NULL)")
+}
+
 func TestBuildChunkQueryWithCondition(t *testing.T) {
 	s := &Snapshotter{}
 

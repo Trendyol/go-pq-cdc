@@ -636,3 +636,37 @@ func TestValidateHeartbeatInPublication(t *testing.T) {
 		assert.Contains(t, err.Error(), `publication "pub"`)
 	})
 }
+
+func TestVisibilityGuardConfig(t *testing.T) {
+	t.Run("disabled needs nothing", func(t *testing.T) {
+		cfg := Config{}
+		cfg.SetDefault()
+		require.NoError(t, cfg.VisibilityGuard.Validate())
+		assert.Equal(t, VisibilityGuardConfig{}, cfg.VisibilityGuard)
+	})
+
+	t.Run("enabled gets closed/10s/5ms defaults", func(t *testing.T) {
+		cfg := Config{VisibilityGuard: VisibilityGuardConfig{Enabled: true}}
+		cfg.SetDefault()
+		assert.Equal(t, VisibilityGuardConfig{Enabled: true, FailMode: VisibilityFailClosed, Timeout: 10 * time.Second, PollInterval: 5 * time.Millisecond}, cfg.VisibilityGuard)
+		require.NoError(t, cfg.VisibilityGuard.Validate())
+	})
+
+	t.Run("rejects unknown failMode and non-positive durations", func(t *testing.T) {
+		cfg := VisibilityGuardConfig{Enabled: true, FailMode: "half", Timeout: -time.Second, PollInterval: 0}
+		err := cfg.Validate()
+		require.ErrorContains(t, err, "failMode")
+		require.ErrorContains(t, err, "timeout")
+		require.ErrorContains(t, err, "pollInterval")
+	})
+
+	t.Run("wired into Config.Validate", func(t *testing.T) {
+		cfg := Config{
+			Host: "h", Username: "u", Password: "p", Database: "d",
+			Publication:     publication.Config{Name: "pub", Tables: publication.Tables{{Name: "t", Schema: "public", ReplicaIdentity: "FULL"}}, Operations: publication.Operations{publication.OperationInsert}},
+			Slot:            slot.Config{Name: "slot"},
+			VisibilityGuard: VisibilityGuardConfig{Enabled: true, FailMode: "half", Timeout: time.Second, PollInterval: time.Millisecond},
+		}
+		require.ErrorContains(t, cfg.Validate(), "visibilityGuard.failMode")
+	})
+}

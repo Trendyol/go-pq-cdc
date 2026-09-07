@@ -152,6 +152,11 @@ func (s *stream) Open(ctx context.Context) error {
 			return errors.Wrap(err, "visibility guard")
 		}
 		s.guard = guard
+		logger.Info("visibility guard enabled",
+			"failMode", s.config.VisibilityGuard.FailMode,
+			"timeout", s.config.VisibilityGuard.Timeout,
+			"pollInterval", s.config.VisibilityGuard.PollInterval,
+		)
 	}
 
 	s.sinkStarted.Store(true)

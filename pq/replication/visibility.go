@@ -11,6 +11,7 @@ import (
 
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
+	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -143,7 +144,14 @@ func queryRow(conn pq.Connection) func(context.Context, string) ([]string, error
 // treated as "visible".
 func (g *visibilityGuard) wait(ctx context.Context, xid uint32) error {
 	start := time.Now()
-	defer func() { g.metric.ObserveVisibilityWait(time.Since(start)) }()
+	polled := false
+	defer func() {
+		waited := time.Since(start)
+		g.metric.ObserveVisibilityWait(waited)
+		if polled {
+			logger.Info("visibility guard wait completed", "xid", xid, "duration", waited)
+		}
+	}()
 
 	if g.hasSnapshot && xidPrecedes(xid, g.xmin) {
 		return nil
@@ -152,6 +160,7 @@ func (g *visibilityGuard) wait(ctx context.Context, xid uint32) error {
 	deadline := start.Add(g.cfg.Timeout)
 	delay := g.cfg.PollInterval
 	for {
+		polled = true
 		snap, err := g.poll(ctx)
 		if err != nil {
 			return err

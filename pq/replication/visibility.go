@@ -60,6 +60,7 @@ const (
 	legacyPollSQL       = "SELECT pg_is_in_recovery(), txid_current_snapshot()::text"         // PostgreSQL < 13
 	undefinedFunction   = "42883"
 	maxPollInterval     = 250 * time.Millisecond
+	slowVisibilityWait  = 100 * time.Millisecond
 )
 
 // openVisibilityGuard dials dsn and runs the mandatory open checks.
@@ -142,14 +143,21 @@ func queryRow(conn pq.Connection) func(context.Context, string) ([]string, error
 // ErrVisibilityTimeout after cfg.Timeout; any other error means the guard can no
 // longer certify visibility and the stream must restart. Errors are never
 // treated as "visible".
-func (g *visibilityGuard) wait(ctx context.Context, xid uint32) error {
+func (g *visibilityGuard) wait(ctx context.Context, xid uint32) (err error) {
 	start := time.Now()
-	polled := false
+	pollCount := 0
 	defer func() {
 		waited := time.Since(start)
 		g.metric.ObserveVisibilityWait(waited)
-		if polled {
-			logger.Info("visibility guard wait completed", "xid", xid, "duration", waited)
+		if err != nil || pollCount == 0 {
+			return
+		}
+
+		args := []any{"xid", xid, "wait_ms", float64(waited.Microseconds()) / 1000, "poll_count", pollCount}
+		if waited >= slowVisibilityWait {
+			logger.Info("visibility guard slow wait completed", args...)
+		} else {
+			logger.Debug("visibility guard wait completed", args...)
 		}
 	}()
 
@@ -160,7 +168,7 @@ func (g *visibilityGuard) wait(ctx context.Context, xid uint32) error {
 	deadline := start.Add(g.cfg.Timeout)
 	delay := g.cfg.PollInterval
 	for {
-		polled = true
+		pollCount++
 		snap, err := g.poll(ctx)
 		if err != nil {
 			return err

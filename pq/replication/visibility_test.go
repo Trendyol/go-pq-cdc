@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -71,8 +72,13 @@ func (q *scriptedQuery) query(_ context.Context, _ string) ([]string, error) {
 
 type countingMetric struct {
 	metric.Metric
+	lags      sync.Map // replica -> last lag bytes
 	timeouts  atomic.Int32
 	failOpens atomic.Int32
+}
+
+func (m *countingMetric) SetVisibilityReplicaLag(replica string, lag float64) {
+	m.lags.Store(replica, lag)
 }
 
 func (m *countingMetric) VisibilityTimeoutIncrement()  { m.timeouts.Add(1) }

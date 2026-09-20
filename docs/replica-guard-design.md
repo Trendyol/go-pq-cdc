@@ -1,0 +1,52 @@
+# Replica guard — implementation handoff
+
+Status: **PR 1 in progress** (core guard, config, metrics, unit tests). Decided 2026-09-20 by a four-round consensus
+between Codex, Claude Opus and Claude Fable 5.1: round 1 independent plans, round 2 the four disputes below, rounds
+3 and 4 the replay-LSN cache. Extends [visibility-gate-design.md](./visibility-gate-design.md) (P1–P10); the rows
+here are numbered R1–R12.
+
+## Problem in two sentences
+
+The visibility guard certifies that a transaction is visible on the **primary** when its first event is dispatched;
+it says nothing about standbys, which apply the commit record later (`synchronous_commit = on` is a flush guarantee,
+not an apply guarantee). The documented consumer-side rule (P7, strict `pg_last_wal_replay_lsn() > CommitLSN` on the
+same server as the read) only works when the consumer's pool pins check and read to one standby, which application
+pools rarely guarantee.
+
+## Agreed decisions (R1–R12)
+
+| # | Decision |
+|---|---|
+| R1 | **Scope: both.** `replication.WaitReplayed(ctx, q, commitLSN, opts)` is the exported primitive: the consumer runs check and read on its own pooled connection, same server. The in-library gate is built on the same poll and configured as `visibilityGuard.replicas: ["host:port", ...]`; it requires `visibilityGuard.enabled: true`. Guarantee: every listed replica has applied the commit when the handler runs. Limit: unlisted hosts and pooler routing are not covered. List direct standby hosts, never a pooled or load-balanced endpoint. |
+| R2 | **Target set: static list, no discovery.** `pg_stat_replication.replay_lsn` rejected: the standby reports its apply position immediately only for `remote_apply` commits (`xact_redo_commit` → `XLogRequestWalReceiverReply` when `XactCompletionApplyFeedback`), otherwise on the next flush reply or `wal_receiver_status_interval` (10 s default); non-privileged roles see only `pid` (`pg_read_all_stats`); cascading standbys are absent; no `application_name` → host mapping. Patroni REST discovery: new dependency, new failure mode. |
+| R3 | **Predicate: one autocommit statement per poll.** `SELECT pg_is_in_recovery(), pg_last_wal_replay_lsn(), (pg_control_recovery()).min_recovery_end_timeline`. Pass iff in recovery ∧ `replay > CommitLSN` (strict, compared on the 64-bit value) ∧ timeline ≤ `s.system.Timeline`. `pg_is_in_recovery() = false` or a NULL replay position ⇒ error (the "replica" is a primary, a promoted standby, or a pooler routed to one), never "applied". `CommitLSN == 0` (snapshot events) skips the gate; heartbeat events already bypass it. |
+| R4 | **Timeline: `(pg_control_recovery()).min_recovery_end_timeline`.** `UpdateMinRecoveryPoint` writes the replay timeline (`GetCurrentReplayRecPtr(&tli)`) on every buffer flush during recovery (`XLogFlush` → `UpdateMinRecoveryPoint`), and `pg_control_*` is not REVOKEd, so no extra grant. Rule is `<=`, not `==`: on an idle standby the control file lags after a failover until the next buffer flush or restartpoint, and `==` would refuse to start. `>` means the replica followed a newer primary ⇒ error ⇒ stream restart. **Residual race (documented):** a standby already receiving the new timeline but not yet flushed a buffer reports the old one. The real closure is P5 (synchronous replication + fail-closed primary guard), which is one more reason `replicas` requires the primary guard. Rejected: `pg_stat_wal_receiver.received_tli` (needs `pg_read_all_stats`, verified in `walreceiver.c` `pg_stat_get_wal_receiver`: unprivileged users get only `pid`; the row disappears while the walreceiver restarts) and `pg_control_checkpoint().timeline_id` (refreshed only at restartpoints). |
+| R5 | **Down or lagging replica: fail closed, but reconnect.** Replica connections reconnect inside the wait (backoff shared with the poll loop, open checks re-run). This deliberately diverges from P2: the primary guard is bound to the replication session and its loss *is* a stream failure, while a standby restart is routine and must not restart the CDC stream. No per-replica skip, no second knob (P3 stands). A replica unreachable at startup fails startup. |
+| R6 | **No replay-LSN cache in v1.** A cache hit skips the per-poll `pg_is_in_recovery()`/timeline check, so after a rewind a stored value can certify a later event. The `CheckConn`-guarded hit was tried and rejected: in pgx v5.9.2 `CheckConn` is deprecated ("cannot detect all types of broken connections"), is a `ReceiveMessage` with a 1 ms deadline (a blocking read per hit, more than the poll it replaces), and a pooler keeps the client socket open while its backend is swapped for a rewound server. `Ping` is sound but costs the round trip the cache was meant to save. `// ponytail:` comment in the code names the cache as the upgrade, with the invariant it must satisfy: observe every change of backend identity before trusting a stored value. |
+| R7 | **One budget.** The existing `visibilityGuard.timeout` covers the primary wait plus all replicas under a shared deadline; the `wal_sender_timeout / 2` startup check is unchanged. Replicas are polled **sequentially**: while replica 1 is polled the others catch up, so the cost is about max lag plus N round trips. Goroutine-per-replica withdrawn (same worst case, more code). |
+| R8 | **Order: primary guard first, then replicas**, both once per xid on the first message (`lastGatedXid`). Neither implies the other: a standby acks flush before apply, and the primary's `ProcArrayEndTransaction` runs after `SyncRepWaitForLSN`, so a standby can have applied while the primary is not yet visible, and the primary is usually visible long before an async standby applies. |
+| R9 | **Metrics.** The three existing visibility metrics measure the whole gate (primary + replicas; the histogram is observed once per gated transaction in `gate`). One addition: `go_pq_cdc_visibility_replica_lag_bytes{replica="host:port"}`, set on every poll to `CommitLSN − replay` (0 once applied). Label is `host:port`, never a DSN. |
+| R10 | **Config.** `visibilityGuard.replicas` list of `host:port`; credentials and database come from the main config exactly as the primary guard's DSN does. Empty list = off. Validation: requires `enabled: true`, `host:port` form, no duplicates. At open every replica must be in recovery on a timeline ≤ the session's, else startup fails. |
+| R11 | **Tests.** Unit: predicate table (replay below, equal, above `CommitLSN`: only above passes), NULL replay and `in_recovery = false` ⇒ error, timeline above session ⇒ error, reconnect after a network error, `CommitLSN == 0` bypass, both `failMode`s, shared deadline, config validation. Integration (PR 2): lift `example/replica-read`'s compose (standby2 `recovery_min_apply_delay = 3s`) into `integration_test/`; assert dispatch is held ≥ 3 s and the row is readable on standby2 at dispatch; the split-standby case passes with both listed; `pg_wal_replay_pause()` for a deterministic timeout → restart test. |
+| R12 | **Accepted trade-offs.** (a) Fail-closed on a chronically lagging replica is a restart loop by design: keepalive replies stop while the process loop is gated, so "keep waiting" is not available; raise `timeout` and `wal_sender_timeout` together, or use `failMode: open` with alerting on `visibility_timeout_total`. (b) A standby restart briefly rewinds visibility below an already certified `CommitLSN` (replay restarts at `RedoStartLSN`; hot standby accepts connections at `minRecoveryPoint`); stated **inside** the README guarantee paragraph, consumer retry covers it, no restart detection in the poll. |
+
+## Build order
+
+1. **PR 1 — core.** `pq/replication/replica.go`: `Querier`, `WaitOptions`, `WaitReplayed`, `ErrNotStandby`, the shared poll and backoff, the internal `replicaGuard` (dial, reconnect, open checks, timeline rule, lag gauge). `stream.gate(ctx, xid, commitLSN)`; replicas opened after the primary guard in `Open`, closed after the process goroutine in `Close`. `config.VisibilityGuardConfig.Replicas` + validation + `Config.ReplicaDSN`. Metric interface + gauge. Unit tests from R11.
+2. **PR 2 — integration harness.** Compose fixture under `integration_test/`, the assertions from R11, CI matrix entry.
+3. **PR 3 — docs.** README "Visibility Guard" gains the `replicas` block, the guarantee and its limits (R12 (b) inside the guarantee paragraph); `visibility-gate-design.md` gets a pointer here and the P2 divergence; `example/replica-read` handler uses `WaitReplayed` and gains a step 5 (guard on, `strict = true visible = true` at event time); permissions table: no new grant, `pg_hba.conf` must allow normal connections to the standbys.
+
+## Do not
+
+- Do not use `pg_stat_replication`, as predicate or for discovery.
+- Do not use `>=`; do not fold check and read into one statement (the snapshot is taken before the function runs).
+- Do not treat NULL `pg_last_wal_replay_lsn()`, `pg_is_in_recovery() = false`, a timeout or a connection failure as "replayed".
+- Do not call `pg_walfile_name()` on a standby (ERRORs in recovery) or `pg_control_checkpoint().timeline_id` (restartpoint-stale).
+- Do not cache the replay position across polls (R6).
+- Do not add a per-replica timeout, a skip-lagging mode, a quorum ("any N of M") or a circuit breaker.
+- Do not gate per message, at `COMMIT`, or inside `sink()`; do not gate heartbeat or snapshot events.
+- Do not list a pooled or load-balanced endpoint in `replicas`.
+
+## Source references (PostgreSQL master, 2026-09-20)
+
+`xlog.c` `UpdateMinRecoveryPoint` (`newMinRecoveryPoint = GetCurrentReplayRecPtr(&newMinRecoveryPointTLI)`), `XLogFlush` recovery branch (`if (!XLogInsertAllowed()) { UpdateMinRecoveryPoint(record, false); return; }`). `walreceiver.c` `pg_stat_get_wal_receiver` (`has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS)`, else only `pid`); `XLogWalRcvFlush` sets `receivedTLI` after `issue_xlog_fsync`. `xact.c` `XACT_COMPLETION_APPLY_FEEDBACK` only for `synchronous_commit >= remote_apply`; `xact_redo_commit` is the only caller of `XLogRequestWalReceiverReply`. `xlogrecovery.c`: replay position resets to `RedoStartLSN` at recovery start. pgx `v5.9.2` `pgconn/pgconn.go` `CheckConn` (deprecated, 1 ms `ReceiveMessage`).

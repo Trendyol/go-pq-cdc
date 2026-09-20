@@ -30,5 +30,10 @@ start -check-port 5438 -read-port 5439
 psql "INSERT INTO orders (note) VALUES ('split')"; waitlog "NOT FOUND"; show
 stop
 
+echo "## 5. visibilityGuard.replicas: the connector waits for standby2, the handler finds the row at once"
+start -replicas 127.0.0.1:5439
+psql "INSERT INTO orders (note) VALUES ('replicas')"; waitlog "after strict"; show
+stop
+
 docker compose down -v >/dev/null 2>&1
 echo "done"

@@ -6,10 +6,11 @@
 SELECT pg_last_wal_replay_lsn() > '<ctx.CommitLSN>'::pg_lsn;   -- strict
 ```
 
-This lab shows why `>` and not `>=`, why two synchronous standbys do not make the check unnecessary, and what the
-one common mistake looks like. The consumer in `main.go` reads a standby after every insert event: it prints what the
-loose (`>=`) and strict (`>`) checks say at the moment the event arrives, then waits for the strict check on one
-connection and reads the row on another, the way a connection pool would.
+This lab shows why `>` and not `>=`, why two synchronous standbys do not make the check unnecessary, what the one
+common mistake looks like, and what `visibilityGuard.replicas` changes. The consumer in `main.go` reads a standby
+after every insert event: it prints what the loose (`>=`) and strict (`>`) checks say at the moment the event arrives,
+then waits for the strict check with `replication.WaitReplayed` on one connection and reads the row on another, the
+way a connection pool would.
 
 ## Topology
 
@@ -25,7 +26,7 @@ docker compose up -d --wait
 go run .                      # guard on, check and read on standby2
 ```
 
-`./lab.sh` runs the four steps below unattended in about a minute. Inserts go to the primary:
+`./lab.sh` runs the five steps below unattended in about a minute. Inserts go to the primary:
 
 ```bash
 docker compose exec primary psql -U cdc_user -d cdc_db
@@ -38,13 +39,15 @@ INSERT INTO orders (note) VALUES ('plain');
 ```
 
 ```
-INFO at event id=1 commitLSN=0/5005F30 replay=0/5005D08 loose(>=)=false strict(>)=false visible=false
-INFO VISIBLE after strict check id=1 waited=3.042s
+INFO at event id=1 commitLSN=0/5051A90 replay=0/5051A90 loose(>=)=true strict(>)=false visible=false
+INFO VISIBLE after strict check id=1 waited=2.992s
 ```
 
 The primary acknowledged the commit (both standbys flushed it), the visibility guard certified it on the primary, the
-event arrived, and `standby2` is still behind. `synchronous_commit = on` is a flush guarantee, not an apply guarantee.
-The strict check waits, and the read on the same standby afterwards finds the row.
+event arrived, and `standby2` is still behind: it has applied the row's own WAL record (`replay == commitLSN`) but
+not the commit record, so the row is invisible. `synchronous_commit = on` is a flush guarantee, not an apply
+guarantee. The strict check waits, and the read on the same standby afterwards finds the row. (If `standby2` still
+has older delayed commits queued, `replay` shows an even lower position and `loose(>=)` is `false` too.)
 
 ## 2. `synchronous_commit = remote_apply` + guard: nothing left to wait for
 
@@ -100,6 +103,22 @@ the commit yet. The check is only meaningful for the server that answered it. An
 connections over several standbys (HAProxy, pgbouncer with several hosts, a DNS name with several addresses, a pool in
 the application) turns a correct check into this.
 
+## 5. `visibilityGuard.replicas`: the library waits, the handler does not
+
+```bash
+go run . -replicas 127.0.0.1:5439
+```
+
+```
+INFO at event id=5 commitLSN=0/5053648 replay=0/5053678 loose(>=)=true strict(>)=true visible=true
+INFO VISIBLE after strict check id=5 waited=3ms
+```
+
+With `standby2` listed, the connector itself polls it (same strict rule, its own connection) before dispatching, so
+the event arrives about three seconds after the commit with the row already there; `WaitReplayed` in the handler
+returns at once. The guarantee covers the listed standbys only: `-replicas 127.0.0.1:5438 -read-port 5439` reproduces
+step 4, because `standby2` is not in the list.
+
 ## The rule, in full
 
 1. Compare with `>`, never `>=`, and poll: PostgreSQL 17 and 18 have no server-side wait for a replay position
@@ -110,10 +129,13 @@ the application) turns a correct check into this.
    snapshot of its first statement; a single statement such as `SELECT … WHERE id = $1 AND pg_last_wal_replay_lsn() > $2`
    takes its snapshot before the function runs.
 4. `pg_last_wal_replay_lsn()` is `NULL` on a primary. Getting `NULL` from the "replica" endpoint means the endpoint
-   routed you to the leader (or a promoted standby); do not read it as "already applied".
+   routed you to the leader (or a promoted standby); do not read it as "already applied". `WaitReplayed` returns
+   `ErrNotStandby` for it.
 5. `synchronous_commit = on` means flushed, not applied. Only `remote_apply` on the producer, with the replica you read
    from listed in `synchronous_standby_names`, removes the need for the check, and Patroni may drop a standby from that
    list at any time.
+6. `visibilityGuard.replicas` moves the wait into the connector for the standbys you list; anything you read from
+   must be in that list, and pooled endpoints do not belong in it.
 
 ## Cleanup
 

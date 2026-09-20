@@ -189,6 +189,7 @@ Add these grants when the corresponding feature is enabled:
 | Heartbeat with auto-created table             | `GRANT CREATE ON SCHEMA <schema> TO cdc_user;` for the initial `CREATE TABLE`, plus `GRANT INSERT, UPDATE ON <heartbeat_table>` for the auto-managed singleton row. |
 | Snapshot mode (initial / only)                | `SELECT` on the source tables (already covered above).                                                                                    |
 | Adding tables to an existing publication      | The role must own the publication, e.g. `ALTER PUBLICATION cdc_publication OWNER TO cdc_user;`.                                           |
+| `visibilityGuard` (with or without `replicas`) | No extra grant: `pg_current_snapshot()`, `pg_last_wal_replay_lsn()` and `pg_control_recovery()` are callable by every role. `pg_hba.conf` on each listed standby must accept a normal connection from the CDC host. |
 
 Common failure modes when grants are missing:
 
@@ -401,6 +402,7 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `visibilityGuard.failMode`              |  string  |    no    | closed  | What to do when a transaction is not visible within `timeout`                                          | **closed:** restart the stream; the event is redelivered from the confirmed LSN. **open:** log a warning, count it, dispatch anyway. Guard errors (replica, failover, connection loss) restart the stream in both modes. |
 | `visibilityGuard.timeout`               | duration |    no    |  10s    | Maximum time to wait per transaction                                                                   | Must be less than half of the server's `wal_sender_timeout` (checked at startup, skipped when it is `0`): keepalive replies stop while the gate blocks. |
 | `visibilityGuard.pollInterval`          | duration |    no    |  5ms    | First poll interval; doubles up to 250ms with jitter                                                   |                                                                                                                                                    |
+| `visibilityGuard.replicas`              | []string |    no    |   []    | Standbys (`host:port`) that must have applied the transaction before its first event is dispatched (see [Visibility Guard](#visibility-guard)). | Requires `enabled: true`. Credentials and database come from the main config. Direct standby hosts only, never a pooled endpoint. Shares `timeout` and `failMode` with the primary check. |
 
 ### API
 
@@ -448,18 +450,34 @@ events bypass the gate.
 visibilityGuard:
   enabled: true
   failMode: closed   # closed | open
-  timeout: 10s       # must be < wal_sender_timeout / 2
+  timeout: 10s       # must be < wal_sender_timeout / 2; covers the primary and every replica below
   pollInterval: 5ms  # doubles up to 250ms, with jitter
+  replicas:          # optional: standbys that must have applied the transaction before dispatch
+    - standby1:5432
+    - standby2:5432
 ```
 
+**Replicas.** `replicas` extends the gate to standbys. After the primary check, the first event of every transaction
+is also held until each listed standby answers, on a connection of its own, `pg_is_in_recovery()` true,
+`pg_last_wal_replay_lsn() > CommitLSN` (strict, see [below](#commit-lsn-and-reading-from-a-standby)) and a timeline no
+newer than the replication session's. Credentials and database come from the main config. List direct standby hosts,
+never a pooled or load-balanced endpoint: the check is only meaningful for the server that answered it. Both waits
+share `timeout`, standbys are polled one after another, and the replica connections reconnect on their own, so a
+standby restart does not restart the stream. Design record: [docs/replica-guard-design.md](./docs/replica-guard-design.md).
+
 **Guarantee.** Everything delivered to the handler is committed on the server (with or without the guard). With the
-guard on, a fresh snapshot taken on the same primary after the handler was called also sees the row.
+guard on, a fresh snapshot taken on the same primary after the handler was called also sees the row. With `replicas`
+set, every listed standby has applied the transaction when the handler is called, so a read on any of them under
+`READ COMMITTED` sees the row. One exception is built into hot standby: a standby that restarts replays again from its
+last restartpoint and accepts connections as soon as it is consistent, so for a moment its replay position can sit
+below a `CommitLSN` it had already applied; consumer-side retry covers it.
 
 **Limits.** The guarantee does not cover:
 
-- Reads from a standby, or through a pooler that may route to one. Use the strict `CommitLSN` rule in
-  [Commit LSN and reading from a standby](#commit-lsn-and-reading-from-a-standby). In Patroni deployments this is the
-  more likely cause of "the row is not there yet" than the primary-side window.
+- Reads from a standby that is not listed in `replicas`, or through a pooler that may route to one. Use the strict
+  `CommitLSN` rule or `WaitReplayed` in [Commit LSN and reading from a standby](#commit-lsn-and-reading-from-a-standby).
+  In Patroni deployments this is the more likely cause of "the row is not there yet" than the primary-side window. A
+  standby added to the cluster later is not covered until it is added to `replicas`.
 - The consumer's own open `REPEATABLE READ` or `SERIALIZABLE` transaction: its snapshot predates the commit.
 - Later changes: the row may already be updated or deleted when the consumer reads it.
 - Row-level security and the privileges of the reading role.
@@ -475,10 +493,19 @@ half of the server's `wal_sender_timeout` (checked at startup, skipped when it i
 while the gate blocks. Waits are recorded in `go_pq_cdc_visibility_wait_duration_seconds`, timeouts in
 `go_pq_cdc_visibility_timeout_total`.
 
+With `replicas`, a standby that is unreachable or still behind when `timeout` expires counts as a timeout and follows
+the same `failMode` rules. A chronically lagging standby therefore keeps the stream in a restart loop under `closed`,
+by design: raise `timeout` together with `wal_sender_timeout`, or use `open` with an alert on the timeout counter. A
+listed server that is not in recovery (a primary, a promoted standby, a pooler that routed elsewhere), one whose
+timeline is ahead of the replication session, or a server error on the poll is a guard error in both modes. Each
+standby's distance to the held transaction is exported as `go_pq_cdc_visibility_replica_lag_bytes{replica}`.
+
 **Synchronous replication corollary.** With `synchronous_standby_names` set, a transaction becomes visible on the
 primary only after the synchronous standby acknowledged it at the configured `synchronous_commit` level. A fail-closed
 guard therefore also prevents phantom events on a Patroni failover, without PostgreSQL 17 failover slots: an event is
-dispatched only once the standby that may be promoted has the commit. This holds unless:
+dispatched only once the standby that may be promoted has the commit. The same corollary is what closes the one race
+the replica check cannot see, a standby that is still receiving a new timeline and reports the old one; this is why
+`replicas` requires the primary guard. This holds unless:
 
 - Patroni runs `synchronous_mode` without `synchronous_mode_strict` and no standby is available: synchronous
   replication is switched off and commits stop waiting.
@@ -516,7 +543,20 @@ is only as good as the way it is run:
   need for the check.
 
 PostgreSQL 17 and 18 have no server-side wait for a replay position (`pg_wal_replay_wait` is not in either release), so
-poll. [example/replica-read](./example/replica-read) demonstrates each point against a primary with two synchronous
+poll. `replication.WaitReplayed` runs that poll for you, with the guard's defaults (10s timeout, 5ms interval doubling
+to 250ms), on any `*pgx.Conn`, `*pgxpool.Conn` or `pgx.Tx`; pass the connection you will read from:
+
+```go
+conn, err := standbyPool.Acquire(ctx) // the connection the read will use
+defer conn.Release()
+if err = replication.WaitReplayed(ctx, conn, lCtx.CommitLSN, replication.WaitOptions{}); err != nil {
+    return err // replication.ErrNotStandby, replication.ErrVisibilityTimeout, or a connection error
+}
+err = conn.QueryRow(ctx, "SELECT ... FROM orders WHERE id = $1", id).Scan(...) // separate statement
+```
+
+To have the library wait instead, list the standby in `visibilityGuard.replicas`.
+[example/replica-read](./example/replica-read) demonstrates each point against a primary with two synchronous
 standbys.
 
 ### Failover slots (PostgreSQL 17+)
@@ -570,6 +610,7 @@ the `/metrics` endpoint.
 | go_pq_cdc_visibility_wait_duration_seconds          | Time the visibility guard held a transaction until it became visible on the primary.                   | slot_name, host| Histogram  |
 | go_pq_cdc_visibility_timeout_total                  | Number of visibility guard waits that reached `visibilityGuard.timeout`.                               | slot_name, host| Counter    |
 | go_pq_cdc_visibility_fail_open_total                | Number of transactions dispatched after a visibility guard timeout (`failMode: open`).                 | slot_name, host| Counter    |
+| go_pq_cdc_visibility_replica_lag_bytes              | WAL bytes a listed standby still has to replay before the held transaction is applied (0 once applied). | slot_name, host, replica | Gauge |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
 ### Grafana Dashboard

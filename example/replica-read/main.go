@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	cdc "github.com/Trendyol/go-pq-cdc"
@@ -25,7 +26,12 @@ func main() {
 	checkPort := flag.Int("check-port", 5439, "standby answering the replay-LSN check (5438 standby1, 5439 standby2)")
 	readPort := flag.Int("read-port", 5439, "standby serving the row read")
 	guard := flag.Bool("guard", true, "visibilityGuard on the primary")
+	replicas := flag.String("replicas", "", "comma-separated host:port list for visibilityGuard.replicas (step 5)")
 	flag.Parse()
+	var replicaList []string
+	if *replicas != "" {
+		replicaList = strings.Split(*replicas, ",")
+	}
 
 	ctx := context.Background()
 	cfg := config.Config{
@@ -47,7 +53,7 @@ func main() {
 			Name:                        "cdc_slot",
 			SlotActivityCheckerInterval: 3000,
 		},
-		VisibilityGuard: config.VisibilityGuardConfig{Enabled: *guard},
+		VisibilityGuard: config.VisibilityGuardConfig{Enabled: *guard, Replicas: replicaList},
 		Metric:          config.MetricConfig{Port: 8082},
 		Logger:          config.LoggerConfig{LogLevel: slog.LevelInfo},
 	}
@@ -72,11 +78,9 @@ func main() {
 		must(read.QueryRow(lCtx.Context, exists, id).Scan(&visible), "read")
 		slog.Info("at event", "id", id, "commitLSN", lsn, "replay", replay, "loose(>=)", loose, "strict(>)", strict, "visible", visible)
 
+		// The strict poll, as the library ships it: same connection as the check above.
 		start := time.Now()
-		for !strict {
-			time.Sleep(50 * time.Millisecond)
-			must(check.QueryRow(lCtx.Context, "SELECT pg_last_wal_replay_lsn() > $1::pg_lsn", lsn).Scan(&strict), "check")
-		}
+		must(replication.WaitReplayed(lCtx.Context, check, lCtx.CommitLSN, replication.WaitOptions{}), "wait replayed")
 		must(read.QueryRow(lCtx.Context, exists, id).Scan(&visible), "read")
 		if visible {
 			slog.Info("VISIBLE after strict check", "id", id, "waited", time.Since(start).Round(time.Millisecond))

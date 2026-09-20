@@ -1,6 +1,6 @@
 # Replica guard — implementation handoff
 
-Status: **PR 1 in progress** (core guard, config, metrics, unit tests). Decided 2026-09-20 by a four-round consensus
+Status: **implemented** (core guard, config and metrics; integration test `integration_test/replica_guard_test.go` against a standby with `recovery_min_apply_delay = 3s`; README "Visibility Guard" and "Commit LSN and reading from a standby"; `example/replica-read` step 5). Decided 2026-09-20 by a four-round consensus
 between Codex, Claude Opus and Claude Fable 5.1: round 1 independent plans, round 2 the four disputes below, rounds
 3 and 4 the replay-LSN cache. Extends [visibility-gate-design.md](./visibility-gate-design.md) (P1–P10); the rows
 here are numbered R1–R12.

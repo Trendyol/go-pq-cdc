@@ -18,12 +18,15 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 var (
 	Config    config.Config
 	Container testcontainers.Container
+	// Network joins the primary (alias "primary") and the standbys some tests start.
+	Network *testcontainers.DockerNetwork
 )
 
 var (
@@ -41,6 +44,15 @@ func TestMain(m *testing.M) {
 
 	ctx := context.Background()
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Podman: disable Ryuk
+	Network, err = network.New(ctx)
+	if err != nil {
+		log.Fatal("create test network", err)
+	}
+	defer func() {
+		if err = Network.Remove(ctx); err != nil {
+			log.Fatal("remove test network", err)
+		}
+	}()
 	Container, err = SetupTestContainer(ctx, Config)
 	if err != nil {
 		log.Fatal("setup test container", err)
@@ -75,6 +87,10 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 
+	if err = allowReplicationConnections(ctx, conn); err != nil {
+		log.Fatal(err)
+	}
+
 	m.Run()
 }
 
@@ -100,8 +116,10 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 			"POSTGRES_PASSWORD": "postgres",
 			"POSTGRES_DB":       cfg.Database,
 		},
-		ExposedPorts: []string{"5432/tcp"},
-		Cmd:          []string{"postgres", "-c", "fsync=off", "-c", "wal_level=logical", "-c", "max_wal_senders=100", "-c", "max_replication_slots=50"},
+		ExposedPorts:   []string{"5432/tcp"},
+		Cmd:            []string{"postgres", "-c", "fsync=off", "-c", "wal_level=logical", "-c", "max_wal_senders=100", "-c", "max_replication_slots=50"},
+		Networks:       []string{Network.Name},
+		NetworkAliases: map[string][]string{Network.Name: {"primary"}},
 	}
 
 	genericContainerReq := testcontainers.GenericContainerRequest{
@@ -177,6 +195,21 @@ func createCDCUser(ctx context.Context, conn pq.Connection, cfg config.Config) e
 	}
 
 	return nil
+}
+
+// allowReplicationConnections lets standbys started by tests stream from the
+// primary: the image's default pg_hba.conf only opens "all" databases, and the
+// replication pseudo-database needs its own line.
+func allowReplicationConnections(ctx context.Context, conn pq.Connection) error {
+	code, out, err := Container.Exec(ctx, []string{"sh", "-c", `echo "host replication all all scram-sha-256" >> "$PGDATA/pg_hba.conf"`})
+	if err != nil {
+		return errors.Wrap(err, "append pg_hba replication line")
+	}
+	if code != 0 {
+		b, _ := io.ReadAll(out)
+		return errors.Newf("append pg_hba replication line: exit %d: %s", code, b)
+	}
+	return pgExec(ctx, conn, "SELECT pg_reload_conf()")
 }
 
 func createBooksTable(ctx context.Context, conn pq.Connection) error {

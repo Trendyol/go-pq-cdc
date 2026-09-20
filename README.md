@@ -162,6 +162,8 @@ func Handler(ctx *replication.ListenerContext) {
 * [PostgreSQL to Kafka](https://github.com/Trendyol/go-pq-cdc-kafka/tree/main/example/simple)
 * [PostgreSQL to PostgreSQL](./example/postgresql)
 * [Partitioned Tables](./example/partitioned-table-mapping)
+* [Visibility Guard Lab](./example/visibility-guard)
+* [Reading a Standby After an Event (CommitLSN)](./example/replica-read)
 
 ### PostgreSQL User Permissions
 
@@ -498,8 +500,24 @@ SELECT pg_last_wal_replay_lsn() > '<ctx.CommitLSN>'::pg_lsn;
 ```
 
 `pg_last_wal_replay_lsn()` reports the end of the last replayed record, so it equals `CommitLSN` right before the commit
-record itself is applied; `>=` is not enough. On PostgreSQL 17+ `pg_wal_replay_wait('<ctx.CommitLSN>')` can replace
-polling, followed by the same strict check. `ctx.CommitLSN.String()` prints the `pg_lsn` text form (`X/X`).
+record itself is applied; `>=` is not enough. `ctx.CommitLSN.String()` prints the `pg_lsn` text form (`X/X`). The check
+is only as good as the way it is run:
+
+- Run the check and the read on the **same server**: the same connection, one transaction, or a pool pinned to one
+  standby. A replica endpoint that spreads connections over several standbys (HAProxy, pgbouncer with several hosts, a
+  DNS name with several addresses, a pool in the application) can pass the check on one standby and read from another.
+- Check first, then read, as separate statements under `READ COMMITTED`. `REPEATABLE READ` keeps the snapshot of the
+  first statement, and a single combined statement (`… WHERE id = $1 AND pg_last_wal_replay_lsn() > $2`) takes its
+  snapshot before the function is evaluated.
+- `NULL` from `pg_last_wal_replay_lsn()` means the connection reached a primary (or a promoted standby), not "already
+  applied". After a failover the new timeline can pass the old `CommitLSN` without containing that transaction.
+- `synchronous_commit = on` means flushed, not applied: a synchronous standby can still be behind on apply. Only
+  `remote_apply` on the producer, with the standby you read from listed in `synchronous_standby_names`, removes the
+  need for the check.
+
+PostgreSQL 17 and 18 have no server-side wait for a replay position (`pg_wal_replay_wait` is not in either release), so
+poll. [example/replica-read](./example/replica-read) demonstrates each point against a primary with two synchronous
+standbys.
 
 ### Failover slots (PostgreSQL 17+)
 

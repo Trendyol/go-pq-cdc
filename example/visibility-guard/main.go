@@ -63,7 +63,6 @@ func main() {
 		slog.Error("reader connect", "error", err)
 		os.Exit(1)
 	}
-	defer reader.Close(ctx)
 
 	handler := func(lCtx *replication.ListenerContext) {
 		if ins, ok := lCtx.Message.(*format.Insert); ok {
@@ -90,8 +89,10 @@ func main() {
 	connector, err := cdc.NewConnector(ctx, cfg, handler)
 	if err != nil {
 		slog.Error("new connector", "error", err)
+		reader.Close(ctx)
 		os.Exit(1)
 	}
+	defer reader.Close(ctx)
 	defer connector.Close()
 	connector.Start(ctx)
 }

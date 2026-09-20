@@ -4,6 +4,7 @@ import (
 	"context"
 	goerrors "errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -41,6 +42,12 @@ var errReplicaConn = goerrors.New("replica connection")
 // min_recovery_end_timeline follows the replay timeline on every buffer flush
 // (UpdateMinRecoveryPoint) and needs no grant; pg_walfile_name would ERROR here.
 const replicaPollSQL = "SELECT pg_is_in_recovery(), coalesce(pg_last_wal_replay_lsn()::text, ''), (pg_control_recovery()).min_recovery_end_timeline"
+
+// replicaSystemSQL identifies the cluster behind a listed standby. It runs once
+// per replica at open: a host:port from another cluster is in recovery and
+// answers with a replay position from a history CommitLSN is not part of, which
+// passes the replay rule at once and certifies a read that never happened.
+const replicaSystemSQL = "SELECT (pg_control_system()).system_identifier"
 
 // WaitReplayed blocks until the standby behind q has replayed the transaction
 // whose commit record starts at commitLSN (ListenerContext.CommitLSN):
@@ -108,15 +115,20 @@ func waitReplayed(ctx context.Context, poll func(context.Context) (replicaState,
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		// Before the deadline check: the server answered, and that answer is
+		// fatal in both fail modes. Classifying it as a timeout because the
+		// budget happened to run out would let failMode open dispatch it.
+		// A poll cut by this wait's own deadline is the timeout itself, not an
+		// answer: the parent's cancellation already returned above.
+		if err != nil && !goerrors.Is(err, errReplicaConn) && !goerrors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			if err != nil {
 				return fmt.Errorf("%w: %w", ErrVisibilityTimeout, err)
 			}
 			return fmt.Errorf("%w: replay %s has not passed commit %s", ErrVisibilityTimeout, st.replay, commitLSN)
-		}
-		if err != nil && !goerrors.Is(err, errReplicaConn) {
-			return err
 		}
 		var sleep time.Duration
 		sleep, delay = backoff(delay, remaining)
@@ -133,6 +145,7 @@ func waitReplayed(ctx context.Context, poll func(context.Context) (replicaState,
 // under the same deadline and failMode. See docs/replica-guard-design.md.
 type replicaGuard struct {
 	metric   metric.Metric
+	systemID string // IDENTIFY_SYSTEM's, unsigned decimal
 	replicas []*replica
 	cfg      config.VisibilityGuardConfig
 	timeline int32
@@ -151,8 +164,8 @@ type replica struct {
 	name string      // host:port from config; metric label and log key
 }
 
-func openReplicaGuard(ctx context.Context, cfg config.Config, timeline int32, m metric.Metric) (*replicaGuard, error) {
-	g := &replicaGuard{metric: m, cfg: cfg.VisibilityGuard, timeline: timeline}
+func openReplicaGuard(ctx context.Context, cfg config.Config, system *pq.IdentifySystemResult, m metric.Metric) (*replicaGuard, error) {
+	g := &replicaGuard{metric: m, cfg: cfg.VisibilityGuard, timeline: system.Timeline, systemID: system.SystemID}
 	for _, hostPort := range cfg.VisibilityGuard.Replicas {
 		dsn := cfg.ReplicaDSN(hostPort)
 		g.replicas = append(g.replicas, &replica{
@@ -167,13 +180,36 @@ func openReplicaGuard(ctx context.Context, cfg config.Config, timeline int32, m 
 	return g, nil
 }
 
-// open dials every replica once: each must be in recovery on a timeline that
-// is not ahead of the replication session, or startup fails.
+// open dials every replica once: each must belong to the replication session's
+// cluster and be in recovery on a timeline that is not ahead of it, or startup
+// fails. The cluster check is startup-only; a backend cannot change identity
+// without the connection breaking, and the per-poll checks cover the rest.
 func (g *replicaGuard) open(ctx context.Context) error {
 	for _, r := range g.replicas {
 		if _, err := g.poll(ctx, r, 0); err != nil {
 			return fmt.Errorf("replica %s: %w", r.name, err)
 		}
+		if err := g.checkSystemID(ctx, r); err != nil {
+			return fmt.Errorf("replica %s: %w", r.name, err)
+		}
+	}
+	return nil
+}
+
+// checkSystemID compares the standby's cluster with the replication session's.
+// IDENTIFY_SYSTEM prints the identifier unsigned while pg_control_system()
+// returns it as int8, so the two are compared as uint64 bits, never as text.
+func (g *replicaGuard) checkSystemID(ctx context.Context, r *replica) error {
+	want, err := strconv.ParseUint(g.systemID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse replication session system identifier %q: %w", g.systemID, err)
+	}
+	var got int64
+	if err = r.conn.QueryRow(ctx, replicaSystemSQL).Scan(&got); err != nil {
+		return err
+	}
+	if uint64(got) != want {
+		return fmt.Errorf("system identifier %d is not the replication session's %d (different cluster?)", uint64(got), want)
 	}
 	return nil
 }

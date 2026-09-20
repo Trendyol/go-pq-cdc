@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -35,14 +36,30 @@ func standby(replay string) replicaRow {
 	return replicaRow{recovery: true, replay: replay, timeline: 7}
 }
 
+// testSystemID is the session's cluster; the high bit is set so the int8 that
+// pg_control_system() returns is negative and the uint64 compare is exercised.
+const testSystemID uint64 = 0x8000000000000001
+
 // scriptedReplica answers one row per QueryRow; the last row repeats.
 type scriptedReplica struct {
-	rows   []replicaRow
-	calls  atomic.Int32
-	closed bool
+	rows []replicaRow
+	// systemID answers replicaSystemSQL; zero means the session's own cluster.
+	systemID uint64
+	calls    atomic.Int32
+	closed   bool
 }
 
-func (r *scriptedReplica) QueryRow(context.Context, string, ...any) pgx.Row {
+func (r *scriptedReplica) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	if sql == replicaSystemSQL {
+		return rowFunc(func(dest ...any) error {
+			id := r.systemID
+			if id == 0 {
+				id = testSystemID
+			}
+			*dest[0].(*int64) = int64(id)
+			return nil
+		})
+	}
 	n := int(r.calls.Add(1)) - 1
 	if n >= len(r.rows) {
 		n = len(r.rows) - 1
@@ -128,6 +145,14 @@ func TestWaitReplayedMalformedReplayIsAnError(t *testing.T) {
 	require.NotErrorIs(t, err, ErrVisibilityTimeout)
 }
 
+// The last poll is cut by the wait's own deadline: that is the timeout, not a
+// server answer, and must not escape as a bare context error.
+func TestWaitReplayedDeadlineCutPollIsATimeout(t *testing.T) {
+	r := &scriptedReplica{rows: []replicaRow{{err: context.DeadlineExceeded}}}
+	err := WaitReplayed(context.Background(), r, 0x20, fastWait)
+	require.ErrorIs(t, err, ErrVisibilityTimeout)
+}
+
 func TestWaitReplayedRejectsZeroCommitLSN(t *testing.T) {
 	r := &scriptedReplica{rows: []replicaRow{standby("0/21")}}
 	require.Error(t, WaitReplayed(context.Background(), r, 0, fastWait))
@@ -166,7 +191,7 @@ func (d *dialer) dial(context.Context) (replicaConn, error) {
 
 func testReplicaGuard(names []string, dialers ...*dialer) (*replicaGuard, *countingMetric) {
 	m := &countingMetric{Metric: metric.NewMetric("test_slot")}
-	g := &replicaGuard{metric: m, timeline: 7, cfg: config.VisibilityGuardConfig{
+	g := &replicaGuard{metric: m, timeline: 7, systemID: strconv.FormatUint(testSystemID, 10), cfg: config.VisibilityGuardConfig{
 		Enabled: true, FailMode: config.VisibilityFailClosed, Timeout: 30 * time.Millisecond, PollInterval: time.Millisecond,
 	}}
 	for i, d := range dialers {
@@ -192,6 +217,7 @@ func TestReplicaGuardOpenChecks(t *testing.T) {
 		{name: "standby on a newer timeline", dial: &dialer{conns: []*scriptedReplica{{rows: []replicaRow{{recovery: true, replay: "0/10", timeline: 8}}}}}, wantErr: "timeline 8 is ahead"},
 		{name: "primary", dial: &dialer{conns: []*scriptedReplica{{rows: []replicaRow{{recovery: false, timeline: 7}}}}}, wantErr: "not in recovery"},
 		{name: "unreachable", dial: &dialer{err: errors.New("connection refused")}, wantErr: "dial: connection refused"},
+		{name: "standby of another cluster", dial: &dialer{conns: []*scriptedReplica{{rows: []replicaRow{standby("0/10")}, systemID: 42}}}, wantErr: "is not the replication session's"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -274,6 +300,37 @@ func TestReplicaGuardServerErrorsAreFatal(t *testing.T) {
 			assert.Equal(t, int32(0), m.timeouts.Load())
 		})
 	}
+}
+
+// A server answer that lands after the shared budget is spent (the primary
+// guard used it) stays fatal: failMode open must not dispatch on it.
+func TestReplicaGuardServerErrorsAreFatalAfterTheDeadline(t *testing.T) {
+	tests := []struct {
+		name string
+		row  replicaRow
+	}{
+		{name: "pg error (poll rejected)", row: replicaRow{err: &pgconn.PgError{Code: "42501", Message: "permission denied"}}},
+		{name: "promoted", row: replicaRow{recovery: false, timeline: 7}},
+		{name: "timeline ahead", row: replicaRow{recovery: true, replay: "0/30", timeline: 8}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &dialer{conns: []*scriptedReplica{{rows: []replicaRow{tt.row}}}}
+			g, m := testReplicaGuard([]string{"standby1:5432"}, d)
+
+			err := g.wait(context.Background(), 0x20, time.Now()) // no budget left
+			require.Error(t, err)
+			require.NotErrorIs(t, err, ErrVisibilityTimeout)
+			assert.Equal(t, int32(0), m.timeouts.Load())
+		})
+	}
+}
+
+func TestWaitReplayedNotStandbyAfterTheDeadline(t *testing.T) {
+	r := &scriptedReplica{rows: []replicaRow{{recovery: false}}}
+	err := WaitReplayed(context.Background(), r, 0x20, WaitOptions{Timeout: time.Nanosecond, PollInterval: time.Millisecond})
+	require.ErrorIs(t, err, ErrNotStandby)
+	require.NotErrorIs(t, err, ErrVisibilityTimeout)
 }
 
 func TestReplicaGuardCloseClosesDialedConnections(t *testing.T) {

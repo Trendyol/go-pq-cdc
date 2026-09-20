@@ -47,7 +47,10 @@ exec postgres -c fsync=off -c max_wal_senders=100 -c max_replication_slots=50 -c
 		},
 	})
 	require.NoError(t, err, "start standby")
-	t.Cleanup(func() { _ = standby.Terminate(ctx) })
+	t.Cleanup(func() {
+		_ = standby.Terminate(ctx)
+		dropReplicationSlot(ctx, t, name)
+	})
 
 	port, err := standby.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err)
@@ -56,6 +59,27 @@ exec postgres -c fsync=off -c max_wal_senders=100 -c max_replication_slots=50 -c
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 	return hostPort, pool
+}
+
+// dropReplicationSlot removes the physical slot pg_basebackup -C created on the
+// primary. Left behind, an inactive slot pins WAL for the rest of the suite.
+// The walsender needs a moment to notice the standby is gone: until it does,
+// the slot is still active and the drop is refused.
+func dropReplicationSlot(ctx context.Context, t *testing.T, name string) {
+	t.Helper()
+	conn, err := newPostgresConn()
+	if err != nil {
+		t.Logf("drop replication slot %s: %v", name, err)
+		return
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	for i := 0; i < 25; i++ {
+		if err = pgExec(ctx, conn, fmt.Sprintf("SELECT pg_drop_replication_slot('%s')", name)); err == nil {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Logf("drop replication slot %s: %v", name, err)
 }
 
 type replicaEvent struct {

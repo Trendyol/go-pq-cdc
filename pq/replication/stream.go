@@ -162,7 +162,7 @@ func (s *stream) Open(ctx context.Context) error {
 		// guard because P5 (sync rep + fail-closed) is what closes the timeline
 		// race the replica poll cannot see. See docs/replica-guard-design.md.
 		if len(s.config.VisibilityGuard.Replicas) > 0 {
-			replicas, err := openReplicaGuard(ctx, s.config, s.system.Timeline, s.metric)
+			replicas, err := openReplicaGuard(ctx, s.config, s.system, s.metric)
 			if err != nil {
 				_ = s.guard.close(ctx)
 				s.guard = nil

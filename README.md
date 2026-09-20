@@ -189,7 +189,7 @@ Add these grants when the corresponding feature is enabled:
 | Heartbeat with auto-created table             | `GRANT CREATE ON SCHEMA <schema> TO cdc_user;` for the initial `CREATE TABLE`, plus `GRANT INSERT, UPDATE ON <heartbeat_table>` for the auto-managed singleton row. |
 | Snapshot mode (initial / only)                | `SELECT` on the source tables (already covered above).                                                                                    |
 | Adding tables to an existing publication      | The role must own the publication, e.g. `ALTER PUBLICATION cdc_publication OWNER TO cdc_user;`.                                           |
-| `visibilityGuard` (with or without `replicas`) | No extra grant: `pg_current_snapshot()`, `pg_last_wal_replay_lsn()` and `pg_control_recovery()` are callable by every role. `pg_hba.conf` on each listed standby must accept a normal connection from the CDC host. |
+| `visibilityGuard` (with or without `replicas`) | No extra grant: `pg_current_snapshot()`, `pg_last_wal_replay_lsn()`, `pg_control_recovery()` and `pg_control_system()` are callable by every role. `pg_hba.conf` on each listed standby must accept a normal connection from the CDC host. |
 
 Common failure modes when grants are missing:
 
@@ -457,10 +457,13 @@ visibilityGuard:
     - standby2:5432
 ```
 
-**Replicas.** `replicas` extends the gate to standbys. After the primary check, the first event of every transaction
-is also held until each listed standby answers, on a connection of its own, `pg_is_in_recovery()` true,
-`pg_last_wal_replay_lsn() > CommitLSN` (strict, see [below](#commit-lsn-and-reading-from-a-standby)) and a timeline no
-newer than the replication session's. Credentials and database come from the main config. List direct standby hosts,
+**Replicas.** `replicas` extends the gate to standbys. At startup every listed host must belong to the replication
+session's cluster (`pg_control_system()`, compared with `IDENTIFY_SYSTEM`): a standby of another cluster is in
+recovery and answers with a replay position from a history `CommitLSN` is not part of, which would pass the check at
+once. After the primary check, the first event of every transaction is then held until each listed standby answers, on
+a connection of its own, `pg_is_in_recovery()` true, `pg_last_wal_replay_lsn() > CommitLSN` (strict, see
+[below](#commit-lsn-and-reading-from-a-standby)) and a timeline no newer than the replication session's. Credentials
+and database come from the main config. List direct standby hosts,
 never a pooled or load-balanced endpoint: the check is only meaningful for the server that answered it. Both waits
 share `timeout`, standbys are polled one after another, and the replica connections reconnect on their own, so a
 standby restart does not restart the stream. Design record: [docs/replica-guard-design.md](./docs/replica-guard-design.md).
@@ -477,7 +480,9 @@ below a `CommitLSN` it had already applied; consumer-side retry covers it.
 - Reads from a standby that is not listed in `replicas`, or through a pooler that may route to one. Use the strict
   `CommitLSN` rule or `WaitReplayed` in [Commit LSN and reading from a standby](#commit-lsn-and-reading-from-a-standby).
   In Patroni deployments this is the more likely cause of "the row is not there yet" than the primary-side window. A
-  standby added to the cluster later is not covered until it is added to `replicas`.
+  standby added to the cluster later is not covered until it is added to `replicas`. A listed standby that is promoted
+  keeps the connector from starting (it is no longer in recovery) until `replicas` is updated or the node is rebuilt as
+  a standby, so list standbys only where their addresses are stable.
 - The consumer's own open `REPEATABLE READ` or `SERIALIZABLE` transaction: its snapshot predates the commit.
 - Later changes: the row may already be updated or deleted when the consumer reads it.
 - Row-level security and the privileges of the reading role.

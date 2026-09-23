@@ -75,14 +75,18 @@ type countingMetric struct {
 	lags      sync.Map // replica -> last lag bytes
 	timeouts  atomic.Int32
 	failOpens atomic.Int32
+	bypasses  atomic.Int32
+	bypassOn  atomic.Bool
 }
 
 func (m *countingMetric) SetVisibilityReplicaLag(replica string, lag float64) {
 	m.lags.Store(replica, lag)
 }
 
-func (m *countingMetric) VisibilityTimeoutIncrement()  { m.timeouts.Add(1) }
-func (m *countingMetric) VisibilityFailOpenIncrement() { m.failOpens.Add(1) }
+func (m *countingMetric) VisibilityTimeoutIncrement()                  { m.timeouts.Add(1) }
+func (m *countingMetric) VisibilityFailOpenIncrement()                 { m.failOpens.Add(1) }
+func (m *countingMetric) VisibilityReplicaBypassIncrement()            { m.bypasses.Add(1) }
+func (m *countingMetric) SetVisibilityReplicaBypassActive(active bool) { m.bypassOn.Store(active) }
 
 func testGuard(query func(context.Context, string) ([]string, error)) (*visibilityGuard, *countingMetric) {
 	m := &countingMetric{Metric: metric.NewMetric("test_slot")}

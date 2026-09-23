@@ -57,8 +57,8 @@ func (c *Publication) CheckReplicaIdentities(ctx context.Context) error {
 		if i > 0 {
 			details.WriteString("; ")
 		}
-		details.WriteString(fmt.Sprintf("%s.%s: configured=%s, actual=%s",
-			mismatch.Schema, mismatch.Name, formatReplicaIdentity(mismatch), findActualIdentity(actual, mismatch)))
+		fmt.Fprintf(&details, "%s.%s: configured=%s, actual=%s",
+			mismatch.Schema, mismatch.Name, formatReplicaIdentity(mismatch), findActualIdentity(actual, mismatch))
 	}
 	return fmt.Errorf("replica identity mismatch: %s", details.String())
 }

@@ -40,8 +40,6 @@ type Metric interface {
 	ObserveVisibilityWait(d time.Duration)
 	VisibilityTimeoutIncrement()
 	VisibilityFailOpenIncrement()
-	VisibilityReplicaBypassIncrement()
-	SetVisibilityReplicaBypassActive(active bool)
 	SetVisibilityReplicaLag(replica string, lagBytes float64)
 
 	PrometheusCollectors() []prometheus.Collector
@@ -75,12 +73,10 @@ type metric struct {
 	snapshotActiveWorkers   prometheus.Gauge
 
 	// Visibility guard metrics
-	visibilityWaitDuration        prometheus.Histogram
-	visibilityTimeoutTotal        prometheus.Counter
-	visibilityFailOpenTotal       prometheus.Counter
-	visibilityReplicaBypassTotal  prometheus.Counter
-	visibilityReplicaBypassActive prometheus.Gauge
-	visibilityReplicaLagBytes     *prometheus.GaugeVec
+	visibilityWaitDuration    prometheus.Histogram
+	visibilityTimeoutTotal    prometheus.Counter
+	visibilityFailOpenTotal   prometheus.Counter
+	visibilityReplicaLagBytes *prometheus.GaugeVec
 }
 
 //nolint:funlen
@@ -328,26 +324,6 @@ func NewMetric(slotName string) Metric {
 				"host":      hostname,
 			},
 		}, []string{"replica"}),
-		visibilityReplicaBypassTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: cdcNamespace,
-			Subsystem: "visibility",
-			Name:      "replica_bypass_total",
-			Help:      "number of transactions dispatched without replica waits while catching up",
-			ConstLabels: prometheus.Labels{
-				"slot_name": slotName,
-				"host":      hostname,
-			},
-		}),
-		visibilityReplicaBypassActive: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: cdcNamespace,
-			Subsystem: "visibility",
-			Name:      "replica_bypass_active",
-			Help:      "whether replica waits are currently bypassed because CDC event age exceeded the configured threshold",
-			ConstLabels: prometheus.Labels{
-				"slot_name": slotName,
-				"host":      hostname,
-			},
-		}),
 	}
 }
 
@@ -376,8 +352,6 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.visibilityWaitDuration,
 		m.visibilityTimeoutTotal,
 		m.visibilityFailOpenTotal,
-		m.visibilityReplicaBypassTotal,
-		m.visibilityReplicaBypassActive,
 		m.visibilityReplicaLagBytes,
 	}
 }
@@ -475,18 +449,6 @@ func (m *metric) VisibilityTimeoutIncrement() {
 
 func (m *metric) VisibilityFailOpenIncrement() {
 	m.visibilityFailOpenTotal.Inc()
-}
-
-func (m *metric) VisibilityReplicaBypassIncrement() {
-	m.visibilityReplicaBypassTotal.Inc()
-}
-
-func (m *metric) SetVisibilityReplicaBypassActive(active bool) {
-	if active {
-		m.visibilityReplicaBypassActive.Set(1)
-		return
-	}
-	m.visibilityReplicaBypassActive.Set(0)
 }
 
 func (m *metric) SetVisibilityReplicaLag(replica string, lagBytes float64) {

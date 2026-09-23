@@ -187,52 +187,6 @@ func TestReplicaGuard(t *testing.T) {
 		assert.Less(t, held, 10*time.Second, "held %s", held)
 	})
 
-	t.Run("old events bypass replica waits until CDC catches up", func(t *testing.T) {
-		cdcCfg := Config
-		cdcCfg.Slot.Name = "slot_test_replica_guard_bypass"
-		cdcCfg.VisibilityGuard = config.VisibilityGuardConfig{
-			Enabled:  true,
-			FailMode: config.VisibilityFailClosed,
-			Replicas: []string{standbyHostPort},
-			ReplicaBypass: config.ReplicaBypassConfig{
-				Enabled:        true,
-				MaxEventAge:    time.Second,
-				ResumeEventAge: 200 * time.Millisecond,
-			},
-		}
-		events := runReplicaGuardConnector(ctx, t, cdcCfg, standby)
-		waitStandbyCaughtUp(ctx, t, primary, standby)
-
-		firstCommittedAt := time.Now()
-		_, err := primary.Exec(ctx, "INSERT INTO books (id, name) VALUES (97003, 'guarded')")
-		require.NoError(t, err)
-		time.Sleep(1500 * time.Millisecond)
-		secondCommittedAt := time.Now()
-		_, err = primary.Exec(ctx, "INSERT INTO books (id, name) VALUES (97004, 'bypassed')")
-		require.NoError(t, err)
-
-		first := nextEvent(t, events, 20*time.Second)
-		assert.Equal(t, int32(97003), first.id)
-		assert.True(t, first.visible, "fresh event must use the replica guard")
-		assert.GreaterOrEqual(t, first.dispatchedAt.Sub(firstCommittedAt), applyDelay-500*time.Millisecond)
-
-		second := nextEvent(t, events, 5*time.Second)
-		assert.Equal(t, int32(97004), second.id)
-		assert.False(t, second.visible, "event aged behind the first wait must bypass replica visibility")
-		assert.Less(t, second.dispatchedAt.Sub(secondCommittedAt), applyDelay-500*time.Millisecond)
-		assert.ErrorIs(t, second.waitErr, replication.ErrVisibilityTimeout)
-
-		require.NoError(t, replication.WaitReplayed(ctx, standby, second.commitLSN, replication.WaitOptions{Timeout: 15 * time.Second}))
-		thirdCommittedAt := time.Now()
-		_, err = primary.Exec(ctx, "INSERT INTO books (id, name) VALUES (97005, 'guarded-again')")
-		require.NoError(t, err)
-
-		third := nextEvent(t, events, 20*time.Second)
-		assert.Equal(t, int32(97005), third.id)
-		assert.True(t, third.visible, "fresh event must leave catch-up mode and restore replica visibility")
-		assert.GreaterOrEqual(t, third.dispatchedAt.Sub(thirdCommittedAt), applyDelay-500*time.Millisecond)
-	})
-
 	t.Run("failMode open dispatches after the timeout while the standby is paused", func(t *testing.T) {
 		const timeout = 2 * time.Second
 		cdcCfg := Config

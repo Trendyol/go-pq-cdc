@@ -51,7 +51,7 @@ func (gs *gatedStream) run(msgs ...*Message) error {
 }
 
 func insertMsg(xid uint32, lsn int64) *Message {
-	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: lsn, xid: xid, commitLSN: pq.LSN(lsn), commitTime: time.Now()}
+	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: lsn, xid: xid, commitLSN: pq.LSN(lsn)}
 }
 
 func guardCfg(mode config.VisibilityFailMode) config.Config {
@@ -154,8 +154,7 @@ func TestDispatchStampsXidAndCommitLSNOnNonStreamingAndStreamingPaths(t *testing
 
 	// Non-streaming: BEGIN(100, final 40) a b COMMIT → both carry xid 100 and commit 40 (from Begin.FinalLSN);
 	// the last one is rebuilt by flushWithLSN.
-	commitTime := time.Now().Add(-2 * time.Second)
-	dispatch(&format.Begin{Xid: 100, FinalLSN: 40, CommitTime: commitTime}, 1)
+	dispatch(&format.Begin{Xid: 100, FinalLSN: 40}, 1)
 	dispatch(&format.Insert{TableName: "a"}, 2)
 	dispatch(&format.Insert{TableName: "b"}, 3)
 	dispatch(&format.Commit{CommitLSN: 40, TransactionEndLSN: 50}, 4)
@@ -165,22 +164,20 @@ func TestDispatchStampsXidAndCommitLSNOnNonStreamingAndStreamingPaths(t *testing
 	dispatch(&format.Insert{XID: 201, TableName: "c"}, 6)
 	dispatch(&format.Insert{XID: 200, TableName: "d"}, 7)
 	dispatch(&format.StreamStop{}, 8)
-	streamCommitTime := time.Now().Add(-time.Second)
-	dispatch(&format.StreamCommit{Xid: 200, CommitLSN: 90, TransactionEndLSN: 99, CommitTime: streamCommitTime}, 9)
+	dispatch(&format.StreamCommit{Xid: 200, CommitLSN: 90, TransactionEndLSN: 99}, 9)
 	close(out)
 
 	type stamped struct {
-		name       string
-		xid        uint32
-		lsn        int64
-		commit     pq.LSN
-		commitTime time.Time
+		name   string
+		xid    uint32
+		lsn    int64
+		commit pq.LSN
 	}
 	var got []stamped
 	for m := range out {
-		got = append(got, stamped{m.message.(*format.Insert).TableName, m.xid, m.walStart, m.commitLSN, m.commitTime})
+		got = append(got, stamped{m.message.(*format.Insert).TableName, m.xid, m.walStart, m.commitLSN})
 	}
-	assert.Equal(t, []stamped{{"a", 100, 2, 40, commitTime}, {"b", 100, 50, 40, commitTime}, {"c", 200, 6, 90, streamCommitTime}, {"d", 200, 99, 90, streamCommitTime}}, got)
+	assert.Equal(t, []stamped{{"a", 100, 2, 40}, {"b", 100, 50, 40}, {"c", 200, 6, 90}, {"d", 200, 99, 90}}, got)
 }
 
 func TestCloseCancelsBeforeClosingGuardAndAfterProcessExit(t *testing.T) {

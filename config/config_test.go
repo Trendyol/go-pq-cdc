@@ -694,26 +694,3 @@ func TestVisibilityGuardReplicasConfig(t *testing.T) {
 		assert.Equal(t, "postgres://u:p%40ss@[::1]:5433/d", cfg.ReplicaDSN("[::1]:5433"))
 	})
 }
-
-func TestVisibilityGuardReplicaBypassConfig(t *testing.T) {
-	t.Run("defaults to five seconds and one second", func(t *testing.T) {
-		cfg := Config{VisibilityGuard: VisibilityGuardConfig{Enabled: true, Replicas: []string{"standby1:5432"}, ReplicaBypass: ReplicaBypassConfig{Enabled: true}}}
-		cfg.SetDefault()
-		require.NoError(t, cfg.VisibilityGuard.Validate())
-		assert.Equal(t, 5*time.Second, cfg.VisibilityGuard.ReplicaBypass.MaxEventAge)
-		assert.Equal(t, time.Second, cfg.VisibilityGuard.ReplicaBypass.ResumeEventAge)
-	})
-
-	t.Run("requires replicas and ordered positive thresholds", func(t *testing.T) {
-		cfg := VisibilityGuardConfig{Enabled: true, FailMode: VisibilityFailClosed, Timeout: time.Second, PollInterval: time.Millisecond,
-			ReplicaBypass: ReplicaBypassConfig{Enabled: true, MaxEventAge: time.Second, ResumeEventAge: 2 * time.Second}}
-		err := cfg.Validate()
-		require.ErrorContains(t, err, "requires at least one")
-		require.ErrorContains(t, err, "resumeEventAge must be less")
-	})
-
-	t.Run("requires visibility guard", func(t *testing.T) {
-		cfg := VisibilityGuardConfig{ReplicaBypass: ReplicaBypassConfig{Enabled: true}}
-		require.ErrorContains(t, cfg.Validate(), "requires visibilityGuard.enabled")
-	})
-}

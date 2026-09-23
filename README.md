@@ -455,10 +455,6 @@ visibilityGuard:
   replicas:          # optional: standbys that must have applied the transaction before dispatch
     - standby1:5432
     - standby2:5432
-  replicaBypass:     # optional catch-up mode; primary visibility is still checked
-    enabled: true
-    maxEventAge: 5s
-    resumeEventAge: 1s
 ```
 
 **Replicas.** `replicas` extends the gate to standbys. At startup every listed host must belong to the replication
@@ -472,18 +468,10 @@ never a pooled or load-balanced endpoint: the check is only meaningful for the s
 share `timeout`, standbys are polled one after another, and the replica connections reconnect on their own, so a
 standby restart does not restart the stream. Design record: [docs/replica-guard-design.md](./docs/replica-guard-design.md).
 
-`replicaBypass` prevents sustained write traffic from making replica round trips pin the logical slot indefinitely.
-When PostgreSQL's commit timestamp on an event is at least `maxEventAge` old, the connector enters catch-up mode and
-skips only the replica waits. It remains in that mode until event age is at most `resumeEventAge`; the lower resume
-threshold prevents rapid switching around one boundary. Defaults are `5s` and `1s` when enabled. This is an explicit
-availability trade-off: events dispatched in catch-up mode are visible on the primary, but may not yet be visible on
-the listed standbys. Keep consumer-side retry enabled for replica reads.
-
 **Guarantee.** Everything delivered to the handler is committed on the server (with or without the guard). With the
 guard on, a fresh snapshot taken on the same primary after the handler was called also sees the row. With `replicas`
-set and `replicaBypass` disabled or inactive, every listed standby has applied the transaction when the handler is
-called, so a read on any of them under `READ COMMITTED` sees the row. While replica bypass is active this replica
-guarantee is intentionally suspended. One exception is built into hot standby: a standby that restarts replays again from its
+set, every listed standby has applied the transaction when the handler is called, so a read on any of them under
+`READ COMMITTED` sees the row. One exception is built into hot standby: a standby that restarts replays again from its
 last restartpoint and accepts connections as soon as it is consistent, so for a moment its replay position can sit
 below a `CommitLSN` it had already applied; consumer-side retry covers it.
 
@@ -516,8 +504,6 @@ by design: raise `timeout` together with `wal_sender_timeout`, or use `open` wit
 listed server that is not in recovery (a primary, a promoted standby, a pooler that routed elsewhere), one whose
 timeline is ahead of the replication session, or a server error on the poll is a guard error in both modes. Each
 standby's distance to the held transaction is exported as `go_pq_cdc_visibility_replica_lag_bytes{replica}`.
-Catch-up bypasses are exported as `go_pq_cdc_visibility_replica_bypass_total`; active mode is
-`go_pq_cdc_visibility_replica_bypass_active`.
 
 **Synchronous replication corollary.** With `synchronous_standby_names` set, a transaction becomes visible on the
 primary only after the synchronous standby acknowledged it at the configured `synchronous_commit` level. A fail-closed

@@ -62,9 +62,6 @@ type Message struct {
 	// commitLSN is the start of the transaction's commit record, exposed as
 	// ListenerContext.CommitLSN.
 	commitLSN pq.LSN
-	// commitTime is PostgreSQL's transaction commit timestamp from BEGIN or
-	// STREAM COMMIT. It drives the optional replica catch-up bypass.
-	commitTime time.Time
 }
 
 type Streamer interface {
@@ -98,7 +95,6 @@ type stream struct {
 	closed              atomic.Bool
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
-	replicaBypassActive bool
 	openFromSnapshotLSN bool
 }
 
@@ -226,12 +222,11 @@ func (s *stream) setup(ctx context.Context) error {
 // All preceding messages are emitted immediately with their original position.
 // This keeps memory usage O(1) regardless of transaction size.
 type messageBuffer struct {
-	pending    *Message
-	outCh      chan<- *Message
-	ctx        context.Context
-	xid        uint32    // current transaction, from Begin
-	commitLSN  pq.LSN    // current transaction's commit record, from Begin.FinalLSN
-	commitTime time.Time // current transaction's commit timestamp, from Begin.CommitTime
+	pending   *Message
+	outCh     chan<- *Message
+	ctx       context.Context
+	xid       uint32 // current transaction, from Begin
+	commitLSN pq.LSN // current transaction's commit record, from Begin.FinalLSN
 }
 
 func (b *messageBuffer) send(msg *Message) bool {
@@ -261,11 +256,10 @@ func (b *messageBuffer) flush() {
 func (b *messageBuffer) flushWithLSN(lsn pq.LSN) {
 	if b.pending != nil {
 		if !b.send(&Message{
-			message:    b.pending.message,
-			walStart:   int64(lsn),
-			xid:        b.pending.xid,
-			commitLSN:  b.pending.commitLSN,
-			commitTime: b.pending.commitTime,
+			message:   b.pending.message,
+			walStart:  int64(lsn),
+			xid:       b.pending.xid,
+			commitLSN: b.pending.commitLSN,
 		}) {
 			return
 		}
@@ -355,21 +349,19 @@ func (s *streamTxBuffer) stopTx() {
 // flushTx emits every accumulated message for the given XID through outCh.
 // Every message is stamped with the commit LSN (known only at STREAM COMMIT);
 // the last message's WAL position is rewritten to the transaction-end LSN.
-func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, commitLSN, endLSN pq.LSN, commitTime time.Time) {
+func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, commitLSN, endLSN pq.LSN) {
 	s.streaming = false
 	msgs := s.txns[xid]
 	n := len(msgs)
 	for i, msg := range msgs {
 		msg.commitLSN = commitLSN
-		msg.commitTime = commitTime
 		out := msg
 		if i == n-1 {
 			out = &Message{
-				message:    msg.message,
-				walStart:   int64(endLSN),
-				xid:        msg.xid,
-				commitLSN:  commitLSN,
-				commitTime: commitTime,
+				message:   msg.message,
+				walStart:  int64(endLSN),
+				xid:       msg.xid,
+				commitLSN: commitLSN,
 			}
 		}
 		ctx := s.ctx
@@ -595,7 +587,6 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		buf.discard()
 		buf.xid = msg.Xid
 		buf.commitLSN = msg.FinalLSN
-		buf.commitTime = msg.CommitTime
 
 	case *format.Commit:
 		buf.flushWithLSN(msg.TransactionEndLSN)
@@ -611,7 +602,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 
 	case *format.StreamCommit:
 		// Final commit of a streamed transaction – emit all messages for this XID.
-		streamBuf.flushTx(msg.Xid, buf.outCh, msg.CommitLSN, msg.TransactionEndLSN, msg.CommitTime)
+		streamBuf.flushTx(msg.Xid, buf.outCh, msg.CommitLSN, msg.TransactionEndLSN)
 
 	case *format.StreamAbort:
 		// Whole transaction (SubXid == Xid) or a single sub-transaction
@@ -630,7 +621,6 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		} else {
 			m.xid = buf.xid
 			m.commitLSN = buf.commitLSN
-			m.commitTime = buf.commitTime
 			buf.buffer(m)
 		}
 	}
@@ -720,7 +710,7 @@ func (s *stream) processLoop(ctx context.Context) error {
 
 			// Gate once per transaction, on its first message.
 			if s.guard != nil && msg.xid != lastGatedXid {
-				if err := s.gate(ctx, msg.xid, msg.commitLSN, msg.commitTime); err != nil {
+				if err := s.gate(ctx, msg.xid, msg.commitLSN); err != nil {
 					if ctx.Err() != nil {
 						// Shutting down mid-wait: never dispatch an uncertified message.
 						// It stays un-acked and is redelivered after restart.
@@ -760,14 +750,10 @@ func (s *stream) processLoop(ctx context.Context) error {
 // share one deadline of visibilityGuard.timeout from the start of the gate.
 // A timeout is fatal under failMode closed and a logged, counted pass-through
 // under failMode open; any other guard error is fatal in both modes.
-func (s *stream) gate(ctx context.Context, xid uint32, commitLSN pq.LSN, commitTime time.Time) error {
+func (s *stream) gate(ctx context.Context, xid uint32, commitLSN pq.LSN) error {
 	start := time.Now()
 	err := s.guard.wait(ctx, xid)
-	bypassReplicas := err == nil && s.shouldBypassReplicas(commitTime, time.Now())
-	if bypassReplicas {
-		s.metric.VisibilityReplicaBypassIncrement()
-	}
-	if err == nil && s.replicas != nil && commitLSN != 0 && !bypassReplicas {
+	if err == nil && s.replicas != nil && commitLSN != 0 {
 		err = s.replicas.wait(ctx, commitLSN, start.Add(s.config.VisibilityGuard.Timeout))
 	}
 	s.metric.ObserveVisibilityWait(time.Since(start))
@@ -781,27 +767,6 @@ func (s *stream) gate(ctx context.Context, xid uint32, commitLSN pq.LSN, commitT
 	default:
 		return fmt.Errorf("%w: %w", ErrVisibilityGuard, err)
 	}
-}
-
-func (s *stream) shouldBypassReplicas(commitTime, now time.Time) bool {
-	cfg := s.config.VisibilityGuard.ReplicaBypass
-	if s.replicas == nil || !cfg.Enabled || commitTime.IsZero() {
-		return false
-	}
-	age := now.Sub(commitTime)
-	if age < 0 {
-		age = 0
-	}
-	if !s.replicaBypassActive && age >= cfg.MaxEventAge {
-		s.replicaBypassActive = true
-		s.metric.SetVisibilityReplicaBypassActive(true)
-		logger.Warn("replica visibility guard bypass enabled to catch up", "event_age", age, "max_event_age", cfg.MaxEventAge)
-	} else if s.replicaBypassActive && age <= cfg.ResumeEventAge {
-		s.replicaBypassActive = false
-		s.metric.SetVisibilityReplicaBypassActive(false)
-		logger.Info("replica visibility guard bypass disabled", "event_age", age, "resume_event_age", cfg.ResumeEventAge)
-	}
-	return s.replicaBypassActive
 }
 
 func (s *stream) isHeartbeatMessage(msg any) bool {

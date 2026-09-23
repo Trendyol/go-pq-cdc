@@ -3,7 +3,7 @@
 Status: **implemented** (core guard, config and metrics; integration test `integration_test/replica_guard_test.go` against a standby with `recovery_min_apply_delay = 3s`; README "Visibility Guard" and "Commit LSN and reading from a standby"; `example/replica-read` step 5). Decided 2026-09-20 by a four-round consensus
 between Codex, Claude Opus and Claude Fable 5.1: round 1 independent plans, round 2 the four disputes below, rounds
 3 and 4 the replay-LSN cache. Extends [visibility-gate-design.md](./visibility-gate-design.md) (P1–P10); the rows
-here are numbered R1–R14 (R13 added 2026-09-20 in review; R14 added after the 2026-09-22 production incident).
+here are numbered R1–R13 (R13 added 2026-09-20 in review).
 
 ## Problem in two sentences
 
@@ -13,7 +13,7 @@ not an apply guarantee). The documented consumer-side rule (P7, strict `pg_last_
 same server as the read) only works when the consumer's pool pins check and read to one standby, which application
 pools rarely guarantee.
 
-## Agreed decisions (R1–R14)
+## Agreed decisions (R1–R13)
 
 | # | Decision |
 |---|---|
@@ -30,7 +30,6 @@ pools rarely guarantee.
 | R11 | **Tests.** Unit: predicate table (replay below, equal, above `CommitLSN`: only above passes), NULL replay and `in_recovery = false` ⇒ error, timeline above session ⇒ error, reconnect after a network error, `CommitLSN == 0` bypass, both `failMode`s, shared deadline, config validation. Integration (PR 2): lift `example/replica-read`'s compose (standby2 `recovery_min_apply_delay = 3s`) into `integration_test/`; assert dispatch is held ≥ 3 s and the row is readable on standby2 at dispatch; the split-standby case passes with both listed; `pg_wal_replay_pause()` for a deterministic timeout → restart test. |
 | R12 | **Accepted trade-offs.** (a) Fail-closed on a chronically lagging replica is a restart loop by design: keepalive replies stop while the process loop is gated, so "keep waiting" is not available; raise `timeout` and `wal_sender_timeout` together, or use `failMode: open` with alerting on `visibility_timeout_total`. (b) A standby restart briefly rewinds visibility below an already certified `CommitLSN` (replay restarts at `RedoStartLSN`; hot standby accepts connections at `minRecoveryPoint`); stated **inside** the README guarantee paragraph, consumer retry covers it, no restart detection in the poll. |
 | R13 | **Cluster identity, at open only.** `SELECT (pg_control_system()).system_identifier` per replica in `open()`, compared with `IDENTIFY_SYSTEM`'s. A `host:port` from another cluster passes every other check (it *is* a standby, in recovery, and its replay position is unrelated to `CommitLSN`, so the strict rule passes at once) and silently certifies a read that never happened. Not per poll: a backend cannot change identity without the connection breaking, and R6's reasoning applies to the replay position, not to this. `pg_control_system()` needs no grant either. The two sides render the value differently — `IDENTIFY_SYSTEM` unsigned, `pg_control_system()` as `int8` — so they are compared as `uint64` bits, never as text. |
-| R14 | **Optional catch-up bypass.** `visibilityGuard.replicaBypass` enters catch-up mode when PostgreSQL's transaction commit timestamp is at least `maxEventAge` old and leaves it when age is at most the lower `resumeEventAge`. Primary visibility is always checked; only replica waits are skipped. This intentionally suspends the replica visibility guarantee to prevent per-transaction replica round trips from pinning a high-write logical slot. Missing commit timestamps never bypass. Defaults when enabled: 5 s enter, 1 s resume. Metrics expose active mode and bypassed transaction count. |
 
 ## Build order
 

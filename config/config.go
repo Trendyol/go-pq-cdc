@@ -42,20 +42,11 @@ type VisibilityGuardConfig struct {
 	// transaction's commit record before its first message is dispatched.
 	// Credentials and database come from the main config. Direct hosts only,
 	// never a pooled endpoint. See docs/replica-guard-design.md.
-	FailMode      VisibilityFailMode  `json:"failMode" yaml:"failMode"`
-	Replicas      []string            `json:"replicas" yaml:"replicas"`
-	ReplicaBypass ReplicaBypassConfig `json:"replicaBypass" yaml:"replicaBypass"`
-	Timeout       time.Duration       `json:"timeout" yaml:"timeout"`
-	PollInterval  time.Duration       `json:"pollInterval" yaml:"pollInterval"`
-	Enabled       bool                `json:"enabled" yaml:"enabled"`
-}
-
-// ReplicaBypassConfig temporarily skips replica waits while CDC is catching up.
-// The primary visibility check is never bypassed.
-type ReplicaBypassConfig struct {
-	MaxEventAge    time.Duration `json:"maxEventAge" yaml:"maxEventAge"`
-	ResumeEventAge time.Duration `json:"resumeEventAge" yaml:"resumeEventAge"`
-	Enabled        bool          `json:"enabled" yaml:"enabled"`
+	FailMode     VisibilityFailMode `json:"failMode" yaml:"failMode"`
+	Replicas     []string           `json:"replicas" yaml:"replicas"`
+	Timeout      time.Duration      `json:"timeout" yaml:"timeout"`
+	PollInterval time.Duration      `json:"pollInterval" yaml:"pollInterval"`
+	Enabled      bool               `json:"enabled" yaml:"enabled"`
 }
 
 type VisibilityFailMode string
@@ -71,9 +62,6 @@ func (v *VisibilityGuardConfig) Validate() error {
 	if !v.Enabled {
 		if len(v.Replicas) > 0 {
 			return errors.New("visibilityGuard.replicas requires visibilityGuard.enabled: true")
-		}
-		if v.ReplicaBypass.Enabled {
-			return errors.New("visibilityGuard.replicaBypass requires visibilityGuard.enabled: true")
 		}
 		return nil
 	}
@@ -96,20 +84,6 @@ func (v *VisibilityGuardConfig) Validate() error {
 	}
 	if v.PollInterval <= 0 {
 		err = errors.Join(err, errors.New("visibilityGuard.pollInterval must be greater than 0"))
-	}
-	if v.ReplicaBypass.Enabled {
-		if len(v.Replicas) == 0 {
-			err = errors.Join(err, errors.New("visibilityGuard.replicaBypass requires at least one visibilityGuard.replicas entry"))
-		}
-		if v.ReplicaBypass.MaxEventAge <= 0 {
-			err = errors.Join(err, errors.New("visibilityGuard.replicaBypass.maxEventAge must be greater than 0"))
-		}
-		if v.ReplicaBypass.ResumeEventAge <= 0 {
-			err = errors.Join(err, errors.New("visibilityGuard.replicaBypass.resumeEventAge must be greater than 0"))
-		}
-		if v.ReplicaBypass.ResumeEventAge >= v.ReplicaBypass.MaxEventAge {
-			err = errors.Join(err, errors.New("visibilityGuard.replicaBypass.resumeEventAge must be less than maxEventAge"))
-		}
 	}
 	return err
 }
@@ -193,14 +167,6 @@ func (c *Config) SetDefault() {
 		}
 		if c.VisibilityGuard.PollInterval == 0 {
 			c.VisibilityGuard.PollInterval = 5 * time.Millisecond
-		}
-		if c.VisibilityGuard.ReplicaBypass.Enabled {
-			if c.VisibilityGuard.ReplicaBypass.MaxEventAge == 0 {
-				c.VisibilityGuard.ReplicaBypass.MaxEventAge = 5 * time.Second
-			}
-			if c.VisibilityGuard.ReplicaBypass.ResumeEventAge == 0 {
-				c.VisibilityGuard.ReplicaBypass.ResumeEventAge = time.Second
-			}
 		}
 	}
 

@@ -452,13 +452,15 @@ func TestGateReplicaNotStandbyIsFatalEvenFailOpen(t *testing.T) {
 
 func TestReplicaGuardCachedReplayCertifiesLowerCommits(t *testing.T) {
 	c := &scriptedReplica{rows: []replicaRow{standby("0/30")}}
-	g, _ := testReplicaGuard([]string{"standby1:5432"}, &dialer{conns: []*scriptedReplica{c}})
+	g, m := testReplicaGuard([]string{"standby1:5432"}, &dialer{conns: []*scriptedReplica{c}})
 	g.cfg.Timeout = time.Second
 
 	for _, commit := range []pq.LSN{0x10, 0x20, 0x2F} {
 		require.NoError(t, g.wait(context.Background(), 200, commit, time.Now().Add(g.cfg.Timeout)))
 	}
 	assert.Equal(t, int32(1), c.calls.Load(), "one poll certifies every commit below its replay position")
+	assert.Equal(t, int32(1), m.polled.Load())
+	assert.Equal(t, int32(2), m.cached.Load())
 
 	err := g.wait(context.Background(), 200, 0x30, time.Now().Add(30*time.Millisecond))
 	require.ErrorIs(t, err, ErrVisibilityTimeout, "replay == commitLSN is not applied: strict, like the poll")

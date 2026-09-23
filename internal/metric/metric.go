@@ -41,6 +41,7 @@ type Metric interface {
 	VisibilityTimeoutIncrement()
 	VisibilityFailOpenIncrement()
 	SetVisibilityReplicaLag(replica string, lagBytes float64)
+	VisibilityReplicaCheck(replica string, cached bool)
 
 	PrometheusCollectors() []prometheus.Collector
 }
@@ -77,6 +78,7 @@ type metric struct {
 	visibilityTimeoutTotal    prometheus.Counter
 	visibilityFailOpenTotal   prometheus.Counter
 	visibilityReplicaLagBytes *prometheus.GaugeVec
+	visibilityReplicaChecks   *prometheus.CounterVec
 }
 
 //nolint:funlen
@@ -324,6 +326,16 @@ func NewMetric(slotName string) Metric {
 				"host":      hostname,
 			},
 		}, []string{"replica"}),
+		visibilityReplicaChecks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "visibility",
+			Name:      "replica_checks_total",
+			Help:      "transactions certified per listed standby, by source: cached (a recent poll already passed the commit) or polled",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}, []string{"replica", "result"}),
 	}
 }
 
@@ -353,6 +365,7 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.visibilityTimeoutTotal,
 		m.visibilityFailOpenTotal,
 		m.visibilityReplicaLagBytes,
+		m.visibilityReplicaChecks,
 	}
 }
 
@@ -453,4 +466,12 @@ func (m *metric) VisibilityFailOpenIncrement() {
 
 func (m *metric) SetVisibilityReplicaLag(replica string, lagBytes float64) {
 	m.visibilityReplicaLagBytes.WithLabelValues(replica).Set(lagBytes)
+}
+
+func (m *metric) VisibilityReplicaCheck(replica string, cached bool) {
+	result := "polled"
+	if cached {
+		result = "cached"
+	}
+	m.visibilityReplicaChecks.WithLabelValues(replica, result).Inc()
 }

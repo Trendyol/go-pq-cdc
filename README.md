@@ -512,7 +512,9 @@ the same `failMode` rules. A chronically lagging standby therefore keeps the str
 by design: raise `timeout` together with `wal_sender_timeout`, or use `open` with an alert on the timeout counter. A
 listed server that is not in recovery (a primary, a promoted standby, a pooler that routed elsewhere), one whose
 timeline is ahead of the replication session, or a server error on the poll is a guard error in both modes. Each
-standby's distance to the held transaction is exported as `go_pq_cdc_visibility_replica_lag_bytes{replica}`.
+standby's distance to the held transaction is exported as `go_pq_cdc_visibility_replica_lag_bytes{replica}`;
+`go_pq_cdc_visibility_replica_checks_total{replica,result}` counts certified transactions by `result="cached"` or
+`"polled"`, so the cache hit ratio shows whether a busy stream is still paying one round trip per transaction.
 
 **Synchronous replication corollary.** With `synchronous_standby_names` set, a transaction becomes visible on the
 primary only after the synchronous standby acknowledged it at the configured `synchronous_commit` level. A fail-closed
@@ -625,6 +627,7 @@ the `/metrics` endpoint.
 | go_pq_cdc_visibility_timeout_total                  | Number of visibility guard waits that reached `visibilityGuard.timeout`.                               | slot_name, host| Counter    |
 | go_pq_cdc_visibility_fail_open_total                | Number of transactions dispatched after a visibility guard timeout (`failMode: open`).                 | slot_name, host| Counter    |
 | go_pq_cdc_visibility_replica_lag_bytes              | WAL bytes a listed standby still has to replay before the held transaction is applied (0 once applied). | slot_name, host, replica | Gauge |
+| go_pq_cdc_visibility_replica_checks_total           | Transactions certified per standby: `cached` (a poll under 1 s old already passed the commit) or `polled`. | slot_name, host, replica, result | Counter |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
 ### Grafana Dashboard

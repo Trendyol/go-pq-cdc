@@ -263,6 +263,7 @@ func (g *replicaGuard) wait(ctx context.Context, xid uint32, commitLSN pq.LSN, d
 		}
 		if age, ok := r.cachedAge(commitLSN, time.Now()); ok {
 			fmt.Fprintf(&passed, "%s server=%s replay=%s cached_age_ms=%.1f", r.name, r.server, r.replayed, float64(age.Microseconds())/1000)
+			g.metric.VisibilityReplicaCheck(r.name, true)
 			continue
 		}
 		var last replicaState
@@ -280,6 +281,7 @@ func (g *replicaGuard) wait(ctx context.Context, xid uint32, commitLSN pq.LSN, d
 			return fmt.Errorf("replica %s: %w", r.name, err)
 		}
 		fmt.Fprintf(&passed, "%s server=%s replay=%s", r.name, last.server, last.replay)
+		g.metric.VisibilityReplicaCheck(r.name, false)
 	}
 	waited := time.Since(start)
 	args := []any{"xid", xid, "commitLSN", commitLSN.String(), "replicas", passed.String(),

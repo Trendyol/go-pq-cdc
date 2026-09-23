@@ -73,12 +73,22 @@ func (q *scriptedQuery) query(_ context.Context, _ string) ([]string, error) {
 type countingMetric struct {
 	metric.Metric
 	lags      sync.Map // replica -> last lag bytes
+	cached    atomic.Int32
+	polled    atomic.Int32
 	timeouts  atomic.Int32
 	failOpens atomic.Int32
 }
 
 func (m *countingMetric) SetVisibilityReplicaLag(replica string, lag float64) {
 	m.lags.Store(replica, lag)
+}
+
+func (m *countingMetric) VisibilityReplicaCheck(_ string, cached bool) {
+	if cached {
+		m.cached.Add(1)
+		return
+	}
+	m.polled.Add(1)
 }
 
 func (m *countingMetric) VisibilityTimeoutIncrement()  { m.timeouts.Add(1) }

@@ -5,6 +5,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -41,13 +42,27 @@ var errReplicaConn = goerrors.New("replica connection")
 // pg_last_wal_replay_lsn() is NULL on a primary; coalesce keeps the scan simple.
 // min_recovery_end_timeline follows the replay timeline on every buffer flush
 // (UpdateMinRecoveryPoint) and needs no grant; pg_walfile_name would ERROR here.
-const replicaPollSQL = "SELECT pg_is_in_recovery(), coalesce(pg_last_wal_replay_lsn()::text, ''), (pg_control_recovery()).min_recovery_end_timeline"
+// inet_server_addr/port name the backend that answered (empty over a unix
+// socket); they are logged so a poll can be tied to a host, never trusted.
+const replicaPollSQL = "SELECT pg_is_in_recovery(), coalesce(pg_last_wal_replay_lsn()::text, ''), (pg_control_recovery()).min_recovery_end_timeline, coalesce(host(inet_server_addr()) || ':' || inet_server_port(), '')"
 
-// replicaSystemSQL identifies the cluster behind a listed standby. It runs once
-// per replica at open: a host:port from another cluster is in recovery and
+// replicaSystemSQL identifies the cluster behind a listed standby. It runs on
+// every new connection: a host:port from another cluster is in recovery and
 // answers with a replay position from a history CommitLSN is not part of, which
 // passes the replay rule at once and certifies a read that never happened.
 const replicaSystemSQL = "SELECT (pg_control_system()).system_identifier"
+
+// replayCacheTTL bounds how long a replica's last replay position certifies
+// lower commits without a poll (design R6). Replay only moves backwards across
+// a standby restart, which kills the guard's backend; the ttl bounds the case
+// where that kill goes unobserved (half-open socket), and the skipped
+// in-recovery, timeline and identity checks.
+// ponytail: const; a field when a deployment needs N replicas x RTT > 1s.
+const replayCacheTTL = time.Second
+
+// errClusterMismatch marks a server answer that puts the standby outside the
+// replication session's cluster; fatal in both fail modes.
+var errClusterMismatch = goerrors.New("replica cluster mismatch")
 
 // WaitReplayed blocks until the standby behind q has replayed the transaction
 // whose commit record starts at commitLSN (ListenerContext.CommitLSN):
@@ -74,6 +89,7 @@ func WaitReplayed(ctx context.Context, q Querier, commitLSN pq.LSN, opts WaitOpt
 
 // replicaState is one answer of replicaPollSQL from a server in recovery.
 type replicaState struct {
+	server   string // host:port the backend reports, "" over a unix socket
 	replay   pq.LSN
 	timeline int32
 }
@@ -82,7 +98,7 @@ func pollReplica(ctx context.Context, q Querier) (replicaState, error) {
 	var inRecovery bool
 	var replay string
 	var st replicaState
-	if err := q.QueryRow(ctx, replicaPollSQL).Scan(&inRecovery, &replay, &st.timeline); err != nil {
+	if err := q.QueryRow(ctx, replicaPollSQL).Scan(&inRecovery, &replay, &st.timeline, &st.server); err != nil {
 		return replicaState{}, err
 	}
 	if !inRecovery || replay == "" {
@@ -100,10 +116,9 @@ func pollReplica(ctx context.Context, q Querier) (replicaState, error) {
 // Every poll runs under the deadline. An errReplicaConn failure is retried
 // after a backoff; any other error is returned as is. Errors are never
 // treated as "replayed".
-//
-// ponytail: no replay-position cache. A stored value is only sound if every
-// change of backend identity (restart, rewind, pooler swap) is observed before
-// it is trusted, and nothing cheaper than this poll observes that.
+// No cache here: WaitReplayed runs on a consumer's connection, possibly
+// pooled, with no stable backend to tie a stored position to. The stream's
+// replicaGuard keeps one per connection (replica.cachedAge).
 func waitReplayed(ctx context.Context, poll func(context.Context) (replicaState, error), commitLSN pq.LSN, deadline time.Time, delay time.Duration) error {
 	for {
 		pollCtx, cancel := context.WithDeadline(ctx, deadline)
@@ -159,10 +174,32 @@ type replicaConn interface {
 }
 
 type replica struct {
-	dial func(ctx context.Context) (replicaConn, error)
-	conn replicaConn // nil until dialed; dropped on any connection error
-	name string      // host:port from config; metric label and log key
+	observedAt time.Time // start of the poll that returned replayed; zero = no cache
+	dial       func(ctx context.Context) (replicaConn, error)
+	conn       replicaConn // nil until dialed; dropped on any connection error
+	name       string      // host:port from config; metric label and log key
+	server     string      // backend address of the cached poll
+	replayed   pq.LSN      // replay position of the last fully checked poll on conn
 }
+
+// cachedAge reports whether the last poll on this connection already proves
+// commitLSN applied (same strict rule as the poll) and is younger than
+// replayCacheTTL. Both the monotonic and the wall-clock age must be in range:
+// the monotonic clock stops while the host is suspended, the wall clock can
+// step, and a negative age is never fresh.
+func (r *replica) cachedAge(commitLSN pq.LSN, now time.Time) (time.Duration, bool) {
+	if r.observedAt.IsZero() || r.conn == nil || r.conn.IsClosed() || r.replayed <= commitLSN {
+		return 0, false
+	}
+	age := now.Sub(r.observedAt)
+	wall := now.Round(0).Sub(r.observedAt.Round(0))
+	if age < 0 || wall < 0 || age >= replayCacheTTL || wall >= replayCacheTTL {
+		return 0, false
+	}
+	return age, true
+}
+
+func (r *replica) forget() { r.replayed, r.observedAt, r.server = 0, time.Time{}, "" }
 
 func openReplicaGuard(ctx context.Context, cfg config.Config, system *pq.IdentifySystemResult, m metric.Metric) (*replicaGuard, error) {
 	g := &replicaGuard{metric: m, cfg: cfg.VisibilityGuard, timeline: system.Timeline, systemID: system.SystemID}
@@ -181,15 +218,11 @@ func openReplicaGuard(ctx context.Context, cfg config.Config, system *pq.Identif
 }
 
 // open dials every replica once: each must belong to the replication session's
-// cluster and be in recovery on a timeline that is not ahead of it, or startup
-// fails. The cluster check is startup-only; a backend cannot change identity
-// without the connection breaking, and the per-poll checks cover the rest.
+// cluster (checked by poll on every new connection) and be in recovery on a
+// timeline that is not ahead of it, or startup fails.
 func (g *replicaGuard) open(ctx context.Context) error {
 	for _, r := range g.replicas {
 		if _, err := g.poll(ctx, r, 0); err != nil {
-			return fmt.Errorf("replica %s: %w", r.name, err)
-		}
-		if err := g.checkSystemID(ctx, r); err != nil {
 			return fmt.Errorf("replica %s: %w", r.name, err)
 		}
 	}
@@ -202,14 +235,14 @@ func (g *replicaGuard) open(ctx context.Context) error {
 func (g *replicaGuard) checkSystemID(ctx context.Context, r *replica) error {
 	want, err := strconv.ParseUint(g.systemID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("parse replication session system identifier %q: %w", g.systemID, err)
+		return fmt.Errorf("%w: parse replication session system identifier %q: %w", errClusterMismatch, g.systemID, err)
 	}
 	var got int64
 	if err = r.conn.QueryRow(ctx, replicaSystemSQL).Scan(&got); err != nil {
 		return err
 	}
 	if uint64(got) != want {
-		return fmt.Errorf("system identifier %d is not the replication session's %d (different cluster?)", uint64(got), want)
+		return fmt.Errorf("%w: system identifier %d is not the replication session's %d (different cluster?)", errClusterMismatch, uint64(got), want)
 	}
 	return nil
 }
@@ -217,45 +250,72 @@ func (g *replicaGuard) checkSystemID(ctx context.Context, r *replica) error {
 // wait polls the replicas one after another under a shared deadline: while
 // one is polled the others catch up, so the cost is about the slowest lag
 // plus one round trip per replica.
+// Every pass is logged with the replay position and backend address each
+// replica answered with, so a consumer-side miss can be tied to the exact
+// certification (Debug; Info once the wait is slow).
 // ponytail: sequential; poll concurrently if the list grows past a handful.
-func (g *replicaGuard) wait(ctx context.Context, commitLSN pq.LSN, deadline time.Time) error {
+func (g *replicaGuard) wait(ctx context.Context, xid uint32, commitLSN pq.LSN, deadline time.Time) error {
 	start := time.Now()
-	for _, r := range g.replicas {
-		poll := func(ctx context.Context) (replicaState, error) { return g.poll(ctx, r, commitLSN) }
+	var passed strings.Builder
+	for i, r := range g.replicas {
+		if i > 0 {
+			passed.WriteString(", ")
+		}
+		if age, ok := r.cachedAge(commitLSN, time.Now()); ok {
+			fmt.Fprintf(&passed, "%s server=%s replay=%s cached_age_ms=%.1f", r.name, r.server, r.replayed, float64(age.Microseconds())/1000)
+			continue
+		}
+		var last replicaState
+		poll := func(ctx context.Context) (replicaState, error) {
+			st, err := g.poll(ctx, r, commitLSN)
+			if err == nil {
+				last = st
+			}
+			return st, err
+		}
 		if err := waitReplayed(ctx, poll, commitLSN, deadline, g.cfg.PollInterval); err != nil {
 			if goerrors.Is(err, ErrVisibilityTimeout) {
 				g.metric.VisibilityTimeoutIncrement()
 			}
 			return fmt.Errorf("replica %s: %w", r.name, err)
 		}
+		fmt.Fprintf(&passed, "%s server=%s replay=%s", r.name, last.server, last.replay)
 	}
-	if waited := time.Since(start); waited >= slowVisibilityWait {
-		logger.Info("replica guard slow wait completed", "commitLSN", commitLSN.String(), "wait_ms", float64(waited.Microseconds())/1000)
+	waited := time.Since(start)
+	args := []any{"xid", xid, "commitLSN", commitLSN.String(), "replicas", passed.String(),
+		"started_at", start.UTC().Format(time.RFC3339Nano), "wait_ms", float64(waited.Microseconds()) / 1000}
+	if waited >= slowVisibilityWait {
+		logger.Info("replica guard slow wait completed", args...)
+	} else {
+		logger.Debug("replica guard wait completed", args...)
 	}
 	return nil
 }
 
 // poll dials r if needed and runs one replay check. A server that answers
-// with something other than a standby on an acceptable timeline is a fatal
-// guard error; a connection failure drops the connection and is retried by
-// waitReplayed. commitLSN only feeds the lag gauge.
+// with something other than a same-cluster standby on an acceptable timeline
+// is a fatal guard error; a connection failure drops the connection and is
+// retried by waitReplayed. commitLSN only feeds the lag gauge. Only an answer
+// that passed every check refreshes the replay cache.
 func (g *replicaGuard) poll(ctx context.Context, r *replica, commitLSN pq.LSN) (replicaState, error) {
 	if r.conn == nil || r.conn.IsClosed() {
+		r.forget()
 		conn, err := r.dial(ctx)
 		if err != nil {
 			return replicaState{}, fmt.Errorf("%w: dial: %w", errReplicaConn, err)
 		}
 		r.conn = conn
+		// Every new connection is checked against the session's cluster: the
+		// host:port may be re-provisioned or re-routed between two dials, and a
+		// foreign standby passes the replay rule at once.
+		if err = g.checkSystemID(ctx, r); err != nil {
+			return replicaState{}, g.answerOrDrop(ctx, r, err)
+		}
 	}
+	start := time.Now()
 	st, err := pollReplica(ctx, r.conn)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if goerrors.Is(err, ErrNotStandby) || goerrors.As(err, &pgErr) {
-			return replicaState{}, err // the server answered: not a standby, or the poll itself is rejected
-		}
-		_ = r.conn.Close(ctx)
-		r.conn = nil
-		return replicaState{}, fmt.Errorf("%w: %w", errReplicaConn, err)
+		return replicaState{}, g.answerOrDrop(ctx, r, err)
 	}
 	// <= rather than ==: an idle standby's control file lags after a failover
 	// until the next buffer flush or restartpoint. > means it follows a newer
@@ -268,7 +328,27 @@ func (g *replicaGuard) poll(ctx context.Context, r *replica, commitLSN pq.LSN) (
 		lag = commitLSN - st.replay
 	}
 	g.metric.SetVisibilityReplicaLag(r.name, float64(lag))
+	r.replayed, r.observedAt, r.server = st.replay, start, st.server
 	return st, nil
+}
+
+// answerOrDrop keeps an error the server answered with (fatal for the guard)
+// and turns anything else into a dropped connection that waitReplayed redials.
+// A standby shutting down answers too (57P01/57P02, connection_exception
+// class 08); that is a restart, not a verdict, and is redialed like a reset.
+func (g *replicaGuard) answerOrDrop(ctx context.Context, r *replica, err error) error {
+	var pgErr *pgconn.PgError
+	if goerrors.As(err, &pgErr) {
+		if pgErr.Code != postgresAdminShutdown && pgErr.Code != postgresCrashShutdown && !strings.HasPrefix(pgErr.Code, "08") {
+			return err
+		}
+	} else if goerrors.Is(err, ErrNotStandby) || goerrors.Is(err, errClusterMismatch) {
+		return err
+	}
+	_ = r.conn.Close(ctx)
+	r.conn = nil
+	r.forget()
+	return fmt.Errorf("%w: %w", errReplicaConn, err)
 }
 
 func (g *replicaGuard) close(ctx context.Context) error {

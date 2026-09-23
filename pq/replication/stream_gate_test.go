@@ -50,8 +50,15 @@ func (gs *gatedStream) run(msgs ...*Message) error {
 	return gs.s.processLoop(context.Background())
 }
 
+// insertMsg is one DML message of transaction xid at WAL position lsn. Every
+// message of a transaction shares its commit record, so commitLSN is derived
+// from xid; txMsg sets it explicitly for the replica guard tests.
 func insertMsg(xid uint32, lsn int64) *Message {
-	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: lsn, xid: xid, commitLSN: pq.LSN(lsn)}
+	return txMsg(xid, lsn, pq.LSN(xid))
+}
+
+func txMsg(xid uint32, walStart int64, commitLSN pq.LSN) *Message {
+	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: walStart, xid: xid, commitLSN: commitLSN}
 }
 
 func guardCfg(mode config.VisibilityFailMode) config.Config {
@@ -141,7 +148,7 @@ func TestGateDisabledDoesNotTouchGuard(t *testing.T) {
 
 	require.NoError(t, gs.run(insertMsg(200, 1)))
 	assert.Equal(t, []uint32{200}, gs.received)
-	assert.Equal(t, []pq.LSN{1}, gs.commits, "ListenerContext.CommitLSN comes from Message.commitLSN")
+	assert.Equal(t, []pq.LSN{200}, gs.commits, "ListenerContext.CommitLSN comes from Message.commitLSN")
 	assert.Equal(t, int32(0), gs.q.calls.Load())
 }
 

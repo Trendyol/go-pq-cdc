@@ -457,23 +457,32 @@ visibilityGuard:
     - standby2:5432
 ```
 
-**Replicas.** `replicas` extends the gate to standbys. At startup every listed host must belong to the replication
-session's cluster (`pg_control_system()`, compared with `IDENTIFY_SYSTEM`): a standby of another cluster is in
-recovery and answers with a replay position from a history `CommitLSN` is not part of, which would pass the check at
-once. After the primary check, the first event of every transaction is then held until each listed standby answers, on
-a connection of its own, `pg_is_in_recovery()` true, `pg_last_wal_replay_lsn() > CommitLSN` (strict, see
-[below](#commit-lsn-and-reading-from-a-standby)) and a timeline no newer than the replication session's. Credentials
-and database come from the main config. List direct standby hosts,
-never a pooled or load-balanced endpoint: the check is only meaningful for the server that answered it. Both waits
-share `timeout`, standbys are polled one after another, and the replica connections reconnect on their own, so a
-standby restart does not restart the stream. Design record: [docs/replica-guard-design.md](./docs/replica-guard-design.md).
+**Replicas.** `replicas` extends the gate to standbys. On every connection (at startup and after each reconnect) the
+listed host must belong to the replication session's cluster (`pg_control_system()`, compared with `IDENTIFY_SYSTEM`):
+a standby of another cluster is in recovery and answers with a replay position from a history `CommitLSN` is not part
+of, which would pass the check at once. After the primary check, the first event of every transaction is then held
+until each listed standby answers, on a connection of its own, `pg_is_in_recovery()` true,
+`pg_last_wal_replay_lsn() > CommitLSN` (strict, see [below](#commit-lsn-and-reading-from-a-standby)) and a timeline no
+newer than the replication session's. An event whose transaction has no decoded `BEGIN` (no xid, no `CommitLSN`) is
+never dispatched: the guard fails closed on it. Credentials and database come from the main config. List direct
+standby hosts, never a pooled or load-balanced endpoint: the check is only meaningful for the server that answered it.
+Both waits share `timeout`, standbys are polled one after another, and the replica connections reconnect on their own
+(a standby shutting down answers `57P01` before closing; that is redialed like a reset), so a standby restart does not
+restart the stream. Every pass is logged (`replica guard wait completed`, Debug; `replica guard slow wait completed`,
+Info from 100 ms) with the xid, `CommitLSN`, and per replica the backend address and the replay position it
+certified. A poll that passed on a replica certifies every lower `CommitLSN` for the next second without another
+query (logged as `cached_age_ms`), so a busy stream costs about one poll per replica per second instead of one per
+transaction; a replica that is behind is still polled on every transaction until it passes. Design record:
+[docs/replica-guard-design.md](./docs/replica-guard-design.md).
 
 **Guarantee.** Everything delivered to the handler is committed on the server (with or without the guard). With the
 guard on, a fresh snapshot taken on the same primary after the handler was called also sees the row. With `replicas`
 set, every listed standby has applied the transaction when the handler is called, so a read on any of them under
 `READ COMMITTED` sees the row. One exception is built into hot standby: a standby that restarts replays again from its
 last restartpoint and accepts connections as soon as it is consistent, so for a moment its replay position can sit
-below a `CommitLSN` it had already applied; consumer-side retry covers it.
+below a `CommitLSN` it had already applied. Because a passing poll is reused for up to one second, a transaction
+dispatched in that second can be certified by an observation made just before such a restart; the same consumer-side
+retry covers both.
 
 **Limits.** The guarantee does not cover:
 

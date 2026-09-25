@@ -26,8 +26,8 @@ func NewCommit(data []byte) (*Commit, error) {
 func (c *Commit) decode(data []byte) error {
 	skipByte := 1
 
-	if len(data) < 25 {
-		return errors.Newf("commit message length must be at least 25 byte, but got %d", len(data))
+	if len(data) < 26 {
+		return errors.Newf("commit message length must be at least 26 byte, but got %d", len(data))
 	}
 
 	c.Flags = data[skipByte]

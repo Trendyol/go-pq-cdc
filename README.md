@@ -466,7 +466,7 @@ until each listed standby answers, on a connection of its own, `pg_is_in_recover
 newer than the replication session's. An event whose transaction has no decoded `BEGIN` (no xid, no `CommitLSN`) is
 never dispatched: the guard fails closed on it. Credentials and database come from the main config. List direct
 standby hosts, never a pooled or load-balanced endpoint: the check is only meaningful for the server that answered it.
-Both waits share `timeout`, standbys are polled one after another, and the replica connections reconnect on their own
+Both waits share `timeout`, standbys are polled concurrently, and the replica connections reconnect on their own
 (a standby shutting down answers `57P01` before closing; that is redialed like a reset), so a standby restart does not
 restart the stream. Every pass is logged (`replica guard wait completed`, Debug; `replica guard slow wait completed`,
 Info from 100 ms) with the xid, `CommitLSN`, and per replica the backend address and the replay position it

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -247,44 +248,56 @@ func (g *replicaGuard) checkSystemID(ctx context.Context, r *replica) error {
 	return nil
 }
 
-// wait polls the replicas one after another under a shared deadline: while
-// one is polled the others catch up, so the cost is about the slowest lag
-// plus one round trip per replica.
+// wait polls the replicas whose cache does not already certify commitLSN
+// concurrently under a shared deadline, so the cost is about the slowest lag
+// plus one round trip. Each goroutine touches only its own replica.
+// A server answer (fatal) cancels the other polls and wins over a timeout,
+// which failMode open would dispatch on.
 // Every pass is logged with the replay position and backend address each
 // replica answered with, so a consumer-side miss can be tied to the exact
 // certification (Debug; Info once the wait is slow).
-// ponytail: sequential; poll concurrently if the list grows past a handful.
 func (g *replicaGuard) wait(ctx context.Context, xid uint32, commitLSN pq.LSN, deadline time.Time) error {
 	start := time.Now()
-	var passed strings.Builder
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	passed := make([]string, len(g.replicas))
+	errs := make([]error, len(g.replicas))
+	var wg sync.WaitGroup
 	for i, r := range g.replicas {
-		if i > 0 {
-			passed.WriteString(", ")
-		}
-		if age, ok := r.cachedAge(commitLSN, time.Now()); ok {
-			fmt.Fprintf(&passed, "%s server=%s replay=%s cached_age_ms=%.1f", r.name, r.server, r.replayed, float64(age.Microseconds())/1000)
+		if age, ok := r.cachedAge(commitLSN, start); ok {
+			passed[i] = fmt.Sprintf("%s server=%s replay=%s cached_age_ms=%.1f", r.name, r.server, r.replayed, float64(age.Microseconds())/1000)
 			g.metric.VisibilityReplicaCheck(r.name, true)
 			continue
 		}
-		var last replicaState
-		poll := func(ctx context.Context) (replicaState, error) {
-			st, err := g.poll(ctx, r, commitLSN)
-			if err == nil {
-				last = st
+		wg.Go(func() {
+			var last replicaState
+			poll := func(ctx context.Context) (replicaState, error) {
+				st, err := g.poll(ctx, r, commitLSN)
+				if err == nil {
+					last = st
+				}
+				return st, err
 			}
-			return st, err
-		}
-		if err := waitReplayed(ctx, poll, commitLSN, deadline, g.cfg.PollInterval); err != nil {
-			if goerrors.Is(err, ErrVisibilityTimeout) {
-				g.metric.VisibilityTimeoutIncrement()
+			if err := waitReplayed(ctx, poll, commitLSN, deadline, g.cfg.PollInterval); err != nil {
+				errs[i] = fmt.Errorf("replica %s: %w", r.name, err)
+				if !goerrors.Is(err, ErrVisibilityTimeout) {
+					cancel()
+				}
+				return
 			}
-			return fmt.Errorf("replica %s: %w", r.name, err)
+			passed[i] = fmt.Sprintf("%s server=%s replay=%s", r.name, last.server, last.replay)
+			g.metric.VisibilityReplicaCheck(r.name, false)
+		})
+	}
+	wg.Wait()
+	if err := worstWaitError(errs); err != nil {
+		if goerrors.Is(err, ErrVisibilityTimeout) {
+			g.metric.VisibilityTimeoutIncrement()
 		}
-		fmt.Fprintf(&passed, "%s server=%s replay=%s", r.name, last.server, last.replay)
-		g.metric.VisibilityReplicaCheck(r.name, false)
+		return err
 	}
 	waited := time.Since(start)
-	args := []any{"xid", xid, "commitLSN", commitLSN.String(), "replicas", passed.String(),
+	args := []any{"xid", xid, "commitLSN", commitLSN.String(), "replicas", strings.Join(passed, ", "),
 		"started_at", start.UTC().Format(time.RFC3339Nano), "wait_ms", float64(waited.Microseconds()) / 1000}
 	if waited >= slowVisibilityWait {
 		logger.Info("replica guard slow wait completed", args...)
@@ -292,6 +305,28 @@ func (g *replicaGuard) wait(ctx context.Context, xid uint32, commitLSN pq.LSN, d
 		logger.Debug("replica guard wait completed", args...)
 	}
 	return nil
+}
+
+// worstWaitError picks what a concurrent wait reports: a server answer before
+// a timeout, a timeout before the cancellation a failed sibling caused; the
+// first listed replica among equals.
+func worstWaitError(errs []error) error {
+	rank := func(err error) int {
+		switch {
+		case goerrors.Is(err, ErrVisibilityTimeout):
+			return 1
+		case goerrors.Is(err, context.Canceled):
+			return 0
+		}
+		return 2
+	}
+	var worst error
+	for _, err := range errs {
+		if err != nil && (worst == nil || rank(err) > rank(worst)) {
+			worst = err
+		}
+	}
+	return worst
 }
 
 // poll dials r if needed and runs one replay check. A server that answers

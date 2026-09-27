@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -529,4 +530,64 @@ func TestReplicaGuardCachesPerReplica(t *testing.T) {
 	require.NoError(t, g.wait(context.Background(), 201, 0x20, time.Now().Add(time.Second)))
 	assert.Equal(t, int32(1), ahead.calls.Load(), "ahead replica served from its cache")
 	assert.Equal(t, int32(3), behind.calls.Load(), "behind replica polled until it passes the new commit")
+}
+
+// barrierReplica holds every poll until all replicas are being polled at once:
+// a sequential wait never releases it and times out.
+type barrierReplica struct {
+	*scriptedReplica
+	arrived *sync.WaitGroup
+	release <-chan struct{}
+}
+
+func (b *barrierReplica) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if sql == replicaPollSQL {
+		b.arrived.Done()
+		select {
+		case <-b.release:
+		case <-ctx.Done():
+			return rowFunc(func(...any) error { return ctx.Err() })
+		}
+	}
+	return b.scriptedReplica.QueryRow(ctx, sql, args...)
+}
+
+func TestReplicaGuardPollsReplicasConcurrently(t *testing.T) {
+	g, m := testReplicaGuard([]string{"standby1:5432", "standby2:5432"}, &dialer{}, &dialer{})
+	var arrived sync.WaitGroup
+	release := make(chan struct{})
+	for _, r := range g.replicas {
+		arrived.Add(1)
+		conn := &barrierReplica{scriptedReplica: &scriptedReplica{rows: []replicaRow{standby("0/30")}}, arrived: &arrived, release: release}
+		r.dial = func(context.Context) (replicaConn, error) { return conn, nil }
+	}
+	go func() { arrived.Wait(); close(release) }()
+
+	require.NoError(t, g.wait(context.Background(), 200, 0x20, time.Now().Add(time.Second)))
+	assert.Equal(t, int32(2), m.polled.Load())
+}
+
+// failMode open dispatches on a timeout, so a replica that answered "not a
+// standby" must win over a sibling that is merely behind.
+func TestReplicaGuardServerAnswerWinsOverASiblingTimeout(t *testing.T) {
+	behind := &dialer{conns: []*scriptedReplica{{rows: []replicaRow{standby("0/10")}}}}
+	promoted := &dialer{conns: []*scriptedReplica{{rows: []replicaRow{standby("0/10"), standby("0/10"), {recovery: false, timeline: 7}}}}}
+	g, m := testReplicaGuard([]string{"standby1:5432", "standby2:5432"}, behind, promoted)
+
+	err := g.wait(context.Background(), 200, 0x20, time.Now().Add(time.Second))
+	require.ErrorIs(t, err, ErrNotStandby)
+	require.NotErrorIs(t, err, ErrVisibilityTimeout)
+	require.ErrorContains(t, err, "replica standby2:5432")
+	assert.Equal(t, int32(0), m.timeouts.Load())
+}
+
+func TestReplicaGuardTimeoutIsCountedOncePerWait(t *testing.T) {
+	a := &dialer{conns: []*scriptedReplica{{rows: []replicaRow{standby("0/10")}}}}
+	b := &dialer{conns: []*scriptedReplica{{rows: []replicaRow{standby("0/10")}}}}
+	g, m := testReplicaGuard([]string{"standby1:5432", "standby2:5432"}, a, b)
+
+	err := g.wait(context.Background(), 200, 0x20, time.Now().Add(g.cfg.Timeout))
+	require.ErrorIs(t, err, ErrVisibilityTimeout)
+	require.ErrorContains(t, err, "replica standby1:5432")
+	assert.Equal(t, int32(1), m.timeouts.Load())
 }

@@ -9,6 +9,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewDecodesLogicalDecodingMessage(t *testing.T) {
+	now := time.Now()
+	data := []byte{
+		'M',
+		1,
+		0, 0, 0, 0, 0, 0, 0, 9,
+		'p', 0,
+		0, 0, 0, 1,
+		'z',
+	}
+
+	msg, err := New(data, false, now, map[uint32]*format.Relation{})
+
+	require.NoError(t, err)
+	logical, ok := msg.(*format.LogicalDecodingMessage)
+	require.True(t, ok)
+	assert.Equal(t, now, logical.MessageTime)
+	assert.Equal(t, "p", logical.Prefix)
+	assert.Equal(t, []byte("z"), logical.Content)
+}
+
 func TestNewDecodesTruncate(t *testing.T) {
 	now := time.Now()
 	relations := map[uint32]*format.Relation{

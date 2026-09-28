@@ -12,6 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
+// logicalMessagesMinServerVersion is the first server_version_num that accepts
+// the pgoutput messages option. PostgreSQL 10–13 reject it as unrecognized.
+const logicalMessagesMinServerVersion = 140000
+
 type Replication struct {
 	conn pq.Connection
 }
@@ -21,23 +25,67 @@ func New(conn pq.Connection) *Replication {
 }
 
 func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
-	pluginArguments := []string{
-		fmt.Sprintf("proto_version '%d'", protoVersion),
+	return r.start(context.Background(), publicationName, slotName, startLSN, protoVersion)
+}
+
+func (r *Replication) start(ctx context.Context, publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
+	serverVersionNum, err := r.serverVersionNum(ctx)
+	if err != nil {
+		return err
 	}
 
-	if protoVersion >= 2 {
-		pluginArguments = append(pluginArguments, "messages 'true'", "streaming 'true'")
-	}
-
+	pluginArguments := replicationPluginArguments(protoVersion, serverVersionNum)
 	pluginArguments = append(pluginArguments, "publication_names '"+publicationName+"'")
 
 	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", slotName, startLSN, strings.Join(pluginArguments, ","))
 	r.conn.Frontend().SendQuery(&pgproto3.Query{String: sql})
-	err := r.conn.Frontend().Flush()
+	err = r.conn.Frontend().Flush()
 	if err != nil {
 		return errors.Wrap(err, "start replication")
 	}
 	return nil
+}
+
+// serverVersionNum reads SHOW server_version_num. Startup fails when the
+// version cannot be read: without it we cannot tell whether messages is safe
+// to request.
+func (r *Replication) serverVersionNum(ctx context.Context) (int, error) {
+	reader := r.conn.Exec(ctx, "SHOW server_version_num")
+	results, err := reader.ReadAll()
+	closeErr := reader.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "server version")
+	}
+	if closeErr != nil {
+		return 0, errors.Wrap(closeErr, "server version")
+	}
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return 0, errors.New("server version: no rows")
+	}
+
+	raw := string(results[0].Rows[0][0])
+	version, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, errors.Wrapf(err, "server version %q", raw)
+	}
+	return version, nil
+}
+
+// replicationPluginArguments builds the pgoutput options for START_REPLICATION.
+// Logical decoding messages (pg_logical_emit_message) are sent only when
+// messages is requested. That option is independent of streaming and exists
+// on proto version 1, but PostgreSQL 13 and older reject it.
+func replicationPluginArguments(protoVersion, serverVersionNum int) []string {
+	args := []string{
+		fmt.Sprintf("proto_version '%d'", protoVersion),
+	}
+	if serverVersionNum >= logicalMessagesMinServerVersion {
+		args = append(args, "messages 'true'")
+	}
+	if protoVersion >= 2 {
+		args = append(args, "streaming 'true'")
+	}
+	return args
 }
 
 func (r *Replication) Test(ctx context.Context) error {

@@ -10,6 +10,7 @@ import (
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	libpq "github.com/lib/pq"
 )
 
 type Replication struct {
@@ -31,7 +32,7 @@ func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, p
 
 	pluginArguments = append(pluginArguments, "publication_names '"+publicationName+"'")
 
-	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", slotName, startLSN, strings.Join(pluginArguments, ","))
+	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", libpq.QuoteIdentifier(slotName), startLSN, strings.Join(pluginArguments, ","))
 	r.conn.Frontend().SendQuery(&pgproto3.Query{String: sql})
 	err := r.conn.Frontend().Flush()
 	if err != nil {

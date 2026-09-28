@@ -7,6 +7,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestReplicationSlotCommandsQuoteTheName(t *testing.T) {
+	if got := createReplicationSlotCommand("test-slot", false); got != `CREATE_REPLICATION_SLOT "test-slot" LOGICAL pgoutput` {
+		t.Fatalf("create: got %s", got)
+	}
+	if got := createReplicationSlotCommand("test_slot", true); got != `CREATE_REPLICATION_SLOT "test_slot" LOGICAL pgoutput (FAILOVER true)` {
+		t.Fatalf("create failover: got %s", got)
+	}
+	if got := alterReplicationSlotFailoverCommand("test-slot"); got != `ALTER_REPLICATION_SLOT "test-slot" (FAILOVER true)` {
+		t.Fatalf("alter: got %s", got)
+	}
+}
+
 // A physical / not-yet-reserved slot reports an empty confirmed_flush_lsn.
 // It must not blow up with a cryptic "lsn parse: EOF"; the empty column is
 // skipped and the logical-type check yields a clear error instead.

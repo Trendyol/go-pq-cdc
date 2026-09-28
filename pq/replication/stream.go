@@ -40,6 +40,10 @@ type ListenerContext struct {
 	Context context.Context
 	Message any
 	Ack     func() error
+	// Xid is the top-level transaction that produced Message (Begin.Xid, or
+	// StreamStart.Xid for a streamed transaction). Zero when the message is
+	// not part of a transaction, including snapshot events.
+	Xid uint32
 	// CommitLSN is the start of the commit record of the transaction that
 	// produced Message (pgoutput Begin.FinalLSN, StreamCommit.CommitLSN for
 	// streamed transactions). Zero for snapshot events.
@@ -712,6 +716,7 @@ func (s *stream) processLoop(ctx context.Context) error {
 				Context:   ctx,
 				Message:   msg.message,
 				Ack:       ackFunc,
+				Xid:       msg.xid,
 				CommitLSN: msg.commitLSN,
 			}
 

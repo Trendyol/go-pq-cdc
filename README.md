@@ -487,7 +487,7 @@ dispatched only once the standby that may be promoted has the commit. This holds
 
 ### Commit LSN and reading from a standby
 
-Every CDC event exposes `ctx.CommitLSN`: the WAL position of the commit record of the transaction that produced it
+Every CDC event exposes `ctx.Xid`, the top-level transaction that produced it, and `ctx.CommitLSN`, the WAL position of the commit record of that transaction
 (pgoutput `Begin.FinalLSN`, or `StreamCommit.CommitLSN` for streamed transactions). Snapshot events carry `0`.
 
 `visibilityGuard` only describes the primary. A consumer that reads from a standby, or through a pooler that may route

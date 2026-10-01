@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -20,6 +21,13 @@ import (
 // fresh snapshot on the primary and checks whether the row is there yet.
 // VISIBLE is what you expect; MISS is the read-after-write window. See README.md.
 func main() {
+	if err := run(); err != nil {
+		slog.Error("visibility-guard example", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	guard := flag.Bool("guard", false, "enable visibilityGuard")
 	failMode := flag.String("fail-mode", "closed", "visibilityGuard.failMode: closed | open")
 	timeout := flag.Duration("timeout", 10*time.Second, "visibilityGuard.timeout (must be < wal_sender_timeout/2)")
@@ -60,8 +68,7 @@ func main() {
 	// exactly what a service reading the primary right after the event would see.
 	reader, err := pgx.Connect(ctx, cfg.DSNWithoutSSL())
 	if err != nil {
-		slog.Error("reader connect", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("reader connect: %w", err)
 	}
 	defer reader.Close(ctx)
 
@@ -89,9 +96,10 @@ func main() {
 
 	connector, err := cdc.NewConnector(ctx, cfg, handler)
 	if err != nil {
-		slog.Error("new connector", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("new connector: %w", err)
 	}
 	defer connector.Close()
 	connector.Start(ctx)
+
+	return nil
 }

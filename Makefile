@@ -1,3 +1,5 @@
+GOBIN_DIR := $(shell go env GOPATH)/bin
+
 default: init
 
 .PHONY: init
@@ -15,8 +17,8 @@ init/vulnCheck:
 .PHONY: audit
 audit: vendor
 	@echo 'Formatting code...'
-	fieldalignment -fix ./...
-	golangci-lint run -c .golangci.yml -v --fix
+	$(GOBIN_DIR)/fieldalignment -fix ./...
+	$(GOBIN_DIR)/golangci-lint run -c .golangci.yml -v --fix
 	@echo 'Vetting code...'
 	go vet ./...
 	@echo 'Vulnerability scanning...'
@@ -46,8 +48,8 @@ test/integration:
 .PHONY: lint
 lint: init/lint
 	@echo 'Formatting code...'
-	fieldalignment -fix ./...
-	golangci-lint run -c .golangci.yml -v --fix
+	$(GOBIN_DIR)/fieldalignment -fix ./...
+	$(GOBIN_DIR)/golangci-lint run -c .golangci.yml -v --fix
 
 .PHONY: build
 build/linux:

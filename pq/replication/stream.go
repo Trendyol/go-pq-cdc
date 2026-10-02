@@ -77,6 +77,7 @@ type stream struct {
 	metric              metric.Metric
 	conn                pq.Connection
 	guard               *visibilityGuard
+	replicas            *replicaGuard
 	cancel              context.CancelFunc
 	system              *pq.IdentifySystemResult
 	relation            map[uint32]*format.Relation
@@ -157,6 +158,19 @@ func (s *stream) Open(ctx context.Context) error {
 			"timeout", s.config.VisibilityGuard.Timeout,
 			"pollInterval", s.config.VisibilityGuard.PollInterval,
 		)
+		// Standbys share the guard's budget and failMode; they need the primary
+		// guard because P5 (sync rep + fail-closed) is what closes the timeline
+		// race the replica poll cannot see. See docs/replica-guard-design.md.
+		if len(s.config.VisibilityGuard.Replicas) > 0 {
+			replicas, err := openReplicaGuard(ctx, s.config, s.system, s.metric)
+			if err != nil {
+				_ = s.guard.close(ctx)
+				s.guard = nil
+				return errors.Wrap(err, "replica guard")
+			}
+			s.replicas = replicas
+			logger.Info("replica guard enabled", "replicas", s.config.VisibilityGuard.Replicas)
+		}
 	}
 
 	s.sinkStarted.Store(true)
@@ -659,7 +673,14 @@ func (s *stream) process(ctx context.Context) {
 // never requests two_phase. The gate therefore only waits for the commit to
 // become visible, never for it to happen.
 func (s *stream) processLoop(ctx context.Context) error {
-	var lastGatedXid uint32
+	// The transaction gated last, as (xid, commitLSN): xid alone repeats after
+	// wraparound, the pair never does. gated is false until the first gate so
+	// that a zero pair is never mistaken for "already gated".
+	var lastGated struct {
+		commitLSN pq.LSN
+		xid       uint32
+		gated     bool
+	}
 
 	for {
 		select {
@@ -695,8 +716,8 @@ func (s *stream) processLoop(ctx context.Context) error {
 			}
 
 			// Gate once per transaction, on its first message.
-			if s.guard != nil && msg.xid != lastGatedXid {
-				if err := s.gate(ctx, msg.xid); err != nil {
+			if s.guard != nil && (!lastGated.gated || msg.xid != lastGated.xid || msg.commitLSN != lastGated.commitLSN) {
+				if err := s.gate(ctx, msg.xid, msg.commitLSN); err != nil {
 					if ctx.Err() != nil {
 						// Shutting down mid-wait: never dispatch an uncertified message.
 						// It stays un-acked and is redelivered after restart.
@@ -705,7 +726,7 @@ func (s *stream) processLoop(ctx context.Context) error {
 					}
 					return err
 				}
-				lastGatedXid = msg.xid
+				lastGated.xid, lastGated.commitLSN, lastGated.gated = msg.xid, msg.commitLSN, true
 			}
 
 			lCtx := &ListenerContext{
@@ -731,11 +752,26 @@ func (s *stream) processLoop(ctx context.Context) error {
 	}
 }
 
-// gate waits until xid is visible on the primary. A timeout is fatal under
-// failMode closed and a logged, counted pass-through under failMode open; any
-// other guard error is fatal in both modes.
-func (s *stream) gate(ctx context.Context, xid uint32) error {
+// gate waits until xid is visible on the primary and, when replicas are
+// configured, until every listed standby has replayed commitLSN; both waits
+// share one deadline of visibilityGuard.timeout from the start of the gate.
+// A timeout is fatal under failMode closed and a logged, counted pass-through
+// under failMode open; any other guard error is fatal in both modes.
+func (s *stream) gate(ctx context.Context, xid uint32, commitLSN pq.LSN) error {
+	if xid == 0 || commitLSN == 0 {
+		// Every decoded BEGIN / STREAM COMMIT carries a valid xid and the commit
+		// record's LSN; snapshot events, the only messages without them, never
+		// pass through here (connector.snapshotHandler). A zero here means the
+		// message was decoded without its BEGIN, so nothing can be certified:
+		// fail closed instead of gating xid 0 and skipping the standbys.
+		return fmt.Errorf("%w: message without a decoded BEGIN (xid %d, commitLSN %s)", ErrVisibilityGuard, xid, commitLSN)
+	}
+	start := time.Now()
 	err := s.guard.wait(ctx, xid)
+	if err == nil && s.replicas != nil {
+		err = s.replicas.wait(ctx, xid, commitLSN, start.Add(s.config.VisibilityGuard.Timeout))
+	}
+	s.metric.ObserveVisibilityWait(time.Since(start))
 	switch {
 	case err == nil:
 		return nil
@@ -826,6 +862,12 @@ func (s *stream) Close(ctx context.Context) error {
 			errs = append(errs, errors.Wrap(err, "close visibility guard"))
 		}
 		logger.Info("visibility guard connection closed")
+	}
+	if s.replicas != nil {
+		if err := s.replicas.close(ctx); err != nil {
+			errs = append(errs, errors.Wrap(err, "close replica guard"))
+		}
+		logger.Info("replica guard connections closed")
 	}
 
 	return goerrors.Join(errs...)

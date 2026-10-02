@@ -70,7 +70,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("reader connect: %w", err)
 	}
-	defer reader.Close(ctx)
 
 	handler := func(lCtx *replication.ListenerContext) {
 		if ins, ok := lCtx.Message.(*format.Insert); ok {
@@ -98,6 +97,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("new connector: %w", err)
 	}
+	defer reader.Close(ctx)
 	defer connector.Close()
 	connector.Start(ctx)
 

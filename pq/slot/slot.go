@@ -197,10 +197,36 @@ func (s *Slot) Info(ctx context.Context) (*Info, error) {
 }
 
 func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
-	resultReader := s.conn.Exec(ctx, s.statusSQL)
-	results, err := resultReader.ReadAll()
+	if s.conn.IsClosed() {
+		logger.Debug("slot info connection closed before query, reconnecting", "name", s.cfg.Name)
+		if err := s.conn.Connect(ctx); err != nil {
+			return nil, errors.Wrap(err, "reconnect slot info connection")
+		}
+	}
+
+	results, err := s.execStatusQueryLocked(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "replication slot info result")
+		// Self-heal only when pgconn marked the connection closed; real SQL or
+		// server errors must surface without a retry. Close() flips `closed`
+		// outside the mutex, so shutdown can start mid-query — bail out instead
+		// of reconnecting underneath it.
+		if s.closed.Load() {
+			return nil, ErrorSlotClosed
+		}
+		if !s.conn.IsClosed() {
+			return nil, err
+		}
+
+		logger.Warn("slot info connection closed, reconnecting", "name", s.cfg.Name, "error", err)
+
+		if connectErr := s.conn.Connect(ctx); connectErr != nil {
+			return nil, errors.Wrap(connectErr, "reconnect slot info connection")
+		}
+
+		results, err = s.execStatusQueryLocked(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(results) == 0 || results[0].CommandTag.String() == "SELECT 0" {
@@ -217,6 +243,16 @@ func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 	}
 
 	return slotInfo, nil
+}
+
+// execStatusQueryLocked runs the slot status query once on the regular
+// connection.
+func (s *Slot) execStatusQueryLocked(ctx context.Context) ([]*pgconn.Result, error) {
+	results, err := s.conn.Exec(ctx, s.statusSQL).ReadAll()
+	if err != nil {
+		return nil, errors.Wrap(err, "replication slot info result")
+	}
+	return results, nil
 }
 
 func (s *Slot) Metrics(ctx context.Context) {

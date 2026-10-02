@@ -39,18 +39,27 @@ type Chunk struct {
 	BlockStart *int64
 	BlockEnd   *int64 // nil for last chunk (no upper bound to catch new rows)
 
-	Status            ChunkStatus
-	PartitionStrategy PartitionStrategy
-	TableName         string
-	ClaimedBy         string
-	TableSchema       string
-	SlotName          string
-	TableColumns      []string
-	ID                int64
-	ChunkIndex        int
-	ChunkStart        int64
-	ChunkSize         int64
-	IsLastChunk       bool // True for the last chunk of a table (no upper bound for CTID)
+	Status              ChunkStatus
+	PartitionStrategy   PartitionStrategy
+	TableName           string
+	PhysicalTableName   string
+	ClaimedBy           string
+	TableSchema         string
+	PhysicalTableSchema string
+	SlotName            string
+	TableColumns        []string
+	ID                  int64
+	ChunkIndex          int
+	ChunkStart          int64
+	ChunkSize           int64
+	IsLastChunk         bool // True for the last chunk of a table (no upper bound for CTID)
+}
+
+func (c *Chunk) queryTable() (string, string) {
+	if c.PhysicalTableSchema != "" && c.PhysicalTableName != "" {
+		return c.PhysicalTableSchema, c.PhysicalTableName
+	}
+	return c.TableSchema, c.TableName
 }
 
 func (c *Chunk) hasRangeBounds() bool {

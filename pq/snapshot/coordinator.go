@@ -21,6 +21,11 @@ type primaryKeyColumn struct {
 	DataType string
 }
 
+type physicalTable struct {
+	Schema string
+	Name   string
+}
+
 // initializeCoordinator sets up the snapshot job as coordinator
 // 1. Cleanup any incomplete job (from previous crash)
 // 2. Create metadata and chunks
@@ -75,7 +80,10 @@ func (s *Snapshotter) createMetadata(ctx context.Context, slotName string, curre
 	// Create chunks for each table using snapshot-consistent connection
 	totalChunks := 0
 	for _, table := range s.tables {
-		chunks := s.createTableChunksWithConn(ctx, s.exportSnapshotConn, slotName, table)
+		chunks, err := s.createTableChunksWithConn(ctx, s.exportSnapshotConn, slotName, table)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("create chunks for %s.%s", table.Schema, table.Name))
+		}
 
 		// Save chunks using batch insert for performance (critical for 100k+ chunks)
 		if err := s.saveChunksBatch(ctx, chunks); err != nil {
@@ -288,6 +296,8 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 				slot_name TEXT NOT NULL,
 				table_schema TEXT NOT NULL,
 				table_name TEXT NOT NULL,
+				physical_table_schema TEXT,
+				physical_table_name TEXT,
 				chunk_index INT NOT NULL,
 				chunk_start BIGINT NOT NULL,
 				chunk_size BIGINT NOT NULL,
@@ -357,6 +367,9 @@ func (s *Snapshotter) migrateSchema(ctx context.Context) {
 		// Integer range partitioning fields
 		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_start BIGINT",
 		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_end BIGINT",
+		// Physical relation used when the configured table is a partitioned root
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS physical_table_schema TEXT",
+		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS physical_table_name TEXT",
 	}
 
 	for _, stmt := range migrations {
@@ -403,9 +416,10 @@ func (s *Snapshotter) processChunk(ctx context.Context, conn pq.Connection, chun
 	chunk.TableColumns = s.getSnapshotColumns(chunk.TableSchema, chunk.TableName)
 
 	// Get ORDER BY clause for the table
+	physicalSchema, physicalName := chunk.queryTable()
 	table := publication.Table{
-		Schema:  chunk.TableSchema,
-		Name:    chunk.TableName,
+		Schema:  physicalSchema,
+		Name:    physicalName,
 		Columns: chunk.TableColumns,
 	}
 
@@ -503,6 +517,7 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 }
 
 func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string, queryCondition string) string {
+	tableSchema, tableName := chunk.queryTable()
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
 		cols := selectSnapshotColumns(chunk.TableColumns)
@@ -511,8 +526,8 @@ func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string,
 		return fmt.Sprintf(
 			"SELECT %s FROM %s.%s WHERE %s ORDER BY %s LIMIT %d",
 			cols,
-			chunk.TableSchema,
-			chunk.TableName,
+			tableSchema,
+			tableName,
 			whereClause,
 			orderByClause,
 			chunk.ChunkSize,
@@ -524,12 +539,13 @@ func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string,
 
 func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) string {
 	cols := selectSnapshotColumns(chunk.TableColumns)
+	tableSchema, tableName := chunk.queryTable()
 	// Empty table or single chunk without block info - select all
 	if chunk.BlockStart == nil {
 		if queryCondition != "" {
-			return fmt.Sprintf("SELECT %s FROM %s.%s WHERE (%s)", cols, chunk.TableSchema, chunk.TableName, queryCondition)
+			return fmt.Sprintf("SELECT %s FROM %s.%s WHERE (%s)", cols, tableSchema, tableName, queryCondition)
 		}
-		return fmt.Sprintf("SELECT %s FROM %s.%s", cols, chunk.TableSchema, chunk.TableName)
+		return fmt.Sprintf("SELECT %s FROM %s.%s", cols, tableSchema, tableName)
 	}
 
 	// Last chunk (BlockEnd is nil): no upper bound to catch rows added after metadata creation
@@ -539,7 +555,7 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) s
 		whereClause = andCondition(whereClause, queryCondition)
 		return fmt.Sprintf(
 			"SELECT %s FROM %s.%s WHERE %s",
-			cols, chunk.TableSchema, chunk.TableName, whereClause,
+			cols, tableSchema, tableName, whereClause,
 		)
 	}
 
@@ -550,14 +566,15 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) s
 	return fmt.Sprintf(
 		"SELECT %s FROM %s.%s WHERE %s",
 		cols,
-		chunk.TableSchema,
-		chunk.TableName,
+		tableSchema,
+		tableName,
 		whereClause,
 	)
 }
 
 func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string, queryCondition string) string {
 	cols := selectSnapshotColumns(chunk.TableColumns)
+	tableSchema, tableName := chunk.queryTable()
 	where := ""
 	if queryCondition != "" {
 		where = " WHERE (" + queryCondition + ")"
@@ -565,8 +582,8 @@ func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string, query
 	return fmt.Sprintf(
 		"SELECT %s FROM %s.%s%s ORDER BY %s LIMIT %d OFFSET %d",
 		cols,
-		chunk.TableSchema,
-		chunk.TableName,
+		tableSchema,
+		tableName,
 		where,
 		orderByClause,
 		chunk.ChunkSize,
@@ -649,7 +666,50 @@ func cloneStringSlice(in []string) []string {
 //   - Priority 1: Integer Range (fastest for sequential integer PKs)
 //   - Priority 2: CTID Block (fast for any table)
 //   - Priority 3: Offset (slow fallback)
-func (s *Snapshotter) createTableChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
+func (s *Snapshotter) createTableChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) ([]*Chunk, error) {
+	partitions, partitioned, err := s.getLeafPartitions(ctx, conn, table)
+	if err != nil {
+		return nil, err
+	}
+	if partitioned {
+		chunks := make([]*Chunk, 0)
+		queryCondition := s.getQueryCondition(table.Schema, table.Name)
+		if len(partitions) == 0 {
+			return []*Chunk{{
+				SlotName:          slotName,
+				TableSchema:       table.Schema,
+				TableName:         table.Name,
+				TableColumns:      table.Columns,
+				ChunkSize:         s.config.ChunkSize,
+				Status:            ChunkStatusPending,
+				PartitionStrategy: PartitionStrategyOffset,
+			}}, nil
+		}
+		for _, partition := range partitions {
+			physical := table
+			physical.Schema = partition.Schema
+			physical.Name = partition.Name
+			physical.QueryCondition = queryCondition
+			physical.Partitioned = false
+
+			partitionChunks := s.createTableChunksForPhysicalTable(ctx, conn, slotName, physical)
+			for _, chunk := range partitionChunks {
+				chunk.TableSchema = table.Schema
+				chunk.TableName = table.Name
+				chunk.TableColumns = table.Columns
+				chunk.PhysicalTableSchema = partition.Schema
+				chunk.PhysicalTableName = partition.Name
+				chunk.ChunkIndex = len(chunks)
+				chunks = append(chunks, chunk)
+			}
+		}
+		return chunks, nil
+	}
+
+	return s.createTableChunksForPhysicalTable(ctx, conn, slotName, table), nil
+}
+
+func (s *Snapshotter) createTableChunksForPhysicalTable(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
 	// Check if user explicitly specified a partition strategy
 	if table.SnapshotPartitionStrategy != publication.SnapshotPartitionStrategyAuto {
 		return s.createChunksWithStrategyConn(ctx, conn, slotName, table, table.SnapshotPartitionStrategy)
@@ -657,6 +717,44 @@ func (s *Snapshotter) createTableChunksWithConn(ctx context.Context, conn pq.Con
 
 	// Auto-detect strategy based on PK type
 	return s.createChunksAutoDetectConn(ctx, conn, slotName, table)
+}
+
+func (s *Snapshotter) getLeafPartitions(ctx context.Context, conn pq.Connection, table publication.Table) ([]physicalTable, bool, error) {
+	relationQuery := fmt.Sprintf("SELECT relkind FROM pg_class WHERE oid = to_regclass('%s.%s')", table.Schema, table.Name)
+	results, err := s.execQuery(ctx, conn, relationQuery)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "inspect table relation kind")
+	}
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return nil, false, fmt.Errorf("table %s.%s does not exist", table.Schema, table.Name)
+	}
+	if string(results[0].Rows[0][0]) != "p" {
+		return nil, false, nil
+	}
+
+	partitionQuery := fmt.Sprintf(`
+		SELECT n.nspname, c.relname
+		FROM pg_partition_tree(to_regclass('%s.%s')) AS tree
+		JOIN pg_class c ON c.oid = tree.relid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE tree.isleaf
+		ORDER BY n.nspname, c.relname
+	`, table.Schema, table.Name)
+	results, err = s.execQuery(ctx, conn, partitionQuery)
+	if err != nil {
+		return nil, true, errors.Wrap(err, "discover leaf partitions")
+	}
+
+	partitions := make([]physicalTable, 0)
+	if len(results) > 0 {
+		for _, row := range results[0].Rows {
+			if len(row) < 2 {
+				continue
+			}
+			partitions = append(partitions, physicalTable{Schema: string(row[0]), Name: string(row[1])})
+		}
+	}
+	return partitions, true, nil
 }
 
 // createChunksWithStrategyConn creates chunks using the user-specified strategy with given connection
@@ -744,7 +842,7 @@ func (s *Snapshotter) shouldFallbackSparseIntegerRange(ctx context.Context, conn
 		return false
 	}
 
-	rowCount, err := s.getTableRawCountWithConn(ctx, conn, table.Schema, table.Name)
+	rowCount, err := s.getTableRawCountWithConn(ctx, conn, table.Schema, table.Name, table.QueryCondition)
 	if err != nil {
 		logger.Warn("[chunk] failed to read row count for sparse integer_range check",
 			"table", table.Name, "error", err)
@@ -966,7 +1064,7 @@ func (s *Snapshotter) estimateRowsPerBlockWithConn(ctx context.Context, conn pq.
 }
 
 func (s *Snapshotter) createOffsetChunksWithConn(ctx context.Context, conn pq.Connection, slotName string, table publication.Table) []*Chunk {
-	rowCount, err := s.getTableRawCountWithConn(ctx, conn, table.Schema, table.Name)
+	rowCount, err := s.getTableRawCountWithConn(ctx, conn, table.Schema, table.Name, table.QueryCondition)
 	if err != nil {
 		logger.Warn("[chunk] failed to estimate row count, using single chunk", "table", table.Name, "error", err)
 		rowCount = 0
@@ -1106,7 +1204,11 @@ func (s *Snapshotter) buildPrimaryKeyBoundsQuery(table publication.Table, pkColu
 		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
 		FROM %s.%s
 	`, pkColumn, pkColumn, table.Schema, table.Name)
-	if queryCondition := s.getQueryCondition(table.Schema, table.Name); queryCondition != "" {
+	queryCondition := table.QueryCondition
+	if queryCondition == "" {
+		queryCondition = s.getQueryCondition(table.Schema, table.Name)
+	}
+	if queryCondition != "" {
 		query += " WHERE (" + queryCondition + ")"
 	}
 	return query
@@ -1183,7 +1285,7 @@ func (s *Snapshotter) insertChunkBatch(ctx context.Context, chunks []*Chunk) err
 
 		query := fmt.Sprintf(`
 			INSERT INTO %s (
-				slot_name, table_schema, table_name, chunk_index, 
+				slot_name, table_schema, table_name, physical_table_schema, physical_table_name, chunk_index,
 				chunk_start, chunk_size, range_start, range_end,
 				block_start, block_end, is_last_chunk, partition_strategy, status
 			) VALUES %s
@@ -1223,10 +1325,19 @@ func (s *Snapshotter) buildChunkValueString(chunk *Chunk) string {
 		partitionStrategy = string(PartitionStrategyOffset)
 	}
 
-	return fmt.Sprintf("('%s', '%s', '%s', %d, %d, %d, %s, %s, %s, %s, %t, '%s', '%s')",
+	physicalTableSchema := "NULL"
+	physicalTableName := "NULL"
+	if chunk.PhysicalTableSchema != "" && chunk.PhysicalTableName != "" {
+		physicalTableSchema = fmt.Sprintf("'%s'", chunk.PhysicalTableSchema)
+		physicalTableName = fmt.Sprintf("'%s'", chunk.PhysicalTableName)
+	}
+
+	return fmt.Sprintf("('%s', '%s', '%s', %s, %s, %d, %d, %d, %s, %s, %s, %s, %t, '%s', '%s')",
 		chunk.SlotName,
 		chunk.TableSchema,
 		chunk.TableName,
+		physicalTableSchema,
+		physicalTableName,
 		chunk.ChunkIndex,
 		chunk.ChunkStart,
 		chunk.ChunkSize,
@@ -1240,8 +1351,10 @@ func (s *Snapshotter) buildChunkValueString(chunk *Chunk) string {
 	)
 }
 
-func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Connection, schema, table string) (int64, error) {
-	queryCondition := s.getQueryCondition(schema, table)
+func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Connection, schema, table, queryCondition string) (int64, error) {
+	if queryCondition == "" {
+		queryCondition = s.getQueryCondition(schema, table)
+	}
 
 	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)

@@ -47,6 +47,26 @@ type liveEvent struct {
 	id        string
 }
 
+type snapshotMetadata struct {
+	parentSize           int64
+	partitionedRows      int64
+	regularRows          int64
+	partitionedProcessed int64
+	regularProcessed     int64
+	filteredProcessed    int64
+	totalChunks          int
+	completedChunks      int
+	partitionedChunks    int
+	partitionedLeafs     int
+	partitionedRootScan  int
+	regularChunks        int
+	regularPhysicalScan  int
+	filteredChunks       int
+	filteredLeafs        int
+	filteredRootScan     int
+	jobCompleted         bool
+}
+
 func main() {
 	ctx := context.Background()
 	host := os.Getenv("POSTGRES_HOST")
@@ -131,7 +151,7 @@ func main() {
 		fatal("verify snapshot completion", fmt.Errorf("snapshot END event was not received"))
 	}
 
-	if err := verifySnapshot(host, port); err != nil {
+	if err := verifySnapshot(ctx, host, port); err != nil {
 		fatal("verify snapshot", err)
 	}
 	if err := simulateCDC(ctx, host, port); err != nil {
@@ -236,122 +256,125 @@ func openDatabase(host string, port int) (*sql.DB, error) {
 	return sql.Open("postgres", dsn)
 }
 
-func verifySnapshot(host string, port int) error {
+func verifySnapshot(ctx context.Context, host string, port int) error {
 	db, err := openDatabase(host, port)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	var (
-		totalChunks          int
-		completedChunks      int
-		jobCompleted         bool
-		parentSize           int64
-		partitionedRows      int64
-		regularRows          int64
-		partitionedChunks    int
-		partitionedLeafs     int
-		partitionedRootScan  int
-		partitionedProcessed int64
-		regularChunks        int
-		regularPhysicalScan  int
-		regularProcessed     int64
-		filteredChunks       int
-		filteredLeafs        int
-		filteredRootScan     int
-		filteredProcessed    int64
-	)
+	var metadata snapshotMetadata
 
-	err = db.QueryRow(`
+	err = db.QueryRowContext(ctx, `
 		SELECT total_chunks, completed_chunks, completed
 		FROM cdc_snapshot_job
 		WHERE slot_name = $1
-	`, snapshotID).Scan(&totalChunks, &completedChunks, &jobCompleted)
+	`, snapshotID).Scan(&metadata.totalChunks, &metadata.completedChunks, &metadata.jobCompleted)
 	if err != nil {
 		return err
 	}
 
-	if err := db.QueryRow(`SELECT pg_relation_size('public.partitioned_events'), (SELECT count(*) FROM public.partitioned_events), (SELECT count(*) FROM public.regular_events)`).Scan(&parentSize, &partitionedRows, &regularRows); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT pg_relation_size('public.partitioned_events'), (SELECT count(*) FROM public.partitioned_events), (SELECT count(*) FROM public.regular_events)`).Scan(&metadata.parentSize, &metadata.partitionedRows, &metadata.regularRows); err != nil {
 		return err
 	}
 
-	if err := db.QueryRow(`
+	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*),
 		       COUNT(DISTINCT physical_table_schema || '.' || physical_table_name),
 		       COUNT(*) FILTER (WHERE physical_table_name IS NULL),
 		       COALESCE(SUM(rows_processed), 0)
 		FROM cdc_snapshot_chunks
 		WHERE slot_name = $1 AND table_schema = 'public' AND table_name = $2
-	`, snapshotID, partitionedTableName).Scan(&partitionedChunks, &partitionedLeafs, &partitionedRootScan, &partitionedProcessed); err != nil {
+	`, snapshotID, partitionedTableName).Scan(&metadata.partitionedChunks, &metadata.partitionedLeafs, &metadata.partitionedRootScan, &metadata.partitionedProcessed); err != nil {
 		return err
 	}
 
-	if err := db.QueryRow(`
+	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*),
 		       COUNT(DISTINCT physical_table_schema || '.' || physical_table_name),
 		       COUNT(*) FILTER (WHERE physical_table_name IS NULL),
 		       COALESCE(SUM(rows_processed), 0)
 		FROM cdc_snapshot_chunks
 		WHERE slot_name = $1 AND table_schema = 'public' AND table_name = $2
-	`, snapshotID, filteredPartitionedTableName).Scan(&filteredChunks, &filteredLeafs, &filteredRootScan, &filteredProcessed); err != nil {
+	`, snapshotID, filteredPartitionedTableName).Scan(&metadata.filteredChunks, &metadata.filteredLeafs, &metadata.filteredRootScan, &metadata.filteredProcessed); err != nil {
 		return err
 	}
 
-	if err := db.QueryRow(`
+	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*),
 		       COUNT(*) FILTER (WHERE physical_table_name IS NOT NULL),
 		       COALESCE(SUM(rows_processed), 0)
 		FROM cdc_snapshot_chunks
 		WHERE slot_name = $1 AND table_schema = 'public' AND table_name = $2
-	`, snapshotID, regularTableName).Scan(&regularChunks, &regularPhysicalScan, &regularProcessed); err != nil {
+	`, snapshotID, regularTableName).Scan(&metadata.regularChunks, &metadata.regularPhysicalScan, &metadata.regularProcessed); err != nil {
 		return err
 	}
 
 	slog.Info("snapshot metadata",
-		"parent_relation_size", parentSize,
-		"rows_visible_through_parent", partitionedRows,
+		"parent_relation_size", metadata.parentSize,
+		"rows_visible_through_parent", metadata.partitionedRows,
 		"configured_chunk_size", chunkSize,
-		"total_chunks", totalChunks,
-		"completed_chunks", completedChunks,
-		"partitioned_chunks", partitionedChunks,
-		"partitioned_leafs", partitionedLeafs,
-		"partitioned_root_scans", partitionedRootScan,
-		"partitioned_rows", partitionedProcessed,
-		"regular_chunks", regularChunks,
-		"regular_physical_scans", regularPhysicalScan,
-		"regular_rows", regularProcessed,
-		"filtered_partitioned_chunks", filteredChunks,
-		"filtered_partitioned_leafs", filteredLeafs,
-		"filtered_partitioned_root_scans", filteredRootScan,
-		"filtered_partitioned_rows", filteredProcessed,
+		"total_chunks", metadata.totalChunks,
+		"completed_chunks", metadata.completedChunks,
+		"partitioned_chunks", metadata.partitionedChunks,
+		"partitioned_leafs", metadata.partitionedLeafs,
+		"partitioned_root_scans", metadata.partitionedRootScan,
+		"partitioned_rows", metadata.partitionedProcessed,
+		"regular_chunks", metadata.regularChunks,
+		"regular_physical_scans", metadata.regularPhysicalScan,
+		"regular_rows", metadata.regularProcessed,
+		"filtered_partitioned_chunks", metadata.filteredChunks,
+		"filtered_partitioned_leafs", metadata.filteredLeafs,
+		"filtered_partitioned_root_scans", metadata.filteredRootScan,
+		"filtered_partitioned_rows", metadata.filteredProcessed,
 	)
 
-	if parentSize != 0 || partitionedRows != partitionedExpectedRows || regularRows != regularExpectedRows {
-		return fmt.Errorf("fixture mismatch: parent_size=%d partitioned_rows=%d regular_rows=%d", parentSize, partitionedRows, regularRows)
-	}
-	if !jobCompleted || completedChunks != totalChunks {
-		return fmt.Errorf("snapshot did not complete: completed=%t chunks=%d/%d", jobCompleted, completedChunks, totalChunks)
-	}
-	if partitionedLeafs != 5 || partitionedRootScan != 0 {
-		return fmt.Errorf("partition chunks are invalid: physical_tables=%d root_chunks=%d", partitionedLeafs, partitionedRootScan)
-	}
-	if regularChunks == 0 || regularPhysicalScan != 0 {
-		return fmt.Errorf("regular table chunks are invalid: chunks=%d physical_chunks=%d", regularChunks, regularPhysicalScan)
-	}
-	if filteredChunks == 0 || filteredLeafs != 3 || filteredRootScan != 0 {
-		return fmt.Errorf("filtered partition chunks are invalid: chunks=%d physical_tables=%d root_chunks=%d", filteredChunks, filteredLeafs, filteredRootScan)
-	}
-	if partitionedProcessed != partitionedExpectedRows || partitionedProcessed != partitionedReceivedRows.Load() {
-		return fmt.Errorf("partitioned row mismatch: processed=%d received=%d", partitionedProcessed, partitionedReceivedRows.Load())
-	}
-	if regularProcessed != regularExpectedRows || regularProcessed != regularReceivedRows.Load() {
-		return fmt.Errorf("regular row mismatch: processed=%d received=%d", regularProcessed, regularReceivedRows.Load())
-	}
-	if filteredProcessed != filteredPartitionedExpectedRows || filteredProcessed != filteredPartitionedReceivedRows.Load() {
-		return fmt.Errorf("filtered partitioned row mismatch: processed=%d received=%d", filteredProcessed, filteredPartitionedReceivedRows.Load())
+	if err := validateSnapshotMetadata(metadata); err != nil {
+		return err
 	}
 
+	if err := verifyPartitionRows(ctx, db); err != nil {
+		return err
+	}
+
+	slog.Info("partitioned, filtered partitioned, and regular tables completed together",
+		"physical_tables", metadata.partitionedLeafs,
+		"total_chunks", metadata.totalChunks,
+		"partitioned_rows", metadata.partitionedProcessed,
+		"filtered_partitioned_rows", metadata.filteredProcessed,
+		"regular_rows", metadata.regularProcessed)
+	return nil
+}
+
+func validateSnapshotMetadata(metadata snapshotMetadata) error {
+	if metadata.parentSize != 0 || metadata.partitionedRows != partitionedExpectedRows || metadata.regularRows != regularExpectedRows {
+		return fmt.Errorf("fixture mismatch: parent_size=%d partitioned_rows=%d regular_rows=%d", metadata.parentSize, metadata.partitionedRows, metadata.regularRows)
+	}
+	if !metadata.jobCompleted || metadata.completedChunks != metadata.totalChunks {
+		return fmt.Errorf("snapshot did not complete: completed=%t chunks=%d/%d", metadata.jobCompleted, metadata.completedChunks, metadata.totalChunks)
+	}
+	if metadata.partitionedLeafs != 5 || metadata.partitionedRootScan != 0 {
+		return fmt.Errorf("partition chunks are invalid: physical_tables=%d root_chunks=%d", metadata.partitionedLeafs, metadata.partitionedRootScan)
+	}
+	if metadata.regularChunks == 0 || metadata.regularPhysicalScan != 0 {
+		return fmt.Errorf("regular table chunks are invalid: chunks=%d physical_chunks=%d", metadata.regularChunks, metadata.regularPhysicalScan)
+	}
+	if metadata.filteredChunks == 0 || metadata.filteredLeafs != 3 || metadata.filteredRootScan != 0 {
+		return fmt.Errorf("filtered partition chunks are invalid: chunks=%d physical_tables=%d root_chunks=%d", metadata.filteredChunks, metadata.filteredLeafs, metadata.filteredRootScan)
+	}
+	if metadata.partitionedProcessed != partitionedExpectedRows || metadata.partitionedProcessed != partitionedReceivedRows.Load() {
+		return fmt.Errorf("partitioned row mismatch: processed=%d received=%d", metadata.partitionedProcessed, partitionedReceivedRows.Load())
+	}
+	if metadata.regularProcessed != regularExpectedRows || metadata.regularProcessed != regularReceivedRows.Load() {
+		return fmt.Errorf("regular row mismatch: processed=%d received=%d", metadata.regularProcessed, regularReceivedRows.Load())
+	}
+	if metadata.filteredProcessed != filteredPartitionedExpectedRows || metadata.filteredProcessed != filteredPartitionedReceivedRows.Load() {
+		return fmt.Errorf("filtered partitioned row mismatch: processed=%d received=%d", metadata.filteredProcessed, filteredPartitionedReceivedRows.Load())
+	}
+	return nil
+}
+
+func verifyPartitionRows(ctx context.Context, db *sql.DB) error {
 	expectedPartitionRows := map[string]int64{
 		"partitioned_events_2026_01": 100,
 		"partitioned_events_2026_02": 10,
@@ -359,7 +382,7 @@ func verifySnapshot(host string, port int) error {
 		"partitioned_events_2026_04": 500,
 		"partitioned_events_2026_05": 300,
 	}
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(ctx, `
 		SELECT physical_table_name, COALESCE(SUM(rows_processed), 0)
 		FROM cdc_snapshot_chunks
 		WHERE slot_name = $1 AND table_name = $2
@@ -388,12 +411,6 @@ func verifySnapshot(host string, port int) error {
 		return fmt.Errorf("partitions missing from snapshot metadata: %v", expectedPartitionRows)
 	}
 
-	slog.Info("partitioned, filtered partitioned, and regular tables completed together",
-		"physical_tables", partitionedLeafs,
-		"total_chunks", totalChunks,
-		"partitioned_rows", partitionedProcessed,
-		"filtered_partitioned_rows", filteredProcessed,
-		"regular_rows", regularProcessed)
 	return nil
 }
 

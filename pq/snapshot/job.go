@@ -62,6 +62,21 @@ func (c *Chunk) queryTable() (string, string) {
 	return c.TableSchema, c.TableName
 }
 
+// from returns the FROM target of the chunk query.
+func (c *Chunk) from() string {
+	schema, name := c.queryTable()
+	return fromClause(schema, name, c.TableName)
+}
+
+// fromClause aliases a leaf partition to its configured root name, so query conditions
+// qualified with that name (e.g. "events.tenant_id = 5") still resolve against the leaf.
+func fromClause(schema, name, root string) string {
+	if name == root {
+		return schema + "." + name
+	}
+	return fmt.Sprintf("%s.%s AS %s", schema, name, root)
+}
+
 func (c *Chunk) hasRangeBounds() bool {
 	return c.RangeStart != nil && c.RangeEnd != nil
 }

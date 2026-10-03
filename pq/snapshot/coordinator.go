@@ -348,7 +348,9 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 	}
 
 	// Apply schema migrations for backward compatibility
-	s.migrateSchema(ctx)
+	if err := s.migrateSchema(ctx); err != nil {
+		return errors.Wrap(err, "migrate snapshot schema")
+	}
 
 	logger.Debug("[metadata] snapshot tables initialized")
 	return nil
@@ -356,32 +358,48 @@ func (s *Snapshotter) initTables(ctx context.Context) error {
 
 // migrateSchema applies idempotent schema migrations to ensure backward compatibility
 // This allows seamless upgrades when new columns are added to metadata tables
-func (s *Snapshotter) migrateSchema(ctx context.Context) {
+func (s *Snapshotter) migrateSchema(ctx context.Context) error {
 	// These ALTER statements are idempotent (IF NOT EXISTS) and safe to run on every startup
-	migrations := []string{
+	migrations := []struct{ column, definition string }{
 		// CTID block partitioning fields
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS block_start BIGINT",
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS block_end BIGINT",
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS is_last_chunk BOOLEAN DEFAULT FALSE",
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS partition_strategy TEXT DEFAULT 'offset'",
+		{"block_start", "BIGINT"},
+		{"block_end", "BIGINT"},
+		{"is_last_chunk", "BOOLEAN DEFAULT FALSE"},
+		{"partition_strategy", "TEXT DEFAULT 'offset'"},
 		// Integer range partitioning fields
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_start BIGINT",
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS range_end BIGINT",
+		{"range_start", "BIGINT"},
+		{"range_end", "BIGINT"},
 		// Physical relation used when the configured table is a partitioned root
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS physical_table_schema TEXT",
-		"ALTER TABLE cdc_snapshot_chunks ADD COLUMN IF NOT EXISTS physical_table_name TEXT",
+		{"physical_table_schema", "TEXT"},
+		{"physical_table_name", "TEXT"},
 	}
 
-	for _, stmt := range migrations {
+	columns := make([]string, 0, len(migrations))
+	for _, m := range migrations {
+		columns = append(columns, "'"+m.column+"'")
+		stmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", chunksTableName, m.column, m.definition)
 		if err := s.execSQL(ctx, s.metadataConn, stmt); err != nil {
-			// Log but don't fail - column might already exist or other non-critical error
+			// A role that does not own the table fails here even when the column exists,
+			// so the statement error alone is not fatal; the check below decides.
 			logger.Warn("[migration] failed to apply migration statement",
 				"statement", stmt,
 				"error", err)
 		}
 	}
 
+	results, err := s.execQuery(ctx, s.metadataConn, fmt.Sprintf(
+		"SELECT COUNT(*) FROM pg_attribute WHERE attrelid = to_regclass('%s') AND NOT attisdropped AND attname IN (%s)",
+		chunksTableName, strings.Join(columns, ", "),
+	))
+	if err != nil {
+		return errors.Wrap(err, "verify chunks table columns")
+	}
+	if len(results) == 0 || len(results[0].Rows) == 0 || string(results[0].Rows[0][0]) != strconv.Itoa(len(migrations)) {
+		return fmt.Errorf("%s is missing columns required by this version; run the ADD COLUMN migrations as the table owner (see the migration warnings above)", chunksTableName)
+	}
+
 	logger.Debug("[migration] schema migration completed")
+	return nil
 }
 
 // getCurrentLSN gets the current Write-Ahead Log LSN
@@ -517,17 +535,15 @@ func (s *Snapshotter) buildChunkQuery(chunk *Chunk, orderByClause string, pkColu
 }
 
 func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string, pkColumns []string, queryCondition string) string {
-	tableSchema, tableName := chunk.queryTable()
 	if chunk.hasRangeBounds() && len(pkColumns) == 1 {
 		pkColumn := pkColumns[0]
 		cols := selectSnapshotColumns(chunk.TableColumns)
 		whereClause := fmt.Sprintf("%s >= %d AND %s <= %d", pkColumn, *chunk.RangeStart, pkColumn, *chunk.RangeEnd)
 		whereClause = andCondition(whereClause, queryCondition)
 		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE %s ORDER BY %s LIMIT %d",
+			"SELECT %s FROM %s WHERE %s ORDER BY %s LIMIT %d",
 			cols,
-			tableSchema,
-			tableName,
+			chunk.from(),
 			whereClause,
 			orderByClause,
 			chunk.ChunkSize,
@@ -539,13 +555,13 @@ func (s *Snapshotter) buildIntegerRangeQuery(chunk *Chunk, orderByClause string,
 
 func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) string {
 	cols := selectSnapshotColumns(chunk.TableColumns)
-	tableSchema, tableName := chunk.queryTable()
+	from := chunk.from()
 	// Empty table or single chunk without block info - select all
 	if chunk.BlockStart == nil {
 		if queryCondition != "" {
-			return fmt.Sprintf("SELECT %s FROM %s.%s WHERE (%s)", cols, tableSchema, tableName, queryCondition)
+			return fmt.Sprintf("SELECT %s FROM %s WHERE (%s)", cols, from, queryCondition)
 		}
-		return fmt.Sprintf("SELECT %s FROM %s.%s", cols, tableSchema, tableName)
+		return fmt.Sprintf("SELECT %s FROM %s", cols, from)
 	}
 
 	// Last chunk (BlockEnd is nil): no upper bound to catch rows added after metadata creation
@@ -554,8 +570,8 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) s
 		whereClause := fmt.Sprintf("ctid >= '(%d,0)'::tid", *chunk.BlockStart)
 		whereClause = andCondition(whereClause, queryCondition)
 		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE %s",
-			cols, tableSchema, tableName, whereClause,
+			"SELECT %s FROM %s WHERE %s",
+			cols, from, whereClause,
 		)
 	}
 
@@ -564,26 +580,24 @@ func (s *Snapshotter) buildCTIDBlockQuery(chunk *Chunk, queryCondition string) s
 	whereClause := fmt.Sprintf("ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid", *chunk.BlockStart, *chunk.BlockEnd)
 	whereClause = andCondition(whereClause, queryCondition)
 	return fmt.Sprintf(
-		"SELECT %s FROM %s.%s WHERE %s",
+		"SELECT %s FROM %s WHERE %s",
 		cols,
-		tableSchema,
-		tableName,
+		from,
 		whereClause,
 	)
 }
 
 func (s *Snapshotter) buildOffsetQuery(chunk *Chunk, orderByClause string, queryCondition string) string {
 	cols := selectSnapshotColumns(chunk.TableColumns)
-	tableSchema, tableName := chunk.queryTable()
+	from := chunk.from()
 	where := ""
 	if queryCondition != "" {
 		where = " WHERE (" + queryCondition + ")"
 	}
 	return fmt.Sprintf(
-		"SELECT %s FROM %s.%s%s ORDER BY %s LIMIT %d OFFSET %d",
+		"SELECT %s FROM %s%s ORDER BY %s LIMIT %d OFFSET %d",
 		cols,
-		tableSchema,
-		tableName,
+		from,
 		where,
 		orderByClause,
 		chunk.ChunkSize,
@@ -685,7 +699,11 @@ func (s *Snapshotter) createTableChunksWithConn(ctx context.Context, conn pq.Con
 				PartitionStrategy: PartitionStrategyOffset,
 			}}, nil
 		}
+		if s.leafRoots == nil {
+			s.leafRoots = make(map[string]string)
+		}
 		for _, partition := range partitions {
+			s.leafRoots[partition.Schema+"."+partition.Name] = table.Name
 			physical := table
 			physical.Schema = partition.Schema
 			physical.Name = partition.Name
@@ -719,6 +737,14 @@ func (s *Snapshotter) createTableChunksForPhysicalTable(ctx context.Context, con
 	return s.createChunksAutoDetectConn(ctx, conn, slotName, table)
 }
 
+// sizingFrom returns the FROM target for coordinator sizing queries (see fromClause).
+func (s *Snapshotter) sizingFrom(schema, name string) string {
+	if root, ok := s.leafRoots[schema+"."+name]; ok {
+		return fromClause(schema, name, root)
+	}
+	return schema + "." + name
+}
+
 func (s *Snapshotter) getLeafPartitions(ctx context.Context, conn pq.Connection, table publication.Table) ([]physicalTable, bool, error) {
 	relationQuery := fmt.Sprintf("SELECT relkind FROM pg_class WHERE oid = to_regclass('%s.%s')", table.Schema, table.Name)
 	results, err := s.execQuery(ctx, conn, relationQuery)
@@ -732,13 +758,20 @@ func (s *Snapshotter) getLeafPartitions(ctx context.Context, conn pq.Connection,
 		return nil, false, nil
 	}
 
+	// pg_inherits instead of pg_partition_tree: the latter needs PostgreSQL 12+.
+	// quote_ident: leaf names come from the catalog and are spliced into SQL as-is.
 	partitionQuery := fmt.Sprintf(`
-		SELECT n.nspname, c.relname
-		FROM pg_partition_tree(to_regclass('%s.%s')) AS tree
+		WITH RECURSIVE tree AS (
+			SELECT to_regclass('%s.%s')::oid AS relid
+			UNION ALL
+			SELECT i.inhrelid FROM pg_inherits i JOIN tree t ON i.inhparent = t.relid
+		)
+		SELECT quote_ident(n.nspname), quote_ident(c.relname)
+		FROM tree
 		JOIN pg_class c ON c.oid = tree.relid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE tree.isleaf
-		ORDER BY n.nspname, c.relname
+		WHERE c.relkind <> 'p'
+		ORDER BY 1, 2
 	`, table.Schema, table.Name)
 	results, err = s.execQuery(ctx, conn, partitionQuery)
 	if err != nil {
@@ -1202,8 +1235,8 @@ func (s *Snapshotter) getPrimaryKeyBoundsWithConn(ctx context.Context, conn pq.C
 func (s *Snapshotter) buildPrimaryKeyBoundsQuery(table publication.Table, pkColumn string) string {
 	query := fmt.Sprintf(`
 		SELECT MIN(%s)::bigint AS min_value, MAX(%s)::bigint AS max_value
-		FROM %s.%s
-	`, pkColumn, pkColumn, table.Schema, table.Name)
+		FROM %s
+	`, pkColumn, pkColumn, s.sizingFrom(table.Schema, table.Name))
 	queryCondition := table.QueryCondition
 	if queryCondition == "" {
 		queryCondition = s.getQueryCondition(table.Schema, table.Name)
@@ -1357,7 +1390,7 @@ func (s *Snapshotter) getTableRawCountWithConn(ctx context.Context, conn pq.Conn
 	}
 
 	// query := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE oid = '%s.%s'::regclass", schema, table)
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", schema, table)
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", s.sizingFrom(schema, table))
 	if queryCondition != "" {
 		query += " WHERE (" + queryCondition + ")"
 	}

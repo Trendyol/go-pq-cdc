@@ -30,14 +30,14 @@ brew install podman-compose
 Ardından:
 
 ```bash
-cd partitioned-snapshot-cdc-regular
+cd example/partitioned-snapshot-cdc-regular
 podman compose up -d
 ```
 
 `main.go` dosyasını GoLand'dan çalıştırın veya repository root'tan:
 
 ```bash
-go run ./partitioned-snapshot-cdc-regular
+go run ./example/partitioned-snapshot-cdc-regular
 ```
 
 Uygulama varsayılan olarak `localhost:55432` üzerindeki PostgreSQL'e bağlanır.
@@ -59,9 +59,9 @@ snapshot followed by CDC completed successfully cdc_events=9
 Metadata'yı interaktif incelemek için servisleri ayrı çalıştırabilirsiniz:
 
 ```bash
-docker compose -f partitioned-snapshot-cdc-regular/docker-compose.yml up -d postgres
-go run ./partitioned-snapshot-cdc-regular
-docker compose -f partitioned-snapshot-cdc-regular/docker-compose.yml exec postgres \
+docker compose -f example/partitioned-snapshot-cdc-regular/docker-compose.yml up -d postgres
+go run ./example/partitioned-snapshot-cdc-regular
+docker compose -f example/partitioned-snapshot-cdc-regular/docker-compose.yml exec postgres \
   psql -U postgres -d snapshot_example -x -c \
   "SELECT * FROM cdc_snapshot_job; SELECT * FROM cdc_snapshot_chunks;"
 ```

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-playground/errors"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,4 +44,14 @@ func TestParseClaimedChunkWithPhysicalPartition(t *testing.T) {
 	assert.Nil(t, chunk.BlockEnd)
 	assert.True(t, chunk.IsLastChunk)
 	assert.Equal(t, PartitionStrategyCTIDBlock, chunk.PartitionStrategy)
+}
+
+// The dropped-partition path relies on the SQLSTATE surviving the Wrap chain between
+// the chunk query and executeChunkProcessing.
+func TestIsUndefinedTableErrorSeesThroughWraps(t *testing.T) {
+	pgErr := &pgconn.PgError{Code: "42P01"}
+	wrapped := errors.Wrap(errors.Wrap(errors.Wrap(pgErr, "execute chunk query"), "execute function"), "process chunk with transaction")
+
+	assert.True(t, isUndefinedTableError(wrapped))
+	assert.False(t, isUndefinedTableError(errors.Wrap(&pgconn.PgError{Code: "42703"}, "execute chunk query")))
 }

@@ -182,12 +182,35 @@ func (s *Snapshotter) prepareChunkProcessing(instanceID string, chunk *Chunk, ch
 func (s *Snapshotter) executeChunkProcessing(ctx context.Context, slotName, instanceID string, job *Job, handler Handler, chunk *Chunk) (bool, error) {
 	rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
 	if err != nil {
+		// A leaf dropped mid-snapshot (e.g. by a retention job) can never be read again;
+		// without this the chunk is retried forever and the snapshot never completes.
+		if chunk.PhysicalTableName != "" && isUndefinedTableError(err) && s.relationDropped(ctx, chunk) {
+			logger.Warn("[worker] partition no longer exists, completing chunk with zero rows",
+				"chunkID", chunk.ID,
+				"table", fmt.Sprintf("%s.%s", chunk.TableSchema, chunk.TableName),
+				"partition", fmt.Sprintf("%s.%s", chunk.PhysicalTableSchema, chunk.PhysicalTableName),
+				"error", err)
+			s.completeChunk(ctx, slotName, instanceID, chunk, 0)
+			return true, nil
+		}
 		return s.handleChunkProcessingError(ctx, instanceID, chunk, job.SnapshotID, err)
 	}
 
 	// Success: mark chunk as completed
 	s.completeChunk(ctx, slotName, instanceID, chunk, rowsProcessed)
 	return true, nil // More chunks may be available
+}
+
+// relationDropped confirms the chunk's leaf is really gone. SQLSTATE 42P01 alone is not
+// enough: it is also raised for e.g. a query condition referencing an unknown table alias,
+// and skipping those chunks would silently lose rows.
+func (s *Snapshotter) relationDropped(ctx context.Context, chunk *Chunk) bool {
+	results, err := s.execQuery(ctx, s.metadataConn, fmt.Sprintf(
+		"SELECT to_regclass('%s.%s') IS NULL", chunk.PhysicalTableSchema, chunk.PhysicalTableName))
+	if err != nil || len(results) == 0 || len(results[0].Rows) == 0 {
+		return false
+	}
+	return string(results[0].Rows[0][0]) == "t"
 }
 
 // handleChunkProcessingError handles different types of chunk processing errors

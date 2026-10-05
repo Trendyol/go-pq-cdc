@@ -182,12 +182,35 @@ func (s *Snapshotter) prepareChunkProcessing(instanceID string, chunk *Chunk, ch
 func (s *Snapshotter) executeChunkProcessing(ctx context.Context, slotName, instanceID string, job *Job, handler Handler, chunk *Chunk) (bool, error) {
 	rowsProcessed, err := s.processChunkWithTransaction(ctx, chunk, job.SnapshotID, job.SnapshotLSN, handler)
 	if err != nil {
+		// A leaf dropped mid-snapshot (e.g. by a retention job) can never be read again;
+		// without this the chunk is retried forever and the snapshot never completes.
+		if chunk.PhysicalTableName != "" && isUndefinedTableError(err) && s.relationDropped(ctx, chunk) {
+			logger.Warn("[worker] partition no longer exists, completing chunk with zero rows",
+				"chunkID", chunk.ID,
+				"table", fmt.Sprintf("%s.%s", chunk.TableSchema, chunk.TableName),
+				"partition", fmt.Sprintf("%s.%s", chunk.PhysicalTableSchema, chunk.PhysicalTableName),
+				"error", err)
+			s.completeChunk(ctx, slotName, instanceID, chunk, 0)
+			return true, nil
+		}
 		return s.handleChunkProcessingError(ctx, instanceID, chunk, job.SnapshotID, err)
 	}
 
 	// Success: mark chunk as completed
 	s.completeChunk(ctx, slotName, instanceID, chunk, rowsProcessed)
 	return true, nil // More chunks may be available
+}
+
+// relationDropped confirms the chunk's leaf is really gone. SQLSTATE 42P01 alone is not
+// enough: it is also raised for e.g. a query condition referencing an unknown table alias,
+// and skipping those chunks would silently lose rows.
+func (s *Snapshotter) relationDropped(ctx context.Context, chunk *Chunk) bool {
+	results, err := s.execQuery(ctx, s.metadataConn, fmt.Sprintf(
+		"SELECT to_regclass('%s.%s') IS NULL", chunk.PhysicalTableSchema, chunk.PhysicalTableName))
+	if err != nil || len(results) == 0 || len(results[0].Rows) == 0 {
+		return false
+	}
+	return string(results[0].Rows[0][0]) == "t"
 }
 
 // handleChunkProcessingError handles different types of chunk processing errors
@@ -436,8 +459,8 @@ func (s *Snapshotter) claimNextChunk(ctx context.Context, slotName, instanceID s
 		}
 
 		row := results[0].Rows[0]
-		if len(row) < 13 {
-			return errors.New("invalid chunk row: expected 13 columns")
+		if len(row) < 15 {
+			return errors.New("invalid chunk row: expected 15 columns")
 		}
 
 		chunk, err = s.parseClaimedChunk(row, slotName, instanceID, now)
@@ -469,7 +492,8 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 		    heartbeat_at = '%s'
 		FROM available_chunk
 		WHERE c.id = available_chunk.id
-		RETURNING c.id, c.table_schema, c.table_name, 
+		RETURNING c.id, c.table_schema, c.table_name,
+		          c.physical_table_schema, c.physical_table_name,
 		          c.chunk_index, c.chunk_start, c.chunk_size, 
 		          c.range_start, c.range_end, c.block_start, c.block_end,
 		          c.is_last_chunk, c.partition_strategy, c.rows_processed
@@ -485,8 +509,8 @@ func (s *Snapshotter) buildClaimChunkQuery(slotName, instanceID string, now time
 
 // parseClaimedChunk parses the chunk row data
 func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID string, now time.Time) (*Chunk, error) {
-	if len(row) < 13 {
-		return nil, errors.New("invalid chunk row: expected 13 columns")
+	if len(row) < 15 {
+		return nil, errors.New("invalid chunk row: expected 15 columns")
 	}
 
 	chunk := &Chunk{
@@ -503,22 +527,24 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	}
 	chunk.TableSchema = string(row[1])
 	chunk.TableName = string(row[2])
-	if _, err := fmt.Sscanf(string(row[3]), "%d", &chunk.ChunkIndex); err != nil {
+	chunk.PhysicalTableSchema = string(row[3])
+	chunk.PhysicalTableName = string(row[4])
+	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkIndex); err != nil {
 		return nil, errors.Wrap(err, "parse chunk index")
 	}
-	if _, err := fmt.Sscanf(string(row[4]), "%d", &chunk.ChunkStart); err != nil {
+	if _, err := fmt.Sscanf(string(row[6]), "%d", &chunk.ChunkStart); err != nil {
 		return nil, errors.Wrap(err, "parse chunk start")
 	}
-	if _, err := fmt.Sscanf(string(row[5]), "%d", &chunk.ChunkSize); err != nil {
+	if _, err := fmt.Sscanf(string(row[7]), "%d", &chunk.ChunkSize); err != nil {
 		return nil, errors.Wrap(err, "parse chunk size")
 	}
 
 	// Parse nullable int64 fields for range
-	rangeStart, err := parseNullableInt64(row[6])
+	rangeStart, err := parseNullableInt64(row[8])
 	if err != nil {
 		return nil, errors.Wrap(err, "parse range start")
 	}
-	rangeEnd, err := parseNullableInt64(row[7])
+	rangeEnd, err := parseNullableInt64(row[9])
 	if err != nil {
 		return nil, errors.Wrap(err, "parse range end")
 	}
@@ -526,11 +552,11 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	chunk.RangeEnd = rangeEnd
 
 	// Parse CTID block fields
-	blockStart, err := parseNullableInt64(row[8])
+	blockStart, err := parseNullableInt64(row[10])
 	if err != nil {
 		return nil, errors.Wrap(err, "parse block start")
 	}
-	blockEnd, err := parseNullableInt64(row[9])
+	blockEnd, err := parseNullableInt64(row[11])
 	if err != nil {
 		return nil, errors.Wrap(err, "parse block end")
 	}
@@ -538,13 +564,13 @@ func (s *Snapshotter) parseClaimedChunk(row [][]byte, slotName, instanceID strin
 	chunk.BlockEnd = blockEnd
 
 	// Parse is_last_chunk (boolean)
-	if len(row[10]) > 0 {
-		chunk.IsLastChunk = string(row[10]) == "t" || string(row[10]) == "true"
+	if len(row[12]) > 0 {
+		chunk.IsLastChunk = string(row[12]) == "t" || string(row[12]) == "true"
 	}
 
 	// Parse partition strategy
-	if len(row[11]) > 0 {
-		chunk.PartitionStrategy = PartitionStrategy(string(row[11]))
+	if len(row[13]) > 0 {
+		chunk.PartitionStrategy = PartitionStrategy(string(row[13]))
 	} else {
 		chunk.PartitionStrategy = PartitionStrategyOffset
 	}

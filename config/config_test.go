@@ -670,3 +670,27 @@ func TestVisibilityGuardConfig(t *testing.T) {
 		require.ErrorContains(t, cfg.Validate(), "visibilityGuard.failMode")
 	})
 }
+
+func TestVisibilityGuardReplicasConfig(t *testing.T) {
+	t.Run("requires the primary guard", func(t *testing.T) {
+		cfg := VisibilityGuardConfig{Replicas: []string{"standby1:5432"}}
+		require.ErrorContains(t, cfg.Validate(), "requires visibilityGuard.enabled")
+	})
+
+	t.Run("host:port only, no duplicates", func(t *testing.T) {
+		cfg := VisibilityGuardConfig{Enabled: true, FailMode: VisibilityFailClosed, Timeout: time.Second, PollInterval: time.Millisecond,
+			Replicas: []string{"standby1", "standby2:5432", "standby2:5432"}}
+		err := cfg.Validate()
+		require.ErrorContains(t, err, `"standby1" must be host:port`)
+		require.ErrorContains(t, err, `"standby2:5432" listed twice`)
+	})
+
+	t.Run("valid list and ReplicaDSN", func(t *testing.T) {
+		cfg := Config{Username: "u", Password: "p@ss", Database: "d", Host: "primary", Port: 5432,
+			VisibilityGuard: VisibilityGuardConfig{Enabled: true, Replicas: []string{"standby1:5432", "[::1]:5433"}}}
+		cfg.SetDefault()
+		require.NoError(t, cfg.VisibilityGuard.Validate())
+		assert.Equal(t, "postgres://u:p%40ss@standby1:5432/d", cfg.ReplicaDSN("standby1:5432"))
+		assert.Equal(t, "postgres://u:p%40ss@[::1]:5433/d", cfg.ReplicaDSN("[::1]:5433"))
+	})
+}

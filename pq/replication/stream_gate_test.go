@@ -18,11 +18,12 @@ import (
 
 // gatedStream wires a stream to a scripted guard and records what the listener saw.
 type gatedStream struct {
-	s        *stream
-	q        *scriptedQuery
-	m        *countingMetric
-	received []uint32 // xids delivered to the listener
-	commits  []pq.LSN // CommitLSN seen by the listener, in delivery order
+	s           *stream
+	q           *scriptedQuery
+	m           *countingMetric
+	received    []uint32 // xids delivered to the listener
+	commits     []pq.LSN // CommitLSN seen by the listener, in delivery order
+	contextXids []uint32 // ListenerContext.Xid, in delivery order
 }
 
 func newGatedStream(t *testing.T, cfg config.Config, rows [][]string) *gatedStream {
@@ -32,6 +33,7 @@ func newGatedStream(t *testing.T, cfg config.Config, rows [][]string) *gatedStre
 	gs.s = NewStream("", cfg, nil, func(ctx *ListenerContext) {
 		gs.received = append(gs.received, ctx.Message.(*format.Insert).XID)
 		gs.commits = append(gs.commits, ctx.CommitLSN)
+		gs.contextXids = append(gs.contextXids, ctx.Xid)
 		_ = ctx.Ack()
 	}).(*stream)
 	guard, m := testGuard(gs.q.query)
@@ -50,8 +52,15 @@ func (gs *gatedStream) run(msgs ...*Message) error {
 	return gs.s.processLoop(context.Background())
 }
 
+// insertMsg is one DML message of transaction xid at WAL position lsn. Every
+// message of a transaction shares its commit record, so commitLSN is derived
+// from xid; txMsg sets it explicitly for the replica guard tests.
 func insertMsg(xid uint32, lsn int64) *Message {
-	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: lsn, xid: xid, commitLSN: pq.LSN(lsn)}
+	return txMsg(xid, lsn, pq.LSN(xid))
+}
+
+func txMsg(xid uint32, walStart int64, commitLSN pq.LSN) *Message {
+	return &Message{message: &format.Insert{XID: xid, TableName: "books"}, walStart: walStart, xid: xid, commitLSN: commitLSN}
 }
 
 func guardCfg(mode config.VisibilityFailMode) config.Config {
@@ -141,7 +150,8 @@ func TestGateDisabledDoesNotTouchGuard(t *testing.T) {
 
 	require.NoError(t, gs.run(insertMsg(200, 1)))
 	assert.Equal(t, []uint32{200}, gs.received)
-	assert.Equal(t, []pq.LSN{1}, gs.commits, "ListenerContext.CommitLSN comes from Message.commitLSN")
+	assert.Equal(t, []pq.LSN{200}, gs.commits, "ListenerContext.CommitLSN comes from Message.commitLSN")
+	assert.Equal(t, []uint32{200}, gs.contextXids, "ListenerContext.Xid comes from Message.xid")
 	assert.Equal(t, int32(0), gs.q.calls.Load())
 }
 

@@ -13,6 +13,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestReplicationSlotCommandsQuoteTheName(t *testing.T) {
+	if got := createReplicationSlotCommand("test-slot", false); got != `CREATE_REPLICATION_SLOT "test-slot" LOGICAL pgoutput` {
+		t.Fatalf("create: got %s", got)
+	}
+	if got := createReplicationSlotCommand("test_slot", true); got != `CREATE_REPLICATION_SLOT "test_slot" LOGICAL pgoutput (FAILOVER true)` {
+		t.Fatalf("create failover: got %s", got)
+	}
+	if got := alterReplicationSlotFailoverCommand("test-slot"); got != `ALTER_REPLICATION_SLOT "test-slot" (FAILOVER true)` {
+		t.Fatalf("alter: got %s", got)
+	}
+}
+
 // fakeSlotConn is a pq.Connection whose Exec always fails: Exec on a
 // zero-value pgconn is rejected by its status check and yields a closed,
 // error-carrying MultiResultReader without panicking. The tests assert on the

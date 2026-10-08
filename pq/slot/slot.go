@@ -15,6 +15,7 @@ import (
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	libpq "github.com/lib/pq"
 )
 
 var (
@@ -98,10 +99,7 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 	}
 
 	// Slot needs replication connection for CREATE_REPLICATION_SLOT command
-	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s LOGICAL pgoutput", s.cfg.Name)
-	if s.cfg.Failover {
-		sql += " (FAILOVER true)"
-	}
+	sql := createReplicationSlotCommand(s.cfg.Name, s.cfg.Failover)
 	if err := s.execReplicationCommand(ctx, sql); err != nil {
 		return nil, errors.Wrap(err, "replication slot create")
 	}
@@ -144,7 +142,7 @@ func (s *Slot) enableFailoverLocked(ctx context.Context, info *Info) error {
 		logger.Warn("replication slot is active for another process, failover will be enabled once it is released", "name", s.cfg.Name, "activePID", info.ActivePID)
 		return nil
 	}
-	if err := s.execReplicationCommand(ctx, fmt.Sprintf("ALTER_REPLICATION_SLOT %s (FAILOVER true)", s.cfg.Name)); err != nil {
+	if err := s.execReplicationCommand(ctx, alterReplicationSlotFailoverCommand(s.cfg.Name)); err != nil {
 		return errors.Wrap(err, "replication slot enable failover")
 	}
 	logger.Info("replication slot failover enabled", "name", s.cfg.Name)
@@ -162,6 +160,18 @@ func (s *Slot) scalarLocked(ctx context.Context, sql string) (string, error) {
 		return "", errors.Newf("no rows: %s", sql)
 	}
 	return string(results[0].Rows[0][0]), nil
+}
+
+func createReplicationSlotCommand(name string, failover bool) string {
+	sql := fmt.Sprintf("CREATE_REPLICATION_SLOT %s LOGICAL pgoutput", libpq.QuoteIdentifier(name))
+	if failover {
+		sql += " (FAILOVER true)"
+	}
+	return sql
+}
+
+func alterReplicationSlotFailoverCommand(name string) string {
+	return fmt.Sprintf("ALTER_REPLICATION_SLOT %s (FAILOVER true)", libpq.QuoteIdentifier(name))
 }
 
 // execReplicationCommand runs a replication-protocol command

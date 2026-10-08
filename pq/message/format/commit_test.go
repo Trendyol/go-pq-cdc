@@ -47,7 +47,7 @@ func TestNewCommit(t *testing.T) {
 		// Then
 		require.Error(t, err)
 		assert.Nil(t, commit)
-		assert.Contains(t, err.Error(), "commit message length must be at least 25 byte")
+		assert.Contains(t, err.Error(), "commit message length must be at least 26 byte")
 	})
 
 	t.Run("should decode commit message with minimum valid length", func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestCommit_decode(t *testing.T) {
 
 		// Then
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "commit message length must be at least 25 byte")
+		assert.Contains(t, err.Error(), "commit message length must be at least 26 byte")
 	})
 
 	t.Run("should return error when data length is exactly 24 bytes", func(t *testing.T) {
@@ -162,7 +162,7 @@ func TestCommit_decode(t *testing.T) {
 
 		// Then
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "commit message length must be at least 25 byte, but got 24")
+		assert.Contains(t, err.Error(), "commit message length must be at least 26 byte, but got 24")
 	})
 
 	t.Run("should decode when data length is exactly 26 bytes", func(t *testing.T) {

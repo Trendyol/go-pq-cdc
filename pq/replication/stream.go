@@ -202,7 +202,7 @@ func (s *stream) setup(ctx context.Context) error {
 		replicationStartLsn = snapshotLSN
 	}
 
-	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn, s.config.Slot.ProtoVersion); err != nil {
+	if err := replication.start(ctx, s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn, s.config.Slot.ProtoVersion); err != nil {
 		return err
 	}
 
@@ -568,6 +568,12 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 		m.LSN = xld.WALStart
 	case *format.Delete:
 		m.LSN = xld.WALStart
+	case *format.LogicalDecodingMessage:
+		// A non-transactional message has no LSN on the wire. Use the WAL
+		// record position so the consumer still has a location for it.
+		if m.LSN == 0 {
+			m.LSN = xld.WALStart
+		}
 	}
 
 	s.dispatchMessage(decodedMsg, xld, buf, streamBuf)
@@ -643,6 +649,8 @@ func messageXid(msg any) uint32 {
 	case *format.Truncate:
 		return m.XID
 	case *format.Relation:
+		return m.XID
+	case *format.LogicalDecodingMessage:
 		return m.XID
 	}
 	return 0

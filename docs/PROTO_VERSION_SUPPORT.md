@@ -26,10 +26,11 @@ Validation now rejects unsupported values.
 
 ### 2) Replication start behavior is version-aware
 
-Replication startup now uses `slot.protoVersion`:
+Replication startup now uses `slot.protoVersion` and the server version:
 
 - Always sends `proto_version '<N>'`
-- Sends `messages 'true'` and `streaming 'true'` only when `protoVersion >= 2`
+- Sends `streaming 'true'` only when `protoVersion >= 2`
+- Sends `messages 'true'` when `server_version_num` is 140000 or newer (PostgreSQL 14+), on either protocol version. Older servers reject that option, so it is omitted and startup still proceeds
 
 This keeps startup compatible with older PostgreSQL versions while preserving advanced behavior on newer versions.
 
@@ -93,10 +94,10 @@ Slot: slot.Config{
 
 ## Compatibility Matrix
 
-| slot.protoVersion | Minimum PostgreSQL | Streaming protocol messages |
-|-------------------|--------------------|-----------------------------|
-| 1                 | 10                 | No                          |
-| 2                 | 14                 | Yes                         |
+| slot.protoVersion | Minimum PostgreSQL | Streaming protocol messages | Logical decoding messages   |
+|-------------------|--------------------|-----------------------------|-----------------------------|
+| 1                 | 10                 | No                          | Requested on PostgreSQL 14+ |
+| 2                 | 14                 | Yes                         | Requested                   |
 
 ## Test Coverage Added
 

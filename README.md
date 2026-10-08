@@ -384,7 +384,7 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `slot.createIfNotExists`                |   bool   |    no    |    -    | Create replication slot if not exists. Otherwise, return `replication slot is not exists` error.      |                                                                                                                                                    |
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive. Quoted when sent to PostgreSQL.                                                            |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
-| `slot.protoVersion`                     |   int    |    no    |    2    | `pgoutput` protocol version used in `START_REPLICATION`                                               | `1`: PostgreSQL 10+ compatibility, no streaming transaction protocol messages. `2`: PostgreSQL 14+, enables streaming/messages options.           |
+| `slot.protoVersion`                     |   int    |    no    |    2    | `pgoutput` protocol version used in `START_REPLICATION`                                               | `1`: no streaming of in-progress transactions. Works on PostgreSQL 10+. `messages` is requested when the server is PostgreSQL 14 or newer. `2`: PostgreSQL 14+, streaming and logical messages. |
 | `slot.failover`                         |   bool   |    no    |  false  | Create the slot with `FAILOVER true` (PostgreSQL 17+) so standbys running `sync_replication_slots` keep a synchronized copy; an existing slot is altered with `ALTER_REPLICATION_SLOT … (FAILOVER true)`. | Rejected with a clear error on older servers. Needs `synchronized_standby_slots` on the primary, see [Failover slots](#failover-slots-postgresql-17). |
 | `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
 | `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial`, `never`, or `snapshot_only`                                                 | **initial:** Take snapshot only if no previous snapshot exists, then start CDC. <br> **never:** Skip snapshot, start CDC immediately. <br> **snapshot_only:** Take snapshot and exit (no CDC, no replication slot required). |
@@ -417,14 +417,13 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 `go-pq-cdc` now supports both `pgoutput` protocol versions:
 
 - **`slot.protoVersion: 1`**
-  - Works with PostgreSQL 10+
   - Starts replication with `proto_version '1'`
-  - Does not request `messages 'true'` or `streaming 'true'`
-  - Best choice for older PostgreSQL versions or simpler CDC setups
+  - Does not request `streaming 'true'`, so in-progress transactions are not streamed
+  - On PostgreSQL 14 and newer, also requests `messages 'true'`. PostgreSQL 10–13 do not receive that option, so those servers still start
 
 - **`slot.protoVersion: 2` (default)**
   - Requires PostgreSQL 14+
-  - Starts replication with `proto_version '2'`, `messages 'true'`, and `streaming 'true'`
+  - Starts replication with `proto_version '2'`, `streaming 'true'`, and `messages 'true'`
   - Supports streamed in-progress transactions (`STREAM START/STOP/COMMIT/ABORT`)
 
 Streaming behavior for `proto_version: 2`:

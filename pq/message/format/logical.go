@@ -1,6 +1,7 @@
 package format
 
 import (
+	"bytes"
 	"encoding/binary"
 	"time"
 
@@ -67,12 +68,11 @@ func (m *LogicalDecodingMessage) decode(data []byte, streamedTransaction bool) e
 		skipByte += 8
 	}
 
-	nullIdx := skipByte
-	for ; nullIdx < len(data) && data[nullIdx] != 0; nullIdx++ {
-	}
-	if nullIdx >= len(data) {
+	relIdx := bytes.IndexByte(data[skipByte:], 0)
+	if relIdx < 0 {
 		return errors.Newf("logical decoding message prefix is not null terminated, remaining %d", len(data)-skipByte)
 	}
+	nullIdx := skipByte + relIdx
 
 	m.Prefix = string(data[skipByte:nullIdx])
 	skipByte = nullIdx + 1

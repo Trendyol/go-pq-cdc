@@ -1,0 +1,826 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:08:10 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 079b78100c012542048abd74a088d0bc53fdc8459d378d7c1b490c3a0bd876f1
+  Test ProcessID: f9287d83-c1f7-43cc-b0e5-37019387ff21
+2026/10/14 16:08:10 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:08:10 ✅ Container created: 6304e215d51b
+2026/10/14 16:08:10 🐳 Starting container: 6304e215d51b
+2026/10/14 16:08:10 ✅ Container started: 6304e215d51b
+2026/10/14 16:08:10 🚧 Waiting for container id 6304e215d51b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000313728 Strategies:[0xc000378480]}
+2026/10/14 16:08:11 🔔 Container is ready: 6304e215d51b
+=== RUN   TestOnlineVisibilityBarrier
+2026/10/14 16:08:12 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:08:12 ✅ Container created: 3d676d684bca
+2026/10/14 16:08:12 🐳 Starting container: 3d676d684bca
+2026/10/14 16:08:12 ✅ Container started: 3d676d684bca
+2026/10/14 16:08:12 🚧 Waiting for container id 3d676d684bca image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000304f08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1011856b0 ResponseMatcher:0x1012a4de0 PollInterval:100ms}
+2026/10/14 16:08:13 🔔 Container is ready: 3d676d684bca
+    online_visibility_test.go:121: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121
+        	Error:      	Condition never satisfied
+        	Test:       	TestOnlineVisibilityBarrier
+==================
+WARNING: DATA RACE
+Write at 0x00c0000390f8 by goroutine 54:
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:692 +0x60
+  github.com/jackc/pgx/v5.(*Conn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:306 +0x90
+  github.com/Trendyol/go-pq-cdc/integration.onlinePGFixture.Connect.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:70 +0x3c
+  testing.(*common).Cleanup.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1317 +0x124
+  testing.(*common).runCleanup()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1667 +0x16c
+  testing.tRunner.func2()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2030 +0x48
+  runtime.Goexit()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/panic.go:694 +0x5c
+  github.com/stretchr/testify/require.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:415 +0xe0
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121 +0x728
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:113 +0x56c
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:195 +0x400
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:180 +0x1dc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:110 +0x3a4
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:42 +0x8e8
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x38
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:98 +0x2c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+
+Previous read at 0x00c0000390f8 by goroutine 1258:
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).receiveMessage()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:615 +0x38
+  github.com/jackc/pgx/v5/pgconn.(*ResultReader).receiveMessage()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1805 +0x70
+  github.com/jackc/pgx/v5/pgconn.(*ResultReader).readUntilRowDescription()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1772 +0x5c
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1307 +0x284
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1250 +0x1a8
+  github.com/jackc/pgx/v5.(*Conn).Query()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:847 +0x1654
+  github.com/jackc/pgx/v5.(*Conn).QueryRow()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:931 +0x70
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:123 +0x88
+  github.com/stretchr/testify/assert.Eventually.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:1994 +0x34
+
+Goroutine 54 (running) created at:
+  testing.(*T).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x7bc
+  testing.runTests.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2585 +0x78
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.runTests()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2583 +0x7a0
+  testing.(*M).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2443 +0xb38
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:94 +0x8c0
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.allowReplicationConnections()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:204 +0x128
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:90 +0x854
+  github.com/Trendyol/go-pq-cdc/integration.createCDCUser()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:191 +0x220
+  github.com/Trendyol/go-pq-cdc/integration.createCDCUser()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:191 +0x220
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:85 +0x7d4
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:67 +0x554
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go/wait.(*MultiStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/all.go:75 +0x2f4
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.SetupTestContainer()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:103 +0x118
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:56 +0x3c8
+  github.com/testcontainers/testcontainers-go/network.New()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/network/network.go:46 +0x44c
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:47 +0x1fc
+  main.main()
+      _testmain.go:218 +0x104
+
+Goroutine 1258 (running) created at:
+  github.com/stretchr/testify/assert.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:2013 +0x298
+  github.com/stretchr/testify/require.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:412 +0xbc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121 +0x728
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:113 +0x56c
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:195 +0x400
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:180 +0x1dc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:110 +0x3a4
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:42 +0x8e8
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x38
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:98 +0x2c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+==================
+==================
+WARNING: DATA RACE
+Read at 0x00c000338da8 by goroutine 54:
+  github.com/jackc/pgx/v5/pgproto3.(*Frontend).Send()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/frontend.go:82 +0x58
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:714 +0x1e8
+  github.com/jackc/pgx/v5.(*Conn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:306 +0x90
+  github.com/Trendyol/go-pq-cdc/integration.onlinePGFixture.Connect.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:70 +0x3c
+  testing.(*common).Cleanup.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1317 +0x124
+  testing.(*common).runCleanup()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1667 +0x16c
+  testing.tRunner.func2()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2030 +0x48
+  runtime.Goexit()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/panic.go:694 +0x5c
+  github.com/stretchr/testify/require.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:415 +0xe0
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121 +0x728
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:113 +0x56c
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:195 +0x400
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:180 +0x1dc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:110 +0x3a4
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:42 +0x8e8
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x38
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:98 +0x2c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+
+Previous write at 0x00c000338da8 by goroutine 1258:
+  github.com/jackc/pgx/v5/pgproto3.(*Frontend).Flush()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/frontend.go:113 +0x1f8
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).flushWithPotentialWriteReadDeadlock()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:2069 +0xa0
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1297 +0xec
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1250 +0x1a8
+  github.com/jackc/pgx/v5.(*Conn).Query()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:847 +0x1654
+  github.com/jackc/pgx/v5.(*Conn).QueryRow()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:931 +0x70
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:123 +0x88
+  github.com/stretchr/testify/assert.Eventually.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:1994 +0x34
+
+Goroutine 54 (running) created at:
+  testing.(*T).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x7bc
+  testing.runTests.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2585 +0x78
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.runTests()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2583 +0x7a0
+  testing.(*M).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2443 +0xb38
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:94 +0x8c0
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.allowReplicationConnections()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:204 +0x128
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:90 +0x854
+  github.com/Trendyol/go-pq-cdc/integration.createCDCUser()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:191 +0x220
+  github.com/Trendyol/go-pq-cdc/integration.createCDCUser()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:191 +0x220
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:85 +0x7d4
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:67 +0x554
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go/wait.(*MultiStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/all.go:75 +0x2f4
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.SetupTestContainer()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:103 +0x118
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:56 +0x3c8
+  github.com/testcontainers/testcontainers-go/network.New()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/network/network.go:46 +0x44c
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:47 +0x1fc
+  main.main()
+      _testmain.go:218 +0x104
+
+Goroutine 1258 (running) created at:
+  github.com/stretchr/testify/assert.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:2013 +0x298
+  github.com/stretchr/testify/require.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:412 +0xbc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121 +0x728
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:113 +0x56c
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:195 +0x400
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:180 +0x1dc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:110 +0x3a4
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:42 +0x8e8
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x38
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:98 +0x2c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+==================
+==================
+WARNING: DATA RACE
+Write at 0x00c00000e600 by goroutine 54:
+  github.com/jackc/pgx/v5/pgproto3.(*Terminate).Encode()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/terminate.go:24 +0x80
+  github.com/jackc/pgx/v5/pgproto3.(*Frontend).Send()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/frontend.go:83 +0x9c
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:714 +0x1e8
+  github.com/jackc/pgx/v5.(*Conn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:306 +0x90
+  github.com/Trendyol/go-pq-cdc/integration.onlinePGFixture.Connect.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:70 +0x3c
+  testing.(*common).Cleanup.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1317 +0x124
+  testing.(*common).runCleanup()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1667 +0x16c
+  testing.tRunner.func2()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2030 +0x48
+  runtime.Goexit()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/panic.go:694 +0x5c
+  github.com/stretchr/testify/require.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:415 +0xe0
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121 +0x728
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:113 +0x56c
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:195 +0x400
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:180 +0x1dc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:110 +0x3a4
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:42 +0x8e8
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x38
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:98 +0x2c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+
+Previous read at 0x00c00000e600 by goroutine 1258:
+  runtime.racereadrange()
+      <autogenerated>:1 +0x14
+  internal/poll.ignoringEINTRIO()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/internal/poll/fd_unix.go:738 +0x2a8
+  internal/poll.(*FD).Write()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/internal/poll/fd_unix.go:374 +0x210
+  net.(*netFD).Write()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/net/fd_posix.go:109 +0x44
+  net.(*conn).Write()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/net/net.go:208 +0x84
+  github.com/jackc/pgx/v5/pgproto3.(*Frontend).Flush()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/frontend.go:107 +0x16c
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).flushWithPotentialWriteReadDeadlock()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:2069 +0xa0
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1297 +0xec
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1250 +0x1a8
+  github.com/jackc/pgx/v5.(*Conn).Query()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:847 +0x1654
+  github.com/jackc/pgx/v5.(*Conn).QueryRow()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:931 +0x70
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:123 +0x88
+  github.com/stretchr/testify/assert.Eventually.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:1994 +0x34
+
+Goroutine 54 (running) created at:
+  testing.(*T).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x7bc
+  testing.runTests.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2585 +0x78
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.runTests()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2583 +0x7a0
+  testing.(*M).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2443 +0xb38
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:94 +0x8c0
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.allowReplicationConnections()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:204 +0x128
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:90 +0x854
+  github.com/Trendyol/go-pq-cdc/integration.createCDCUser()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:191 +0x220
+  github.com/Trendyol/go-pq-cdc/integration.createCDCUser()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:191 +0x220
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:85 +0x7d4
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:67 +0x554
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go/wait.(*MultiStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/all.go:75 +0x2f4
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.SetupTestContainer()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:103 +0x118
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:56 +0x3c8
+  github.com/testcontainers/testcontainers-go/network.New()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/network/network.go:46 +0x44c
+  github.com/Trendyol/go-pq-cdc/integration.TestMain()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:47 +0x1fc
+  main.main()
+      _testmain.go:218 +0x104
+
+Goroutine 1258 (running) created at:
+  github.com/stretchr/testify/assert.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:2013 +0x298
+  github.com/stretchr/testify/require.Eventually()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:412 +0xbc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:121 +0x728
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:113 +0x56c
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:195 +0x400
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReader()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:180 +0x1dc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:110 +0x3a4
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:42 +0x8e8
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x38
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineVisibilityBarrier()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:98 +0x2c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+==================
+2026/10/14 16:08:18 🐳 Terminating container: 3d676d684bca
+2026/10/14 16:08:18 🚫 Container terminated: 3d676d684bca
+    testing.go:1712: race detected during execution of test
+--- FAIL: TestOnlineVisibilityBarrier (6.42s)
+FAIL
+2026/10/14 16:08:18 🐳 Terminating container: 6304e215d51b
+2026/10/14 16:08:18 🚫 Container terminated: 6304e215d51b
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	9.207s

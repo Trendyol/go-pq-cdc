@@ -1,0 +1,141 @@
+---
+story_id: e01s01
+title: Demonstrate one online chunk through a durable test target
+spec: e01s01-single-window.md
+# assertions implemented.
+status:
+  # Final restricted-profile automated gates pass; human UAT unconfirmed.
+  passing
+bcps: 8
+verify: >-
+  test -f integration_test/online_initial_smoke_test.go && rg -q '^func
+  TestOnlineInitialSmoke\('
+  integration_test/online_initial_smoke_test.go && (cd integration_test
+  && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m
+  -run '^TestOnlineInitialSmoke$' ./...)
+tasks:
+  - id: 1
+    description: >-
+      Select the approved feature baseline without overwriting local
+      work. Capture baseline failures separately. Add isolated durable
+      source/target fixtures and a target that atomically deduplicates
+      and applies ordered full rows and tombstones. Preserve the
+      existing fast integration profile.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s01-P0-02 ]
+    files:
+      [
+        integration_test/online_target_test.go,
+        integration_test/online_helpers_test.go,
+        integration_test/main_test.go
+      ]
+    verify: >-
+      go test -race -count=1 ./... && go vet ./... && test -f
+      integration_test/online_target_test.go && rg -q '^func
+      TestOnlineTargetContract\(' integration_test/online_target_test.go
+      && (cd integration_test && POSTGRES_VERSION=16-alpine go test
+      -race -count=1 -p=1 -timeout=10m -run '^TestOnlineTargetContract$'
+      ./...)
+    allure:
+      severity: critical
+      categories: [ integration, durability, baseline ]
+  - id: 2
+    description: >-
+      Add consistent/online strategy selection, strict profile
+      validation, and the additive online constructor/handler contract.
+      Keep all omitted-field defaults and existing listener semantics.
+      Reject online through the legacy constructor.
+    risk: P1
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s01-P1-01 ]
+    files:
+      [
+        config/config.go,
+        config/online_strategy_test.go,
+        connector.go,
+        online_connector.go,
+        online_connector_test.go
+      ]
+    verify: >-
+      test -f config/online_strategy_test.go && test -f
+      online_connector_test.go && rg -q '^func
+      TestOnlineStrategyValidation\(' config/online_strategy_test.go &&
+      rg -q '^func TestOnlineConstructorContract\('
+      online_connector_test.go && go test -race -count=1 -run
+      '^TestOnlineStrategyValidation$' ./config && go test -race
+      -count=1 -run '^TestOnlineConstructorContract$' .
+    allure:
+      severity: high
+      categories: [ unit, compatibility, api ]
+  - id: 3
+    description: >-
+      Provision metadata/control tables and explicit publication
+      membership. Add slot creation provenance and a bounded protocol-1
+      committed reader using existing decoders. Route committed controls
+      internally, enforce visibility, and preserve periodic feedback
+      without unsafe auto-ACKs or metadata leakage.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s01-P0-03, SC-e01s01-P0-05, SC-e01s01-P0-06 ]
+    files:
+      [
+        pq/replication/online.go,
+        pq/replication/online_test.go,
+        pq/snapshot/online/metadata.go,
+        pq/publication/publication.go,
+        pq/slot/slot.go,
+        integration_test/online_control_test.go
+      ]
+    verify: >-
+      test -f pq/replication/online_test.go && test -f
+      integration_test/online_control_test.go && rg -q '^func
+      TestOnlineCommittedEnvelope\(' pq/replication/online_test.go && rg
+      -q '^func TestOnlineControlProtocol\('
+      integration_test/online_control_test.go && go test -race -count=1
+      -run '^TestOnlineCommittedEnvelope$' ./pq/replication && (cd
+      integration_test && POSTGRES_VERSION=16-alpine go test -race
+      -count=1 -p=1 -timeout=10m -run '^TestOnlineControlProtocol$'
+      ./...)
+    allure:
+      severity: critical
+      categories: [ integration, protocol, Security Review ]
+  - id: 4
+    description: >-
+      Wire the one-window coordinator and in-memory merger to the strict
+      durable handler. Observe LOW before the bounded read, emit HIGH
+      afterward, retain every business CDC event, remove conflicting
+      READs, and complete the window only after durable delivery and
+      metadata. Demonstrate update/delete overlap.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s01-P0-04 ]
+    files:
+      [
+        online_connector.go,
+        pq/snapshot/online/coordinator.go,
+        pq/snapshot/online/window.go,
+        pq/snapshot/online/reader.go,
+        integration_test/online_initial_smoke_test.go
+      ]
+    verify: >-
+      test -f integration_test/online_initial_smoke_test.go && rg -q
+      '^func TestOnlineInitialSmoke\('
+      integration_test/online_initial_smoke_test.go && (cd
+      integration_test && POSTGRES_VERSION=16-alpine go test -race
+      -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialSmoke$' ./...)
+    allure:
+      severity: critical
+      categories: [ integration, ordering, snapshot ]

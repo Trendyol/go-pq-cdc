@@ -1,0 +1,5 @@
+$ test -f config/online_strategy_test.go && test -f online_connector_test.go && rg -q '^func TestOnlineStrategyValidation\(' config/online_strategy_test.go && rg -q '^func TestOnlineConstructorContract\(' online_connector_test.go && go test -race -count=1 -run '^TestOnlineStrategyValidation$' ./config && go test -race -count=1 -run '^TestOnlineConstructorContract$' .
+ok  	github.com/Trendyol/go-pq-cdc/config	1.325s
+ok  	github.com/Trendyol/go-pq-cdc	1.513s
+
+EXIT 0

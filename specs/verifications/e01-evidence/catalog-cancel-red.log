@@ -1,0 +1,41 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 23:18:56 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: fb8aa31bf668434e28b8d4b8f255d8a17dc83b1152da0220793673c43927afcc
+  Test ProcessID: ab9dfca6-b1c5-4745-984d-e4d9f1667b9a
+2026/10/14 23:18:56 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:18:56 ✅ Container created: 73cdf364dcbd
+2026/10/14 23:18:56 🐳 Starting container: 73cdf364dcbd
+2026/10/14 23:18:56 ✅ Container started: 73cdf364dcbd
+2026/10/14 23:18:56 🚧 Waiting for container id 73cdf364dcbd image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0x4eb94f386830 Strategies:[0x4eb94f3c6a00]}
+2026/10/14 23:18:57 🔔 Container is ready: 73cdf364dcbd
+2026/10/14 23:18:58 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:18:58 ✅ Container created: 5d8615438adb
+2026/10/14 23:18:58 🐳 Starting container: 5d8615438adb
+2026/10/14 23:18:58 ✅ Container started: 5d8615438adb
+2026/10/14 23:18:58 🚧 Waiting for container id 5d8615438adb image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0x4eb94f6280f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105052140 ResponseMatcher:0x10512c830 PollInterval:100ms}
+2026/10/14 23:18:59 🔔 Container is ready: 5d8615438adb
+2026/10/14 23:18:59 🐳 Terminating container: 5d8615438adb
+2026/10/14 23:18:59 🚫 Container terminated: 5d8615438adb
+--- FAIL: TestOnlineCatalogCancellation (1.12s)
+    online_review_test.go:144: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_review_test.go:144
+        	Error:      	Target error should be in err chain:
+        	            	expected: "context canceled"
+        	            	in chain: "online schema/profile changed or unsupported: publication: timeout: context already done: context canceled"
+        	            		"online schema/profile changed or unsupported"
+        	Test:       	TestOnlineCatalogCancellation
+FAIL
+2026/10/14 23:18:59 🐳 Terminating container: 73cdf364dcbd
+2026/10/14 23:18:59 🚫 Container terminated: 73cdf364dcbd
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	3.801s

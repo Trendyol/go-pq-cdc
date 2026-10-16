@@ -1,0 +1,5 @@
+--- FAIL: TestOnlineControlIdentity (0.00s)
+    control_test.go:14: zero UUID wire value accepted
+FAIL
+FAIL	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	0.524s
+FAIL

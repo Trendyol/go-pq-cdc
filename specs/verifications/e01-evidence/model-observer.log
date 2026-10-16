@@ -1,0 +1,103 @@
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	1.635s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/3 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 3/3 completed, now fuzzing with 12 workers
+fuzz: elapsed: 3s, execs: 253706 (84564/sec), new interesting: 53 (total: 56)
+fuzz: elapsed: 3s, execs: 253706 (0/sec), new interesting: 53 (total: 56)
+PASS
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	3.764s
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 23:01:21 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 916cb659ea219cceb1a60ff4dfd7575ac121a3fb592480f8d16573fbce262af9
+  Test ProcessID: b9b27c5e-fd08-401b-bcc1-e37940830438
+2026/10/14 23:01:21 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:21 ✅ Container created: 68896b79535e
+2026/10/14 23:01:21 🐳 Starting container: 68896b79535e
+2026/10/14 23:01:21 ✅ Container started: 68896b79535e
+2026/10/14 23:01:21 🚧 Waiting for container id 68896b79535e image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000271888 Strategies:[0xc0000c0640]}
+2026/10/14 23:01:22 🔔 Container is ready: 68896b79535e
+2026/10/14 23:01:23 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:23 ✅ Container created: 092bd0171890
+2026/10/14 23:01:23 🐳 Starting container: 092bd0171890
+2026/10/14 23:01:23 ✅ Container started: 092bd0171890
+2026/10/14 23:01:23 🚧 Waiting for container id 092bd0171890 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00025dc48 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:24 🔔 Container is ready: 092bd0171890
+2026/10/14 23:01:24 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:24 ✅ Container created: f4538f5cc7f8
+2026/10/14 23:01:24 🐳 Starting container: f4538f5cc7f8
+2026/10/14 23:01:24 ✅ Container started: f4538f5cc7f8
+2026/10/14 23:01:24 🚧 Waiting for container id f4538f5cc7f8 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002fa748 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:25 🔔 Container is ready: f4538f5cc7f8
+2026/10/14 23:01:27 🐳 Terminating container: f4538f5cc7f8
+2026/10/14 23:01:27 🚫 Container terminated: f4538f5cc7f8
+2026/10/14 23:01:27 🐳 Terminating container: 092bd0171890
+2026/10/14 23:01:27 🚫 Container terminated: 092bd0171890
+2026/10/14 23:01:27 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:27 ✅ Container created: 279aaab55926
+2026/10/14 23:01:27 🐳 Starting container: 279aaab55926
+2026/10/14 23:01:27 ✅ Container started: 279aaab55926
+2026/10/14 23:01:27 🚧 Waiting for container id 279aaab55926 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00043bcb8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:28 🔔 Container is ready: 279aaab55926
+2026/10/14 23:01:28 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:28 ✅ Container created: de7847b51120
+2026/10/14 23:01:28 🐳 Starting container: de7847b51120
+2026/10/14 23:01:28 ✅ Container started: de7847b51120
+2026/10/14 23:01:28 🚧 Waiting for container id de7847b51120 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00030e518 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:29 🔔 Container is ready: de7847b51120
+2026/10/14 23:01:31 🐳 Terminating container: de7847b51120
+2026/10/14 23:01:31 🚫 Container terminated: de7847b51120
+2026/10/14 23:01:31 🐳 Terminating container: 279aaab55926
+2026/10/14 23:01:31 🚫 Container terminated: 279aaab55926
+2026/10/14 23:01:31 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:31 ✅ Container created: 3150be221fa9
+2026/10/14 23:01:31 🐳 Starting container: 3150be221fa9
+2026/10/14 23:01:31 ✅ Container started: 3150be221fa9
+2026/10/14 23:01:31 🚧 Waiting for container id 3150be221fa9 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002701d8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:32 🔔 Container is ready: 3150be221fa9
+2026/10/14 23:01:32 🐳 Terminating container: 3150be221fa9
+2026/10/14 23:01:32 🚫 Container terminated: 3150be221fa9
+2026/10/14 23:01:32 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:32 ✅ Container created: 524e7e03db98
+2026/10/14 23:01:32 🐳 Starting container: 524e7e03db98
+2026/10/14 23:01:32 ✅ Container started: 524e7e03db98
+2026/10/14 23:01:32 🚧 Waiting for container id 524e7e03db98 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00043abf8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:33 🔔 Container is ready: 524e7e03db98
+2026/10/14 23:01:33 🐳 Terminating container: 524e7e03db98
+2026/10/14 23:01:33 🚫 Container terminated: 524e7e03db98
+2026/10/14 23:01:33 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:33 ✅ Container created: 7377d36dfa73
+2026/10/14 23:01:33 🐳 Starting container: 7377d36dfa73
+2026/10/14 23:01:33 ✅ Container started: 7377d36dfa73
+2026/10/14 23:01:33 🚧 Waiting for container id 7377d36dfa73 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00050a3d8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:34 🔔 Container is ready: 7377d36dfa73
+2026/10/14 23:01:35 🐳 Terminating container: 7377d36dfa73
+2026/10/14 23:01:35 🚫 Container terminated: 7377d36dfa73
+2026/10/14 23:01:35 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:01:35 ✅ Container created: a024c39a30ae
+2026/10/14 23:01:35 🐳 Starting container: a024c39a30ae
+2026/10/14 23:01:35 ✅ Container started: a024c39a30ae
+2026/10/14 23:01:35 🚧 Waiting for container id a024c39a30ae image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00050a088 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1034e1f50 ResponseMatcher:0x10361ad10 PollInterval:100ms}
+2026/10/14 23:01:36 🔔 Container is ready: a024c39a30ae
+2026/10/14 23:01:36 🐳 Terminating container: a024c39a30ae
+2026/10/14 23:01:36 🚫 Container terminated: a024c39a30ae
+--- FAIL: TestOnlineObserverLifecycle (5.11s)
+    --- FAIL: TestOnlineObserverLifecycle/LOW_RECORDED (1.29s)
+        online_review_test.go:95: 
+            	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_review_test.go:95
+            	Error:      	Received unexpected error:
+            	            	can't scan into dest[3] (col: high_end): cannot scan NULL into *string
+            	Test:       	TestOnlineObserverLifecycle/LOW_RECORDED
+FAIL
+2026/10/14 23:01:36 🐳 Terminating container: 68896b79535e
+2026/10/14 23:01:36 🚫 Container terminated: 68896b79535e
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	15.896s

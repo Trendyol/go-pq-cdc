@@ -1,0 +1,7 @@
+TestOnlineControlIdentity
+TestOnlineEventIdentityAndOrder
+TestOnlineResumeBinding
+TestOnlineMetadataSQL
+TestOnlineModel
+FuzzOnlineControlIdentity
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	0.520s

@@ -1,0 +1,13 @@
+kind: poc-index
+status: planned
+production_release: false
+summary: Single bounded POC; this index is not a production release or calendar commitment.
+ordering: Dependency order for one epic; cross-epic prioritization is not applicable.
+epics:
+  - id: e01
+    title: One-window online initial snapshot POC
+    path: specs/epics/e01-online-initial-poc
+    priority: 1
+    status: planned
+    depends_on: []
+    scope: specs/product/SCOPE_LATEST.yaml

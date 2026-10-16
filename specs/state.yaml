@@ -1,0 +1,19 @@
+active_flow: build_epic
+phase: execute
+active_epic: e01
+active_story: e01s01
+implementation_started: true
+baseline:
+  branch: feat/online-initial-poc
+  head: 6110b91596ea9597b588954f94a89a1b5f4cfcd6
+  dirty: true
+  note: User approved archiving seven stale untracked reconnect tests; other user artifacts are preserved. Root race/vet and selected integration baseline pass.
+confirmed_scope:
+  windows: 1
+  source_storage: metadata_only
+  watermark_transport: published_table
+  integration: core_and_separate_durable_postgres_test_sink
+handoff:
+  plan: specs/epics/e01-online-initial-poc/implementation-plan.md
+  next_action: Execute component lanes sequentially, integrate the tracer/recovery, then review and validate all POC gates.
+  production_readiness: not_claimed

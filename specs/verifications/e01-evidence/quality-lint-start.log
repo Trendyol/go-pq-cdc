@@ -1,0 +1,139 @@
+pq/replication/online_capacity_test.go:179:13: Error return value is not checked (errcheck)
+	onlineAwait(t, nextDone)
+	           ^
+pq/snapshot/online/event.go:99:14: Error return value of `fmt.Fprintf` is not checked (errcheck)
+		fmt.Fprintf(h, "%d:", len(part))
+		           ^
+pq/replication/online.go:529:53: non-wrapping format verb for fmt.Errorf. Use `%w` to format errors (errorlint)
+					return fmt.Errorf("%w: %v", ErrOnlineProtocol, err)
+					                                               ^
+pq/replication/online.go:543:53: non-wrapping format verb for fmt.Errorf. Use `%w` to format errors (errorlint)
+					return fmt.Errorf("%w: %v", ErrOnlineProtocol, err)
+					                                               ^
+pq/replication/online_decode.go:59:55: non-wrapping format verb for fmt.Errorf. Use `%w` to format errors (errorlint)
+		return nil, fmt.Errorf("%w: %v", ErrOnlineProtocol, err)
+		                                                    ^
+config/config.go:130:18: Function 'SetDefault' has too many statements (41 > 40) (funlen)
+func (c *Config) SetDefault() {
+                 ^
+pq/replication/online.go:182:6: Function 'StartOnlineReaderWithStartupTimeout' has too many statements (57 > 40) (funlen)
+func StartOnlineReaderWithStartupTimeout(ctx context.Context, o OnlineReaderOptions, timeout time.Duration) (*OnlineReader, error) {
+     ^
+pq/replication/online.go:329:24: Function 'Next' has too many statements (52 > 40) (funlen)
+func (r *OnlineReader) Next(ctx context.Context) (*OnlineCommittedEnvelope, error) {
+                       ^
+pq/replication/online_decode.go:56:27: Function 'accept' has too many statements (71 > 40) (funlen)
+func (a *onlineAssembler) accept(xld XLogData) (*OnlineCommittedEnvelope, error) {
+                          ^
+pq/snapshot/online/control.go:29:6: Function 'DecodeControl' has too many statements (41 > 40) (funlen)
+func DecodeControl(change replication.OnlineChange) (Marker, bool, error) {
+     ^
+pq/snapshot/online/reader.go:25:6: Function 'ReadPage' has too many statements (53 > 40) (funlen)
+func ReadPage(ctx context.Context, conn *pgx.Conn, s TableSchema, cursor, upper *int64, limit int, bytes int64, timeout time.Duration, counters ...*Counters) ([]SelectedRow, error) {
+     ^
+pq/snapshot/online/schema.go:37:6: Function 'ValidatePublication' has too many statements (45 > 40) (funlen)
+func ValidatePublication(ctx context.Context, conn *pgx.Conn, name string) ([]TableSchema, error) {
+     ^
+pq/snapshot/online/schema.go:102:6: Function 'InspectTable' has too many statements (45 > 40) (funlen)
+func InspectTable(ctx context.Context, conn *pgx.Conn, table Table) (TableSchema, error) {
+     ^
+pq/snapshot/online/control.go:41:22: string `cdc_online` has 4 occurrences, make it a constant (goconst)
+		if table.Schema == "cdc_online" {
+		                   ^
+pq/snapshot/online/control.go:50:19: string `watermarks` has 3 occurrences, make it a constant (goconst)
+	if table.Name != "watermarks" || len(image) != 6 {
+	                 ^
+pq/snapshot/online/store.go:206:35: string `active` has 3 occurrences, make it a constant (goconst)
+	if j.Status != "" && j.Status != "active" {
+	                                 ^
+pq/snapshot/online/store.go:345:147: string `registered` has 4 occurrences, make it a constant (goconst)
+	if w.LowID == w.HighID || w.LastKey != nil || w.LowEnd != 0 || w.HighEnd != 0 || w.LowEmitted || w.HighEmitted || (w.Status != "" && w.Status != "registered") {
+	                                                                                                                                                 ^
+pq/snapshot/online/store.go:453:18: string `low` has 3 occurrences, make it a constant (goconst)
+		if w.Status != "low" || !w.HighEmitted || markerID != w.HighID || end <= w.LowEnd {
+		               ^
+online_connector.go:301:2: ifElseChain: rewrite if-else to switch statement (gocritic)
+	if errors.Is(err, pgx.ErrNoRows) {
+	^
+pq/snapshot/online/control.go:76:2: ifElseChain: rewrite if-else to switch statement (gocritic)
+	if marker.Phase == Heartbeat {
+	^
+pq/snapshot/online/event_test.go:20:19: dupArg: suspicious method call with the same argument and receiver (gocritic)
+		require.Zero(t, tokens[i].Compare(tokens[i]))
+		                ^
+online_connector.go:184:1: cyclomatic complexity 46 of func `(*OnlineConnector).Run` is high (> 30) (gocyclo)
+func (c *OnlineConnector) Run(ctx context.Context) (result error) {
+^
+pq/replication/online.go:469:1: cyclomatic complexity 31 of func `(*OnlineReader).readLoop` is high (> 30) (gocyclo)
+func (r *OnlineReader) readLoop() error {
+^
+pq/replication/online_decode.go:233:1: cyclomatic complexity 36 of func `validateOnlineWire` is high (> 30) (gocyclo)
+func validateOnlineWire(b []byte, relations map[uint32]*format.Relation) error {
+^
+pq/snapshot/online/coordinator.go:194:1: cyclomatic complexity 35 of func `(*Coordinator).window` is high (> 30) (gocyclo)
+func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
+^
+pq/snapshot/online/coordinator.go:300:1: cyclomatic complexity 35 of func `(*Coordinator).Run` is high (> 30) (gocyclo)
+func (c *Coordinator) Run(ctx context.Context) error {
+^
+pq/snapshot/online/durable_model_test.go:44:1: cyclomatic complexity 45 of func `testOnlineDurableSchedules` is high (> 30) (gocyclo)
+func testOnlineDurableSchedules(t *testing.T) {
+^
+pq/snapshot/online/coordinator.go:243:1: File is not properly formatted (gofmt)
+	if err=c.observe(ctx,ReadStarted,attempt,low,0,nil);err!=nil{return err}
+^
+pq/snapshot/online/observation.go:15:1: File is not properly formatted (gofmt)
+	ReadStarted ObservationPhase = "READ_STARTED"
+^
+pq/snapshot/online/cleanup.go:6:1: File is not properly formatted (goimports)
+	"github.com/jackc/pgx/v5"
+^
+pq/replication/online.go:269:2: G118: Goroutine uses context.Background/TODO while request-scoped context is available (gosec)
+	go r.run()
+	^
+pq/snapshot/online/store.go:69:2: G118: Goroutine uses context.Background/TODO while request-scoped context is available (gosec)
+	go store.watch(run)
+	^
+pq/snapshot/online/durable_model_test.go:123:7: ineffectual assignment to stopped (ineffassign)
+						stopped = true
+						^
+pq/snapshot/online/store.go:631:2: naked return in func `emitWindow` with 41 lines of code (nakedret)
+	return
+	^
+pq/replication/online_startup_test.go:12:29: net.Listen must not be called. use (*net.ListenConfig).Listen (noctx)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	                           ^
+pq/replication/online.go:141:1: exported: comment on exported type OnlineReaderStats should be of the form "OnlineReaderStats ..." (with optional leading article) (revive)
+// OnlineReader owns replication I/O and the primary guard. Next is serialized;
+^
+pq/snapshot/online/event.go:60:1: exported: comment on exported type Event should be of the form "Event ..." (with optional leading article) (revive)
+// Event.Image is the complete row image (including NULLs), not a patch. DELETE
+^
+pq/snapshot/online/observation.go:59:94: empty-block: this block is empty, you can remove it (revive)
+	for old := counter.Load(); n > old && !counter.CompareAndSwap(old, n); old = counter.Load() {
+	}
+pq/snapshot/online/store.go:581:1: exported: comment on exported method Store.EmitLOW should be of the form "EmitLOW ..." (revive)
+// Every Emit method commits its own transaction on the supplied chunk/marker
+^
+pq/replication/online_test.go:228:3: QF1006: could lift into loop condition (staticcheck)
+		if onlineAwait(t, f.feedback) == 110 {
+		^
+pq/snapshot/online/store.go:55:27: OpenStoreWithStartupTimeout$1 - result 0 (*github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Store) is always nil (unparam)
+	fail := func(err error) (*Store, error) { _ = conn.Close(context.Background()); return nil, err }
+	                         ^
+41 issues:
+* errcheck: 2
+* errorlint: 3
+* funlen: 8
+* goconst: 5
+* gocritic: 3
+* gocyclo: 6
+* gofmt: 2
+* goimports: 1
+* gosec: 2
+* ineffassign: 1
+* nakedret: 1
+* noctx: 1
+* revive: 4
+* staticcheck: 1
+* unparam: 1

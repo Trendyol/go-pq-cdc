@@ -1,0 +1,71 @@
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	1.626s
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 17:00:25 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: f0a5b2b871b16c6c4abf6a5e4b224d47455afcf68cb971d92322bfde54c18101
+  Test ProcessID: 35927596-634c-4854-8960-087af604f029
+2026/10/14 17:00:25 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:00:25 ✅ Container created: d4ce40123155
+2026/10/14 17:00:25 🐳 Starting container: d4ce40123155
+2026/10/14 17:00:25 ✅ Container started: d4ce40123155
+2026/10/14 17:00:25 🚧 Waiting for container id d4ce40123155 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00028c938 Strategies:[0xc000408480]}
+2026/10/14 17:00:26 🔔 Container is ready: d4ce40123155
+=== RUN   TestOnlineReaderStartupStages
+=== RUN   TestOnlineReaderStartupStages/IDENTIFY_SYSTEM
+2026/10/14 17:00:27 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:00:27 ✅ Container created: 99b27676546b
+2026/10/14 17:00:27 🐳 Starting container: 99b27676546b
+2026/10/14 17:00:27 ✅ Container started: 99b27676546b
+2026/10/14 17:00:27 🚧 Waiting for container id 99b27676546b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002a2848 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10132a210 ResponseMatcher:0x101450a70 PollInterval:100ms}
+2026/10/14 17:00:28 🔔 Container is ready: 99b27676546b
+    online_reader_startup_test.go:155: bounded real PG16 startup stage IDENTIFY_SYSTEM: online IDENTIFY_SYSTEM: source=IdentifySystem: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/system.go:24 identify system command execute: timeout: context deadline exceeded
+2026/10/14 17:00:29 🐳 Terminating container: 99b27676546b
+2026/10/14 17:00:29 🚫 Container terminated: 99b27676546b
+=== RUN   TestOnlineReaderStartupStages/pg_catalog.pg_control_system()
+2026/10/14 17:00:29 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:00:29 ✅ Container created: ab9f12816e92
+2026/10/14 17:00:29 🐳 Starting container: ab9f12816e92
+2026/10/14 17:00:29 ✅ Container started: ab9f12816e92
+2026/10/14 17:00:29 🚧 Waiting for container id ab9f12816e92 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000302548 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10132a210 ResponseMatcher:0x101450a70 PollInterval:100ms}
+2026/10/14 17:00:30 🔔 Container is ready: ab9f12816e92
+    online_reader_startup_test.go:155: bounded real PG16 startup stage pg_catalog.pg_control_system(): visibility guard unreachable: online primary/identity snapshot query: timeout: context deadline exceeded; provision GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO <cdc_role>
+2026/10/14 17:00:45 🐳 Terminating container: ab9f12816e92
+2026/10/14 17:00:45 🚫 Container terminated: ab9f12816e92
+=== RUN   TestOnlineReaderStartupStages/START_REPLICATION
+2026/10/14 17:00:45 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:00:45 ✅ Container created: 56b20dc3275e
+2026/10/14 17:00:45 🐳 Starting container: 56b20dc3275e
+2026/10/14 17:00:46 ✅ Container started: 56b20dc3275e
+2026/10/14 17:00:46 🚧 Waiting for container id 56b20dc3275e image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000386298 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10132a210 ResponseMatcher:0x101450a70 PollInterval:100ms}
+2026/10/14 17:00:46 🔔 Container is ready: 56b20dc3275e
+    online_reader_startup_test.go:155: bounded real PG16 startup stage START_REPLICATION: online START_REPLICATION: source=(*Replication).Test: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/replication.go:52 failed to receive message: receive message failed: timeout: context deadline exceeded
+2026/10/14 17:00:47 🐳 Terminating container: 56b20dc3275e
+2026/10/14 17:00:47 🚫 Container terminated: 56b20dc3275e
+--- PASS: TestOnlineReaderStartupStages (19.65s)
+    --- PASS: TestOnlineReaderStartupStages/IDENTIFY_SYSTEM (1.56s)
+    --- PASS: TestOnlineReaderStartupStages/pg_catalog.pg_control_system() (16.55s)
+    --- PASS: TestOnlineReaderStartupStages/START_REPLICATION (1.54s)
+=== RUN   TestOnlineReaderStartupLifecycle
+2026/10/14 17:00:47 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:00:47 ✅ Container created: 8592d9943cb8
+2026/10/14 17:00:47 🐳 Starting container: 8592d9943cb8
+2026/10/14 17:00:47 ✅ Container started: 8592d9943cb8
+2026/10/14 17:00:47 🚧 Waiting for container id 8592d9943cb8 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002a27b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10132a210 ResponseMatcher:0x101450a70 PollInterval:100ms}
+2026/10/14 17:00:48 🔔 Container is ready: 8592d9943cb8
+    online_reader_startup_test.go:185: startup expired without canceling successful source owner; delivered end=0/194E1F0 and honored lifetime cancellation
+2026/10/14 17:00:49 🐳 Terminating container: 8592d9943cb8
+2026/10/14 17:00:49 🚫 Container terminated: 8592d9943cb8
+--- PASS: TestOnlineReaderStartupLifecycle (2.37s)
+PASS
+2026/10/14 17:00:49 🐳 Terminating container: d4ce40123155
+2026/10/14 17:00:50 🚫 Container terminated: d4ce40123155
+ok  	github.com/Trendyol/go-pq-cdc/integration	26.009s

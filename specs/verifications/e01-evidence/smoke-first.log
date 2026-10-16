@@ -1,0 +1,54 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 15:59:45 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: e0e840fa8126d2539500715a94ceab33f46d24a517b031fabf531da0f81c47e7
+  Test ProcessID: 6fd7a6b1-3a31-43c3-bd5d-6646a3fac7fe
+2026/10/14 15:59:45 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 15:59:45 ✅ Container created: 10d64f76bfbb
+2026/10/14 15:59:45 🐳 Starting container: 10d64f76bfbb
+2026/10/14 15:59:45 ✅ Container started: 10d64f76bfbb
+2026/10/14 15:59:45 🚧 Waiting for container id 10d64f76bfbb image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000388108 Strategies:[0xc00029a800]}
+2026/10/14 15:59:46 🔔 Container is ready: 10d64f76bfbb
+2026/10/14 15:59:47 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 15:59:47 ✅ Container created: 3b8114395d14
+2026/10/14 15:59:47 🐳 Starting container: 3b8114395d14
+2026/10/14 15:59:47 ✅ Container started: 3b8114395d14
+2026/10/14 15:59:47 🚧 Waiting for container id 3b8114395d14 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00028b198 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1012c4f60 ResponseMatcher:0x1013dd260 PollInterval:100ms}
+2026/10/14 15:59:48 🔔 Container is ready: 3b8114395d14
+2026/10/14 15:59:48 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 15:59:48 ✅ Container created: e8167141df22
+2026/10/14 15:59:48 🐳 Starting container: e8167141df22
+2026/10/14 15:59:48 ✅ Container started: e8167141df22
+2026/10/14 15:59:48 🚧 Waiting for container id e8167141df22 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00028b338 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1012c4f60 ResponseMatcher:0x1013dd260 PollInterval:100ms}
+2026/10/14 15:59:49 🔔 Container is ready: e8167141df22
+2026/10/14 15:59:49 🐳 Terminating container: e8167141df22
+2026/10/14 15:59:49 🚫 Container terminated: e8167141df22
+2026/10/14 15:59:49 🐳 Terminating container: 3b8114395d14
+2026/10/14 15:59:49 🚫 Container terminated: 3b8114395d14
+--- FAIL: TestOnlineInitialSmoke (2.58s)
+    online_initial_smoke_test.go:21: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_run_helpers_test.go:48
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_initial_smoke_test.go:21
+        	Error:      	Received unexpected error:
+        	            	online configuration: source=Table.Validate: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/publication/table.go:54 undefined replica identity option. valid identity options are: [DEFAULT FULL NOTHING USING INDEX]
+        	            	source=Operations.Validate: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/publication/operation.go:33 at least one operation must be defined
+        	            	source=Operations.Validate: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/publication/operation.go:33 at least one operation must be defined
+        	            	online publication.operations requires INSERT, UPDATE, DELETE, TRUNCATE
+        	            	online publication.operations requires INSERT, UPDATE, DELETE, TRUNCATE
+        	            	online publication.operations requires INSERT, UPDATE, DELETE, TRUNCATE
+        	            	online publication.operations requires INSERT, UPDATE, DELETE, TRUNCATE
+        	Test:       	TestOnlineInitialSmoke
+FAIL
+2026/10/14 15:59:49 🐳 Terminating container: 10d64f76bfbb
+2026/10/14 15:59:49 🚫 Container terminated: 10d64f76bfbb
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	5.469s

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="670" viewBox="0 0 1120 670" role="img" aria-labelledby="title desc">
+<title id="title">Watermark merge example</title><desc id="desc">LOW precedes a fresh SELECT and HIGH follows it. UPDATE 42 and DELETE 85 occur inside the window, so their selected snapshot rows are discarded. READ 99 survives and precedes a later UPDATE 99 in the ordered output.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#526777"/></marker></defs>
+<rect width="1120" height="670" rx="16" fill="#f6f8fa"/>
+<g font-family="Arial, Helvetica, sans-serif" fill="#142d40">
+<text x="28" y="39" font-size="25" font-weight="700">CDC wins conflicts. Surviving READs enter at HIGH.</text>
+<text x="28" y="69" font-size="18" fill="#526777">Conceptual order, not a latency measurement · full row images assumed</text>
+<rect x="174" y="95" width="601" height="151" rx="8" fill="#e1f2ef"/>
+<path d="M50 172H1068" stroke="#526777" stroke-width="3" marker-end="url(#a)"/>
+<path d="M180 111V238M770 111V238" stroke="#087f75" stroke-width="3"/>
+<g font-size="18" text-anchor="middle"><text x="180" y="105" font-weight="700" fill="#087f75">LOW</text><text x="770" y="105" font-weight="700" fill="#087f75">HIGH</text><text x="935" y="141" font-weight="700">UPDATE 99</text><text x="935" y="204">price = 350</text></g>
+<rect x="274" y="116" width="377" height="31" rx="5" fill="#fff" stroke="#087f75"/><text x="462" y="138" text-anchor="middle" font-size="18">Fresh SELECT → result captured</text>
+<circle cx="390" cy="172" r="6" fill="#142d40"/><circle cx="578" cy="172" r="6" fill="#142d40"/><circle cx="935" cy="172" r="6" fill="#142d40"/>
+<g text-anchor="middle" font-size="18"><text x="390" y="204" font-weight="700">UPDATE 42</text><text x="390" y="229">price = 120</text><text x="578" y="204" font-weight="700">DELETE 85</text><text x="578" y="229">row removed</text></g>
+<text x="28" y="275" font-size="17" fill="#526777">Before SELECT: ordered LOW observation includes the required predecessor-visibility barrier.</text>
+<g fill="#fff" stroke="#c6d0d9" stroke-width="2"><rect x="28" y="298" width="482" height="182" rx="9"/><rect x="536" y="298" width="556" height="182" rx="9"/></g>
+<g font-size="20" font-weight="700"><text x="50" y="330">SELECT result</text><text x="558" y="330">At committed HIGH</text></g>
+<g font-size="20"><text x="50" y="369">READ 42 → price = 100</text><text x="50" y="408">READ 85 → active = true</text><text x="50" y="447">READ 99 → price = 300</text><text x="558" y="369" fill="#a34631">Discard READ 42 · keep UPDATE 42</text><text x="558" y="408" fill="#a34631">Discard READ 85 · keep DELETE 85</text><text x="558" y="447" fill="#087f75">Keep READ 99 · no conflict in the window</text></g>
+<text x="28" y="519" font-size="20" font-weight="700">Logical output order</text>
+<g stroke="#c6d0d9" stroke-width="2"><rect x="28" y="536" width="226" height="65" rx="8" fill="#fff"/><rect x="294" y="536" width="226" height="65" rx="8" fill="#fff"/><rect x="560" y="536" width="226" height="65" rx="8" fill="#e1f2ef"/><rect x="826" y="536" width="266" height="65" rx="8" fill="#fff"/></g>
+<g text-anchor="middle" font-size="19" font-weight="700"><text x="141" y="575">UPDATE 42 → 120</text><text x="407" y="575">DELETE 85</text><text x="673" y="575" fill="#087f75">READ 99 → 300</text><text x="959" y="575">UPDATE 99 → 350</text></g>
+<g stroke="#526777" stroke-width="2.5" marker-end="url(#a)"><path d="M254 569H289"/><path d="M520 569H555"/><path d="M786 569H821"/></g>
+<text x="28" y="638" font-size="17" fill="#526777">Track conflicts even before SELECT results arrive. Atomically stage the HIGH merge before later output can overtake it.</text>
+</g></svg>

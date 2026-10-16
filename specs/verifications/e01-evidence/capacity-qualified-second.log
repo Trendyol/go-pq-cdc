@@ -1,0 +1,1265 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 23:11:52 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 9fbe46e4f881788f03c2d7ec97934e653e7e2054419741bb94d5b477c5e9428e
+  Test ProcessID: a048cced-f1bb-4ea7-87da-c9eedf9db7fa
+2026/10/14 23:11:52 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:11:52 ✅ Container created: 49d30b270190
+2026/10/14 23:11:52 🐳 Starting container: 49d30b270190
+2026/10/14 23:11:52 ✅ Container started: 49d30b270190
+2026/10/14 23:11:52 🚧 Waiting for container id 49d30b270190 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000362c48 Strategies:[0xc0001dec80]}
+2026/10/14 23:11:53 🔔 Container is ready: 49d30b270190
+=== RUN   TestOnlineInitialCapacity
+=== RUN   TestOnlineInitialCapacity/live-full-queue-feedback-cancellation
+2026/10/14 23:11:54 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:11:54 ✅ Container created: 64620b0b8640
+2026/10/14 23:11:54 🐳 Starting container: 64620b0b8640
+2026/10/14 23:11:54 ✅ Container started: 64620b0b8640
+2026/10/14 23:11:54 🚧 Waiting for container id 64620b0b8640 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000015b58 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x101a12850 ResponseMatcher:0x101b50030 PollInterval:100ms}
+2026/10/14 23:11:56 🔔 Container is ready: 64620b0b8640
+2026/10/14 23:11:58 🐳 Terminating container: 64620b0b8640
+2026/10/14 23:11:58 🚫 Container terminated: 64620b0b8640
+=== RUN   TestOnlineInitialCapacity/consistent
+2026/10/14 23:11:58 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:11:58 ✅ Container created: 23396f642b3a
+2026/10/14 23:11:58 🐳 Starting container: 23396f642b3a
+2026/10/14 23:11:58 ✅ Container started: 23396f642b3a
+2026/10/14 23:11:58 🚧 Waiting for container id 23396f642b3a image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000014408 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x101a12850 ResponseMatcher:0x101b50030 PollInterval:100ms}
+2026/10/14 23:11:59 🔔 Container is ready: 23396f642b3a
+2026/10/14 23:11:59 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:11:59 ✅ Container created: e018f6d13978
+2026/10/14 23:11:59 🐳 Starting container: e018f6d13978
+2026/10/14 23:11:59 ✅ Container started: e018f6d13978
+2026/10/14 23:11:59 🚧 Waiting for container id e018f6d13978 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000015548 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x101a12850 ResponseMatcher:0x101b50030 PollInterval:100ms}
+2026/10/14 23:12:00 🔔 Container is ready: e018f6d13978
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"postgres","password":"*******","database":"online_poc","publication":{"name":"online_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"online_slot","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":3000000000,"deliveryTimeout":10000000000,"chunkBytes":4194304,"transactionBytes":16777216,"queueBytes":33554432,"checkpointInterval":20000000,"markerInterval":50000000},"mode":"initial","instanceId":"","id":"","tables":null,"chunkSize":100,"claimTimeout":30000000000,"heartbeatInterval":5000000000,"enabled":true,"resnapshot":false},"port":34033,"metric":{"port":65305},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:12:00.99585+02:00","level":"WARN","msg":"publication already exists"}
+{"time":"2026-10-14T23:12:00.995903+02:00","level":"INFO","msg":"publication","info":{"name":"online_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"","schema":"public"}],"createIfNotExists":false}}
+{"time":"2026-10-14T23:12:01.036417+02:00","level":"INFO","msg":"[snapshot-connection-pool] creating connection pool","size":5}
+{"time":"2026-10-14T23:12:01.128114+02:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool ready","size":5}
+{"time":"2026-10-14T23:12:01.204351+02:00","level":"INFO","msg":"server starting on port :65305"}
+{"time":"2026-10-14T23:12:01.256808+02:00","level":"INFO","msg":"replication slot created","name":"online_slot","failover":false}
+{"time":"2026-10-14T23:12:01.307464+02:00","level":"INFO","msg":"[coordinator] exporting snapshot"}
+{"time":"2026-10-14T23:12:01.31007+02:00","level":"INFO","msg":"[coordinator] snapshot exported","snapshotID":"00000010-00000009-1"}
+{"time":"2026-10-14T23:12:01.310087+02:00","level":"INFO","msg":"[coordinator] snapshot transaction ready for workers"}
+{"time":"2026-10-14T23:12:01.310096+02:00","level":"INFO","msg":"[coordinator] creating metadata and chunks"}
+{"time":"2026-10-14T23:12:01.316425+02:00","level":"INFO","msg":"[chunk] range chunks created","table":"workload","chunkSize":100,"numChunks":100,"rangeMin":1,"rangeMax":10000}
+{"time":"2026-10-14T23:12:01.323509+02:00","level":"INFO","msg":"[coordinator] chunks created","table":"public.workload","chunks":100}
+{"time":"2026-10-14T23:12:01.324533+02:00","level":"INFO","msg":"[coordinator] metadata committed","totalChunks":100,"lsn":"0/2506080"}
+    online_capacity_test.go:207: condition deadline exceeded: [legacy capture before source writers]
+{"time":"2026-10-14T23:12:16.205204+02:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-10-14T23:12:16.205256+02:00","level":"INFO","msg":"[coordinator] rolling back and closing snapshot export connection"}
+{"time":"2026-10-14T23:12:16.206321+02:00","level":"INFO","msg":"[snapshot-connection-pool] closing all connections","count":5}
+{"time":"2026-10-14T23:12:16.207021+02:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool closed"}
+{"time":"2026-10-14T23:12:16.207239+02:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-10-14T23:12:16.207378+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:12:16.207417+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+==================
+WARNING: DATA RACE
+Read at 0x00c000039bf8 by goroutine 93:
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).IsClosed()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:762 +0x4c
+  github.com/jackc/pgx/v5.(*Conn).IsClosed()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:435 +0x2c
+  github.com/jackc/pgx/v5.(*Conn).Close()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:302 +0x18
+  github.com/Trendyol/go-pq-cdc/integration.onlinePGFixture.Connect.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:74 +0x3c
+  testing.(*common).Cleanup.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1317 +0x124
+  testing.(*common).runCleanup()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1667 +0x16c
+  testing.tRunner.func2()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2030 +0x48
+  runtime.Goexit()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/panic.go:694 +0x5c
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*ConnectionPool).Close()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/connection_pool.go:87 +0x1e8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).closeAllConnections()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:186 +0xbc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x36c
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).closeExportSnapshotConnection()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:236 +0x370
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).closeAllConnections()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:182 +0x80
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).Close()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:258 +0x84
+  github.com/Trendyol/go-pq-cdc.(*connector).Close.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:615 +0x15c
+  sync.(*Once).doSlow()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/sync/once.go:78 +0x94
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity.deferwrap1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:200 +0x38
+  runtime.Goexit()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/panic.go:694 +0x5c
+  testing.(*common).Fatalf()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:1228 +0x84
+  github.com/Trendyol/go-pq-cdc/integration.onlineEventually()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_run_helpers_test.go:149 +0xf0
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:207 +0xc84
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReaderWithStartupTimeout()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:210 +0x2d4
+  github.com/Trendyol/go-pq-cdc/integration.startCDCOracle()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_cdc_oracle_test.go:47 +0x634
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:202 +0xaf8
+  github.com/Trendyol/go-pq-cdc.setupHeartbeatAndPublication()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:190 +0x1fc
+  github.com/Trendyol/go-pq-cdc.NewConnector()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:101 +0x578
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:121 +0x998
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:46 +0xa3c
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x9c
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:76 +0x84
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:46 +0xa3c
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:75 +0x70
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineInitialCapacity.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:32 +0x3c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+
+Previous write at 0x00c000039bf8 by goroutine 156:
+  github.com/jackc/pgx/v5/pgconn.(*PgConn).asyncClose()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:726 +0x4c
+  github.com/jackc/pgx/v5/pgconn.(*MultiResultReader).receiveMessage()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1533 +0x890
+  github.com/jackc/pgx/v5/pgconn.(*MultiResultReader).NextResult()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1585 +0x84
+  github.com/jackc/pgx/v5.(*Conn).execSimpleProtocol()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:589 +0x108
+  github.com/jackc/pgx/v5.(*Conn).exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:574 +0x864
+  github.com/jackc/pgx/v5.(*Conn).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:481 +0x114
+  github.com/jackc/pgx/v5.(*dbTx).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/tx.go:231 +0xc4
+  github.com/Trendyol/go-pq-cdc/integration.(*onlineTarget).Apply()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:129 +0x348
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:99 +0xa8
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:186 +0x824
+  github.com/Trendyol/go-pq-cdc.(*connector).snapshotHandler()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:575 +0x108
+  github.com/Trendyol/go-pq-cdc.(*connector).snapshotHandler-fm()
+      <autogenerated>:1 +0x34
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:478 +0x7c8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:456 +0x5fc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1.1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:311 +0x70
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeInTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:349 +0x1b0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x80
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*snapshotTransaction).begin()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:372 +0x20
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeInTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:344 +0x160
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:200 +0x594
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeInTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:344 +0x160
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x268
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0xfc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x108
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:160 +0x90
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeWorker()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:119 +0x33c
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).Execute()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:133 +0x220
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).Execute()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:127 +0x15c
+  github.com/Trendyol/go-pq-cdc.(*connector).executeSnapshotWithRetry()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:472 +0xfc
+  github.com/Trendyol/go-pq-cdc.(*connector).Start.(*connector).prepareSnapshotAndSlot.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:381 +0x258
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).createTableChunksWithConn()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:684 +0x80
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).createMetadata()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:83 +0x310
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initializeCoordinator()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:60 +0x2a4
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x1c8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).exportSnapshotTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:150 +0x1cc
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x1a4
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).exportSnapshotTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:144 +0x1a8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x180
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).exportSnapshotTransaction()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:139 +0x184
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initializeCoordinator()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:54 +0x284
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initializeCoordinator()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:37 +0x128
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).setupJob()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:244 +0x178
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).setupJob()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:238 +0x7c
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).setupJob()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:232 +0x64
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x420
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).migrateSchema()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:381 +0x3f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:351 +0x908
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x700
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:341 +0x6e0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:335 +0x5f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x700
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:341 +0x6e0
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:335 +0x5f8
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x248
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:320 +0x228
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:287 +0x198
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).execSQL()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:26 +0x120
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:278 +0x100
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).initTables()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:260 +0x70
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).setupJob()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:228 +0x48
+  github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).Prepare()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:107 +0x14c
+  github.com/Trendyol/go-pq-cdc.(*connector).Start.(*connector).prepareSnapshotAndSlot.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:373 +0x228
+  github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Create()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:109 +0x3cc
+  github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).execReplicationCommand()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:188 +0xe8
+  github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Create()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:103 +0x238
+  github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Create()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:86 +0x138
+  github.com/Trendyol/go-pq-cdc.(*connector).Start.(*connector).prepareSnapshotAndSlot.func2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:366 +0x58
+  github.com/Trendyol/go-pq-cdc.(*connector).retryOperation()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:557 +0x264
+  github.com/Trendyol/go-pq-cdc.(*connector).prepareSnapshotAndSlot()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:364 +0x584
+  github.com/Trendyol/go-pq-cdc.(*connector).Start()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:269 +0x588
+  github.com/Trendyol/go-pq-cdc.(*connector).Start()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:268 +0x524
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity.gowrap2()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:206 +0x50
+
+Goroutine 93 (running) created at:
+  testing.(*T).Run()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x7bc
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineInitialCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:32 +0xf0
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+
+Goroutine 156 (running) created at:
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:206 +0xbd4
+  github.com/Trendyol/go-pq-cdc/pq/replication.StartOnlineReaderWithStartupTimeout()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/online.go:210 +0x2d4
+  github.com/Trendyol/go-pq-cdc/integration.startCDCOracle()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_cdc_oracle_test.go:47 +0x634
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:202 +0xaf8
+  github.com/Trendyol/go-pq-cdc.setupHeartbeatAndPublication()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:190 +0x1fc
+  github.com/Trendyol/go-pq-cdc.NewConnector()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:101 +0x578
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:121 +0x998
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:46 +0xa3c
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixture()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:32 +0x9c
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:76 +0x84
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:518 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Exec()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:513 +0x260
+  github.com/testcontainers/testcontainers-go/wait.(*ExecStrategy).WaitUntilReady()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/wait/exec.go:93 +0x1ec
+  github.com/testcontainers/testcontainers-go.init.func4.1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:213 +0x298
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks.containerHookFn.func1()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:347 +0x274
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).applyLifecycleHooks()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:314 +0xa8
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).startedHook()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/lifecycle.go:252 +0x138
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:235 +0x11c
+  github.com/testcontainers/testcontainers-go.(*DockerContainer).Start()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:230 +0xc8
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:81 +0x3d8
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:1057 +0x120c
+  github.com/testcontainers/testcontainers-go.(*DockerProvider).CreateContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/docker.go:960 +0x174
+  github.com/testcontainers/testcontainers-go.GenericContainer()
+      /Users/huseyin.akuzum/go/pkg/mod/github.com/testcontainers/testcontainers-go@v0.31.0/generic.go:73 +0x278
+  github.com/Trendyol/go-pq-cdc/integration.newOnlinePGFixtureDurability()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:46 +0xa3c
+  github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:75 +0x70
+  github.com/Trendyol/go-pq-cdc/integration.TestOnlineInitialCapacity.func1()
+      /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:32 +0x3c
+  testing.tRunner()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x164
+  testing.(*T).Run.gowrap1()
+      /Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x34
+==================
+2026/10/14 23:12:16 🐳 Terminating container: e018f6d13978
+panic: send on closed channel
+
+goroutine 167 [running]:
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*ConnectionPool).Put(...)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/connection_pool.go:71
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeInTransaction(0xc0004284e0, {0x102831a20, 0xc000264370}, {0xc0001a69d8, 0x13}, 0xc000455578)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:359 +0x1d4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation(0x114004556f8?, {0x102831a20, 0xc000264370}, 0xc0004556d8)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x26c
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction(0xc0004284e0, {0x102831a20, 0xc000264370}, 0xc000560100, {0xc0001a69d8, 0x13}, 0x2506080, 0xc000455c38)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0x100
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing(0xc0004284e0, {0x102831a20, 0xc000264370}, {0x101c2a060, 0xb}, {0xc0003a6370, 0x10}, 0xc0002af6e0, 0xc000455c38, 0xc000560100)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk(0xc0004284e0, {0x102831a20, 0xc000264370}, {0x101c2a060, 0xb}, {0xc0003a6370, 0x10}, 0xc0002af6e0, 0xc000455c38, 0xc0003a5980)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x10c
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess(0xc0004284e0, {0x102831a20, 0xc000264370}, {0x101c2a060, 0xb}, {0xc0003a6370, 0x10}, 0xc0002af6e0, 0xc000455c38)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeWorker(0xc0004284e0, {0x102831a20, 0xc000264370}, {0x101c2a060, 0xb}, {0xc0003a6370, 0x10}, 0xc0002af6e0, 0xc000455c38, {0x102831818?, ...})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:119 +0x340
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).Execute(0xc0004284e0, {0x102831a20, 0xc000264370}, 0xc000455c38, {0x101c2a060, 0xb})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:133 +0x224
+github.com/Trendyol/go-pq-cdc.(*connector).executeSnapshotWithRetry(0xc00049c090, {0x102831a20, 0xc000264370})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:472 +0x100
+github.com/Trendyol/go-pq-cdc.(*connector).Start.(*connector).prepareSnapshotAndSlot.func2(0xc0000e7dc8?)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:381 +0x25c
+github.com/Trendyol/go-pq-cdc.(*connector).retryOperation(0xc00049c090?, {0x101c270dc, 0x8}, 0x3, 0xc000455ec8)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:557 +0x268
+github.com/Trendyol/go-pq-cdc.(*connector).prepareSnapshotAndSlot(...)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:364
+github.com/Trendyol/go-pq-cdc.(*connector).Start(0xc00049c090, {0x102831a20, 0xc000264370})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:269 +0x588
+created by github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity in goroutine 88
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:206 +0xbd8
+FAIL	github.com/Trendyol/go-pq-cdc/integration	24.158s
+FAIL

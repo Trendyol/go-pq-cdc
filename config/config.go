@@ -177,6 +177,8 @@ func (c *Config) SetDefault() {
 		}
 	}
 
+	c.setSnapshotStrategyDefault()
+
 	// Set default snapshot config
 	if c.Snapshot.Enabled {
 		if c.Snapshot.Mode == "" {
@@ -198,6 +200,16 @@ func (c *Config) SetDefault() {
 				c.Snapshot.Tables[tableID].Schema = defaultSchema
 			}
 		}
+	}
+}
+
+// Omitted strategy retains the exported-snapshot implementation.
+func (c *Config) setSnapshotStrategyDefault() {
+	if c.Snapshot.Strategy == "" {
+		c.Snapshot.Strategy = SnapshotStrategyConsistent
+	}
+	if c.Snapshot.Strategy == SnapshotStrategyOnline {
+		c.Snapshot.Online.setDefault()
 	}
 }
 
@@ -336,6 +348,9 @@ func (c *Config) Validate() error {
 	if cErr := c.Snapshot.Validate(); cErr != nil {
 		err = errors.Join(err, cErr)
 	}
+	if c.Snapshot.Strategy == SnapshotStrategyOnline {
+		err = errors.Join(err, c.validateOnline())
+	}
 
 	if c.IsHeartbeatEnabled() {
 		if c.Heartbeat.Interval <= 0 {
@@ -393,19 +408,35 @@ func (c *Config) mergePublicationTableConfig(pubInfoTables publication.Tables) p
 }
 
 type SnapshotConfig struct {
-	Mode              SnapshotMode       `json:"mode" yaml:"mode"`
-	InstanceID        string             `json:"instanceId" yaml:"instanceId"`
-	ID                string             `json:"id" yaml:"id"`
-	QueryCondition    string             `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
-	Tables            publication.Tables `json:"tables" yaml:"tables"`
-	ChunkSize         int64              `json:"chunkSize" yaml:"chunkSize"`
-	ClaimTimeout      time.Duration      `json:"claimTimeout" yaml:"claimTimeout"`
-	HeartbeatInterval time.Duration      `json:"heartbeatInterval" yaml:"heartbeatInterval"`
-	Enabled           bool               `json:"enabled" yaml:"enabled"`
-	Resnapshot        bool               `json:"resnapshot" yaml:"resnapshot"`
+	Strategy          SnapshotStrategy     `json:"strategy" yaml:"strategy"`
+	Online            OnlineSnapshotConfig `json:"online" yaml:"online"`
+	Mode              SnapshotMode         `json:"mode" yaml:"mode"`
+	InstanceID        string               `json:"instanceId" yaml:"instanceId"`
+	ID                string               `json:"id" yaml:"id"`
+	QueryCondition    string               `json:"queryCondition,omitempty" yaml:"queryCondition,omitempty"`
+	Tables            publication.Tables   `json:"tables" yaml:"tables"`
+	ChunkSize         int64                `json:"chunkSize" yaml:"chunkSize"`
+	ClaimTimeout      time.Duration        `json:"claimTimeout" yaml:"claimTimeout"`
+	HeartbeatInterval time.Duration        `json:"heartbeatInterval" yaml:"heartbeatInterval"`
+	Enabled           bool                 `json:"enabled" yaml:"enabled"`
+	Resnapshot        bool                 `json:"resnapshot" yaml:"resnapshot"`
 }
 
 func (s *SnapshotConfig) Validate() error {
+	if s.Strategy != "" && s.Strategy != SnapshotStrategyConsistent && s.Strategy != SnapshotStrategyOnline {
+		return errors.New("snapshot.strategy must be 'consistent' or 'online'")
+	}
+	if s.Strategy == SnapshotStrategyOnline {
+		if !s.Enabled || s.Mode != SnapshotModeInitial {
+			return errors.New("snapshot.strategy online requires snapshot.enabled: true and snapshot.mode: initial")
+		}
+		if s.Resnapshot {
+			return errors.New("snapshot.resnapshot is unsupported with online strategy")
+		}
+		if err := s.Online.Validate(); err != nil {
+			return err
+		}
+	}
 	if !s.Enabled {
 		return nil
 	}
@@ -461,3 +492,108 @@ const (
 	SnapshotModeNever        SnapshotMode = "never"
 	SnapshotModeSnapshotOnly SnapshotMode = "snapshot_only"
 )
+
+// SnapshotStrategy selects the snapshot implementation; consistent remains the default.
+type SnapshotStrategy string
+
+const (
+	SnapshotStrategyConsistent SnapshotStrategy = "consistent"
+	SnapshotStrategyOnline     SnapshotStrategy = "online"
+)
+
+// OnlineSnapshotConfig limits volatile row memory and waits in the opt-in POC.
+// Byte budgets count encoded bytes, not Go heap overhead.
+type OnlineSnapshotConfig struct {
+	QueryTimeout       time.Duration `json:"queryTimeout" yaml:"queryTimeout"`
+	DeliveryTimeout    time.Duration `json:"deliveryTimeout" yaml:"deliveryTimeout"`
+	ChunkBytes         int64         `json:"chunkBytes" yaml:"chunkBytes"`
+	TransactionBytes   int64         `json:"transactionBytes" yaml:"transactionBytes"`
+	QueueBytes         int64         `json:"queueBytes" yaml:"queueBytes"`
+	CheckpointInterval time.Duration `json:"checkpointInterval" yaml:"checkpointInterval"`
+	MarkerInterval     time.Duration `json:"markerInterval" yaml:"markerInterval"`
+}
+
+func (o *OnlineSnapshotConfig) setDefault() {
+	// Provisional experiment settings from the approved POC plan, not measured
+	// production recommendations. Only the opt-in online strategy applies them.
+	if o.QueryTimeout == 0 {
+		o.QueryTimeout = 5 * time.Second
+	}
+	if o.DeliveryTimeout == 0 {
+		o.DeliveryTimeout = 30 * time.Second
+	}
+	if o.ChunkBytes == 0 {
+		o.ChunkBytes = 4 << 20
+	}
+	if o.TransactionBytes == 0 {
+		o.TransactionBytes = 16 << 20
+	}
+	if o.QueueBytes == 0 {
+		o.QueueBytes = 32 << 20
+	}
+	if o.CheckpointInterval == 0 {
+		o.CheckpointInterval = time.Second
+	}
+	if o.MarkerInterval == 0 {
+		o.MarkerInterval = 5 * time.Second
+	}
+}
+
+func (o *OnlineSnapshotConfig) Validate() error {
+	var err error
+	for _, v := range []struct {
+		name  string
+		value int64
+	}{
+		{"queryTimeout", int64(o.QueryTimeout)}, {"deliveryTimeout", int64(o.DeliveryTimeout)},
+		{"chunkBytes", o.ChunkBytes}, {"transactionBytes", o.TransactionBytes}, {"queueBytes", o.QueueBytes},
+		{"checkpointInterval", int64(o.CheckpointInterval)}, {"markerInterval", int64(o.MarkerInterval)},
+	} {
+		if v.value <= 0 {
+			err = errors.Join(err, fmt.Errorf("snapshot.online.%s must be greater than 0", v.name))
+		}
+	}
+	if o.QueueBytes < o.TransactionBytes {
+		err = errors.Join(err, errors.New("snapshot.online.queueBytes must admit at least one maximum transaction (transactionBytes)"))
+	}
+	return err
+}
+
+// validateOnline covers configuration facts only. The online constructor must
+// also validate actual PG16 publication/catalog, key, schema and image facts
+// for every captured business table, including tables not selected for READs.
+func (c *Config) validateOnline() error {
+	var err error
+	reject := func(ok bool, message string) {
+		if ok {
+			err = errors.Join(err, errors.New(message))
+		}
+	}
+	reject(c.Slot.ProtoVersion != 1, "snapshot.strategy online requires explicit slot.protoVersion: 1 (protocol 1); protocol 2 is not downgraded")
+	reject(c.Publication.AllTables, "snapshot.strategy online requires an explicit table publication; FOR ALL TABLES is unsupported")
+	reject(c.Slot.Failover, "slot.failover is unsupported in the same-primary PG16 online POC")
+	reject(c.ExtensionSupport.EnableTimeScaleDB, "extensionSupport.enableTimescaleDB is unsupported in the online POC (TimescaleDB)")
+	reject(len(c.VisibilityGuard.Replicas) > 0, "visibilityGuard.replicas is unsupported in the same-primary online POC")
+	reject(c.VisibilityGuard.Enabled && c.VisibilityGuard.FailMode == VisibilityFailOpen, "online visibility must fail closed; visibilityGuard.failMode: open is unsupported")
+	reject(c.Snapshot.QueryCondition != "", "snapshot.queryCondition is unsupported with online strategy")
+	if c.Publication.CreateIfNotExists || len(c.Publication.Operations) > 0 {
+		err = errors.Join(err, c.Publication.Operations.Validate())
+		for _, op := range publication.OperationOptions {
+			reject(!c.Publication.Operations.Contains(op), "online publication.operations requires INSERT, UPDATE, DELETE, TRUNCATE")
+		}
+	}
+	for _, group := range []struct {
+		name   string
+		tables publication.Tables
+	}{{"publication.tables", c.Publication.Tables}, {"snapshot.tables", c.Snapshot.Tables}} {
+		for _, t := range group.tables {
+			prefix := fmt.Sprintf("%s %s.%s: ", group.name, t.Schema, t.Name)
+			reject(t.QueryCondition != "", prefix+"queryCondition is unsupported with online strategy")
+			reject(len(t.Columns) > 0, prefix+"publication column lists are unsupported with online strategy")
+			reject(t.ReplicaIdentity != "" && t.ReplicaIdentity != publication.ReplicaIdentityFull, prefix+"replicaIdentity must be FULL for verified complete online row images")
+			reject(t.Partitioned, prefix+"partitioned tables are unsupported with online strategy")
+			reject(t.SnapshotPartitionStrategy != publication.SnapshotPartitionStrategyAuto && t.SnapshotPartitionStrategy != publication.SnapshotPartitionStrategyIntegerRange, prefix+"snapshot partition strategy must use integer keyset scanning in online mode")
+		}
+	}
+	return err
+}

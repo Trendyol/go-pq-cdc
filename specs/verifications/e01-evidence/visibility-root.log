@@ -1,0 +1,54 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 22:57:12 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 6d26d4a0ebbb75495b53ccb85938c4f691bcc8760060aa24313ec97bd289c524
+  Test ProcessID: 8dd319c8-8fbd-4e48-88d6-b35aabaa6435
+2026/10/14 22:57:12 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:57:12 ✅ Container created: b375ec1b3a77
+2026/10/14 22:57:12 🐳 Starting container: b375ec1b3a77
+2026/10/14 22:57:12 ✅ Container started: b375ec1b3a77
+2026/10/14 22:57:12 🚧 Waiting for container id b375ec1b3a77 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000343248 Strategies:[0xc0002124c0]}
+2026/10/14 22:57:13 🔔 Container is ready: b375ec1b3a77
+=== RUN   TestOnlineVisibilityBarrier
+=== RUN   TestOnlineVisibilityBarrier/connector-durable-restart
+2026/10/14 22:57:14 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:57:14 ✅ Container created: 4588904f5448
+2026/10/14 22:57:14 🐳 Starting container: 4588904f5448
+2026/10/14 22:57:14 ✅ Container started: 4588904f5448
+2026/10/14 22:57:14 🚧 Waiting for container id 4588904f5448 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00030d688 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105235d90 ResponseMatcher:0x10536d5c0 PollInterval:100ms}
+2026/10/14 22:57:15 🔔 Container is ready: 4588904f5448
+2026/10/14 22:57:15 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:57:15 ✅ Container created: daa3300206f5
+2026/10/14 22:57:15 🐳 Starting container: daa3300206f5
+2026/10/14 22:57:15 ✅ Container started: daa3300206f5
+2026/10/14 22:57:15 🚧 Waiting for container id daa3300206f5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0004e9258 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105235d90 ResponseMatcher:0x10536d5c0 PollInterval:100ms}
+2026/10/14 22:57:16 🔔 Container is ready: daa3300206f5
+2026/10/14 22:57:17 🐳 Terminating container: daa3300206f5
+2026/10/14 22:57:17 🚫 Container terminated: daa3300206f5
+2026/10/14 22:57:17 🐳 Terminating container: 4588904f5448
+2026/10/14 22:57:17 🚫 Container terminated: 4588904f5448
+2026/10/14 22:57:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:57:17 ✅ Container created: 16c68d652acd
+2026/10/14 22:57:17 🐳 Starting container: 16c68d652acd
+2026/10/14 22:57:17 ✅ Container started: 16c68d652acd
+2026/10/14 22:57:17 🚧 Waiting for container id 16c68d652acd image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000342dc8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105235d90 ResponseMatcher:0x10536d5c0 PollInterval:100ms}
+2026/10/14 22:57:18 🔔 Container is ready: 16c68d652acd
+=== NAME  TestOnlineVisibilityBarrier
+    online_visibility_test.go:209: PG16 real COMMIT-before-SQL-visibility proven for xid=734, later visible xid held behind it, including reader restart
+2026/10/14 22:57:19 🐳 Terminating container: 16c68d652acd
+2026/10/14 22:57:19 🚫 Container terminated: 16c68d652acd
+--- PASS: TestOnlineVisibilityBarrier (5.04s)
+    --- PASS: TestOnlineVisibilityBarrier/connector-durable-restart (3.40s)
+PASS
+2026/10/14 22:57:19 🐳 Terminating container: b375ec1b3a77
+2026/10/14 22:57:19 🚫 Container terminated: b375ec1b3a77
+ok  	github.com/Trendyol/go-pq-cdc/integration	9.180s

@@ -1,0 +1,81 @@
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	1.433s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	2.635s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	1.511s
+ok  	github.com/Trendyol/go-pq-cdc	1.547s
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 22:41:42 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 6439b5a035db4685ec9600c9042bf58ac74ca5c2694fb19fd35515e89adb6c3a
+  Test ProcessID: f92c21f7-1f38-47a7-a481-19a6b1d35f2f
+2026/10/14 22:41:42 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:41:42 ✅ Container created: e77cfda1199c
+2026/10/14 22:41:42 🐳 Starting container: e77cfda1199c
+2026/10/14 22:41:42 ✅ Container started: e77cfda1199c
+2026/10/14 22:41:42 🚧 Waiting for container id e77cfda1199c image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc0004057a8 Strategies:[0xc00040c540]}
+2026/10/14 22:41:42 🔔 Container is ready: e77cfda1199c
+=== RUN   TestOnlineInitialSmoke
+2026/10/14 22:41:44 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:41:44 ✅ Container created: 1c5b4b769f59
+2026/10/14 22:41:44 🐳 Starting container: 1c5b4b769f59
+2026/10/14 22:41:44 ✅ Container started: 1c5b4b769f59
+2026/10/14 22:41:44 🚧 Waiting for container id 1c5b4b769f59 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000014518 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1036355f0 ResponseMatcher:0x103760c30 PollInterval:100ms}
+2026/10/14 22:41:45 🔔 Container is ready: 1c5b4b769f59
+2026/10/14 22:41:45 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:41:45 ✅ Container created: fb2855daf72b
+2026/10/14 22:41:45 🐳 Starting container: fb2855daf72b
+2026/10/14 22:41:45 ✅ Container started: fb2855daf72b
+2026/10/14 22:41:45 🚧 Waiting for container id fb2855daf72b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0003db238 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1036355f0 ResponseMatcher:0x103760c30 PollInterval:100ms}
+2026/10/14 22:41:46 🔔 Container is ready: fb2855daf72b
+2026/10/14 22:41:46 🐳 Terminating container: fb2855daf72b
+2026/10/14 22:41:46 🚫 Container terminated: fb2855daf72b
+2026/10/14 22:41:46 🐳 Terminating container: 1c5b4b769f59
+2026/10/14 22:41:46 🚫 Container terminated: 1c5b4b769f59
+--- PASS: TestOnlineInitialSmoke (2.77s)
+=== RUN   TestOnlineLosslessImages
+2026/10/14 22:41:46 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:41:46 ✅ Container created: 46393d5a320c
+2026/10/14 22:41:46 🐳 Starting container: 46393d5a320c
+2026/10/14 22:41:46 ✅ Container started: 46393d5a320c
+2026/10/14 22:41:46 🚧 Waiting for container id 46393d5a320c image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000404aa8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1036355f0 ResponseMatcher:0x103760c30 PollInterval:100ms}
+2026/10/14 22:41:47 🔔 Container is ready: 46393d5a320c
+2026/10/14 22:41:47 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:41:47 ✅ Container created: ce5b06ff437a
+2026/10/14 22:41:47 🐳 Starting container: ce5b06ff437a
+2026/10/14 22:41:47 ✅ Container started: ce5b06ff437a
+2026/10/14 22:41:47 🚧 Waiting for container id ce5b06ff437a image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000267928 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1036355f0 ResponseMatcher:0x103760c30 PollInterval:100ms}
+2026/10/14 22:41:48 🔔 Container is ready: ce5b06ff437a
+2026/10/14 22:41:49 🐳 Terminating container: ce5b06ff437a
+2026/10/14 22:41:49 🚫 Container terminated: ce5b06ff437a
+2026/10/14 22:41:49 🐳 Terminating container: 46393d5a320c
+2026/10/14 22:41:49 🚫 Container terminated: 46393d5a320c
+--- PASS: TestOnlineLosslessImages (2.94s)
+=== RUN   TestOnlinePermanentMetadata
+2026/10/14 22:41:49 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 22:41:49 ✅ Container created: 7a8825ae40c1
+2026/10/14 22:41:49 🐳 Starting container: 7a8825ae40c1
+2026/10/14 22:41:49 ✅ Container started: 7a8825ae40c1
+2026/10/14 22:41:49 🚧 Waiting for container id 7a8825ae40c1 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00012f858 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1036355f0 ResponseMatcher:0x103760c30 PollInterval:100ms}
+2026/10/14 22:41:50 🔔 Container is ready: 7a8825ae40c1
+    online_review_test.go:64: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:82
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_review_test.go:64
+        	Error:      	Received unexpected error:
+        	            	ERROR: could not change table "table_progress" to unlogged because it references logged table "windows" (SQLSTATE 42P16)
+        	Test:       	TestOnlinePermanentMetadata
+2026/10/14 22:41:50 🐳 Terminating container: 7a8825ae40c1
+2026/10/14 22:41:50 🚫 Container terminated: 7a8825ae40c1
+--- FAIL: TestOnlinePermanentMetadata (1.06s)
+FAIL
+2026/10/14 22:41:50 🐳 Terminating container: e77cfda1199c
+2026/10/14 22:41:50 🚫 Container terminated: e77cfda1199c
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	9.596s

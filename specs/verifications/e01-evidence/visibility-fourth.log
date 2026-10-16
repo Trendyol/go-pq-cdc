@@ -1,0 +1,35 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:09:17 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 81954202a78bdc2f45ea8683074acfdcf213c53f1fa75b1daaa181f0f80895f7
+  Test ProcessID: 63e5ef41-b2c0-4055-be77-ce8e3ee83130
+2026/10/14 16:09:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:09:17 ✅ Container created: 755bf6e5d12f
+2026/10/14 16:09:17 🐳 Starting container: 755bf6e5d12f
+2026/10/14 16:09:18 ✅ Container started: 755bf6e5d12f
+2026/10/14 16:09:18 🚧 Waiting for container id 755bf6e5d12f image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000687d78 Strategies:[0xc0006990c0]}
+2026/10/14 16:09:18 🔔 Container is ready: 755bf6e5d12f
+=== RUN   TestOnlineVisibilityBarrier
+2026/10/14 16:09:19 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:09:19 ✅ Container created: 1739ce96178a
+2026/10/14 16:09:19 🐳 Starting container: 1739ce96178a
+2026/10/14 16:09:19 ✅ Container started: 1739ce96178a
+2026/10/14 16:09:19 🚧 Waiting for container id 1739ce96178a image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00020ed68 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100e416b0 ResponseMatcher:0x100f60f30 PollInterval:100ms}
+2026/10/14 16:09:20 🔔 Container is ready: 1739ce96178a
+    online_visibility_test.go:208: PG16 real COMMIT-before-SQL-visibility proven for xid=734, later visible xid held behind it, including reader restart
+2026/10/14 16:09:21 🐳 Terminating container: 1739ce96178a
+2026/10/14 16:09:21 🚫 Container terminated: 1739ce96178a
+--- PASS: TestOnlineVisibilityBarrier (1.78s)
+PASS
+2026/10/14 16:09:21 🐳 Terminating container: 755bf6e5d12f
+2026/10/14 16:09:21 🚫 Container terminated: 755bf6e5d12f
+ok  	github.com/Trendyol/go-pq-cdc/integration	5.540s

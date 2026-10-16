@@ -1,0 +1,49 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:15:29 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: f55e8d6e0159457bc876daf60ab713ab67652aa13ea833beefb23a24f83e1e93
+  Test ProcessID: 4a8325b3-db7b-4764-8df3-9770a912c4d6
+2026/10/14 16:15:29 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:15:29 ✅ Container created: 4593ddeebb27
+2026/10/14 16:15:29 🐳 Starting container: 4593ddeebb27
+2026/10/14 16:15:29 ✅ Container started: 4593ddeebb27
+2026/10/14 16:15:29 🚧 Waiting for container id 4593ddeebb27 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00038daf8 Strategies:[0xc00020a740]}
+2026/10/14 16:15:30 🔔 Container is ready: 4593ddeebb27
+=== RUN   TestOnlineInitialCapacity
+2026/10/14 16:15:31 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:15:31 ✅ Container created: 554a56099272
+2026/10/14 16:15:31 🐳 Starting container: 554a56099272
+2026/10/14 16:15:31 ✅ Container started: 554a56099272
+2026/10/14 16:15:31 🚧 Waiting for container id 554a56099272 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002e50b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x103591b30 ResponseMatcher:0x1036b5610 PollInterval:100ms}
+2026/10/14 16:15:32 🔔 Container is ready: 554a56099272
+2026/10/14 16:15:32 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:15:32 ✅ Container created: 4498206f9785
+2026/10/14 16:15:32 🐳 Starting container: 4498206f9785
+2026/10/14 16:15:32 ✅ Container started: 4498206f9785
+2026/10/14 16:15:32 🚧 Waiting for container id 4498206f9785 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002e5e98 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x103591b30 ResponseMatcher:0x1036b5610 PollInterval:100ms}
+2026/10/14 16:15:33 🔔 Container is ready: 4498206f9785
+    online_capacity_test.go:112: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_run_helpers_test.go:71
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:112
+        	Error:      	Received unexpected error:
+        	            	context deadline exceeded
+        	Test:       	TestOnlineInitialCapacity
+2026/10/14 16:16:49 🐳 Terminating container: 4498206f9785
+2026/10/14 16:16:49 🚫 Container terminated: 4498206f9785
+2026/10/14 16:16:49 🐳 Terminating container: 554a56099272
+2026/10/14 16:16:49 🚫 Container terminated: 554a56099272
+--- FAIL: TestOnlineInitialCapacity (78.18s)
+FAIL
+2026/10/14 16:16:49 🐳 Terminating container: 4593ddeebb27
+2026/10/14 16:16:49 🚫 Container terminated: 4593ddeebb27
+FAIL	github.com/Trendyol/go-pq-cdc/integration	81.157s
+FAIL

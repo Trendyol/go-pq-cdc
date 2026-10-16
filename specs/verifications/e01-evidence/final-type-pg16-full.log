@@ -1,0 +1,4 @@
+$ (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)
+ok  	github.com/Trendyol/go-pq-cdc/integration	438.248s
+
+EXIT 0

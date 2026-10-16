@@ -35,6 +35,9 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("CDC_ONLINE_HELPER") != "" {
+		os.Exit(runOnlineHelper())
+	}
 	var err error
 	Config, err = config.ReadConfigYAML("./test_connector.yaml")
 	if err != nil {

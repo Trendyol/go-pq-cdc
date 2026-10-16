@@ -1,0 +1,781 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 23:39:44 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: f81b04d12c680da100b742f616013e424061ad78c0f15c8129df3de9d092f38d
+  Test ProcessID: fdcb764d-20e3-4d2f-a9ba-fd688fb1a5c1
+2026/10/14 23:39:44 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:39:44 ✅ Container created: 473f27ce58bf
+2026/10/14 23:39:44 🐳 Starting container: 473f27ce58bf
+2026/10/14 23:39:44 ✅ Container started: 473f27ce58bf
+2026/10/14 23:39:44 🚧 Waiting for container id 473f27ce58bf image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc0003668e8 Strategies:[0xc0002e6480]}
+2026/10/14 23:39:44 🔔 Container is ready: 473f27ce58bf
+sanity test
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_basic_functionality_v1","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:39:45.128365+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:39:45.131678+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:39:45.131699+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-10-14T23:39:45.134998+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:39:45.135038+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:39:45.173234+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_basic_functionality_v1","failover":false}
+{"time":"2026-10-14T23:39:45.174684+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_basic_functionality_v1","type":"logical","walStatus":"reserved","restartLSN":26562304,"confirmedFlushLSN":26562360,"currentLSN":26562360,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:39:45.192621+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:39:46.231626+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":26562360,"database:":"cdc_db"}
+{"time":"2026-10-14T23:39:46.233218+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_basic_functionality_v1"}
+{"time":"2026-10-14T23:39:46.233303+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:39:46.233324+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:39:46.233344+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:39:46.233388+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:39:46.317095+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:46.601312+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:39:46.602196+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:39:46.602272+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:39:46.602317+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:46.602556+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:39:46.60285+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_basic_functionality_v2","slotActivityCheckerInterval":1000,"protoVersion":2,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:39:46.72874+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:39:46.732194+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:39:46.732223+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-10-14T23:39:46.736132+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:39:46.736144+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:39:46.778071+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_basic_functionality_v2","failover":false}
+{"time":"2026-10-14T23:39:46.779352+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_basic_functionality_v2","type":"logical","walStatus":"reserved","restartLSN":26680544,"confirmedFlushLSN":26680600,"currentLSN":26680600,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:39:46.804271+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:39:47.852619+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":26680600,"database:":"cdc_db"}
+{"time":"2026-10-14T23:39:47.854892+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_basic_functionality_v2"}
+{"time":"2026-10-14T23:39:47.854968+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:39:47.854984+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:39:47.855029+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:39:47.855056+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:39:47.929771+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:48.212422+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:39:48.21303+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:39:48.213078+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:39:48.2131+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:48.213276+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:39:48.2134+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_concurrent_order_v1","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:39:48.330678+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:39:48.336547+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:39:48.336582+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-10-14T23:39:48.340981+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:39:48.340997+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:39:48.39791+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_concurrent_order_v1","failover":false}
+{"time":"2026-10-14T23:39:48.399429+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_concurrent_order_v1","type":"logical","walStatus":"reserved","restartLSN":26797016,"confirmedFlushLSN":26797072,"currentLSN":26797072,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:39:48.421846+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:39:49.470127+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":26797072,"database:":"cdc_db"}
+{"time":"2026-10-14T23:39:49.471603+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_concurrent_order_v1"}
+{"time":"2026-10-14T23:39:49.471659+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:39:49.471673+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:39:49.471678+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:39:49.471699+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:39:50.22991+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:50.322031+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:39:50.322811+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:39:50.322865+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:39:50.322897+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:50.323097+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:39:50.323139+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_concurrent_order_v2","slotActivityCheckerInterval":1000,"protoVersion":2,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:39:50.442691+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:39:50.448135+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:39:50.44817+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-10-14T23:39:50.452616+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:39:50.452605+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:39:50.510576+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_concurrent_order_v2","failover":false}
+{"time":"2026-10-14T23:39:50.511985+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_concurrent_order_v2","type":"logical","walStatus":"reserved","restartLSN":26871800,"confirmedFlushLSN":26871856,"currentLSN":26871856,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:39:50.535285+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:39:51.59152+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":26871856,"database:":"cdc_db"}
+{"time":"2026-10-14T23:39:51.593858+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_concurrent_order_v2"}
+{"time":"2026-10-14T23:39:51.593929+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:39:51.593957+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:39:51.593959+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:39:51.594075+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:39:52.363806+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:52.458779+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:39:52.460558+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:39:52.460657+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:39:52.460715+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:39:52.460952+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:39:52.460992+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_copy_protocol_v1","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:39:52.564497+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:39:52.569214+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:39:52.569247+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_copy_protocol_v1","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8085},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:39:52.604207+02:00","level":"WARN","msg":"publication already exists"}
+{"time":"2026-10-14T23:39:52.604242+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"","schema":"public"}],"createIfNotExists":false}}
+{"time":"2026-10-14T23:39:52.608274+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:39:52.608302+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:39:52.65993+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_copy_protocol_v1","failover":false}
+{"time":"2026-10-14T23:39:52.661627+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_copy_protocol_v1","type":"logical","walStatus":"reserved","restartLSN":26947984,"confirmedFlushLSN":26948040,"currentLSN":26948040,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:39:52.682939+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:39:53.728624+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":26948040,"database:":"cdc_db"}
+{"time":"2026-10-14T23:39:53.729885+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_copy_protocol_v1"}
+{"time":"2026-10-14T23:39:53.729954+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:39:53.729968+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:39:53.729978+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:39:53.729995+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:39:53.730149+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:39:53.730173+02:00","level":"INFO","msg":"server starting on port :8085"}
+{"time":"2026-10-14T23:39:53.750839+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:39:53.750887+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:39:53.75091+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:39:53.764715+02:00","level":"WARN","msg":"replication slot already exists"}
+{"time":"2026-10-14T23:39:53.764803+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_copy_protocol_v1","type":"logical","walStatus":"reserved","restartLSN":26947984,"confirmedFlushLSN":26948040,"currentLSN":26950856,"retainedWALSize":2872,"lag":2816,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:39:53.785883+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:39:54.831436+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":26950856,"database:":"cdc_db"}
+{"time":"2026-10-14T23:39:54.832844+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_copy_protocol_v1"}
+{"time":"2026-10-14T23:39:54.832913+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:39:54.832931+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:39:54.83293+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:39:54.833089+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:40:23.753063+02:00","level":"WARN","msg":"timed out waiting for postgres message process","error":"context deadline exceeded"}
+{"time":"2026-10-14T23:40:23.753378+02:00","level":"ERROR","msg":"replication stream shutdown failed","error":"source=(*stream).Close: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/stream.go:859 wait for postgres message process: context deadline exceeded"}
+{"time":"2026-10-14T23:40:23.753761+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:40:23.75379+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+{"time":"2026-10-14T23:40:23.754186+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:40:23.755303+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:40:23.919226+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:40:23.919995+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:40:23.920069+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:40:23.920102+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:40:23.920315+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:40:23.92036+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_copy_protocol_v2","slotActivityCheckerInterval":1000,"protoVersion":2,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:40:24.037181+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:40:24.045025+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:40:24.045068+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"slot_test_copy_protocol_v2","slotActivityCheckerInterval":1000,"protoVersion":2,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8085},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:40:24.080396+02:00","level":"WARN","msg":"publication already exists"}
+{"time":"2026-10-14T23:40:24.080444+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"","schema":"public"}],"createIfNotExists":false}}
+{"time":"2026-10-14T23:40:24.084771+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:40:24.084756+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:40:24.129815+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_copy_protocol_v2","failover":false}
+{"time":"2026-10-14T23:40:24.130945+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_copy_protocol_v2","type":"logical","walStatus":"reserved","restartLSN":27184280,"confirmedFlushLSN":27184336,"currentLSN":27184336,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:40:24.151121+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:40:25.180548+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":27462560,"database:":"cdc_db"}
+{"time":"2026-10-14T23:40:25.181635+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_copy_protocol_v2"}
+{"time":"2026-10-14T23:40:25.181673+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:40:25.181684+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:40:25.18169+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:40:25.181712+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:40:25.181871+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:40:25.181896+02:00","level":"INFO","msg":"server starting on port :8085"}
+{"time":"2026-10-14T23:40:25.208611+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:40:25.208642+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:40:25.208656+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:40:25.20985+02:00","level":"WARN","msg":"replication slot already exists"}
+{"time":"2026-10-14T23:40:25.209918+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_copy_protocol_v2","type":"logical","walStatus":"reserved","restartLSN":27184280,"confirmedFlushLSN":27462560,"currentLSN":27465376,"retainedWALSize":281096,"lag":2816,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:40:25.228345+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:40:26.271656+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":27465376,"database:":"cdc_db"}
+{"time":"2026-10-14T23:40:26.273227+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_copy_protocol_v2"}
+{"time":"2026-10-14T23:40:26.273286+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:40:26.273302+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:40:26.273306+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:40:26.273329+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:40:55.210552+02:00","level":"WARN","msg":"timed out waiting for postgres message process","error":"context deadline exceeded"}
+{"time":"2026-10-14T23:40:55.210673+02:00","level":"ERROR","msg":"replication stream shutdown failed","error":"source=(*stream).Close: /Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/replication/stream.go:859 wait for postgres message process: context deadline exceeded"}
+{"time":"2026-10-14T23:40:55.21082+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:40:55.21085+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+{"time":"2026-10-14T23:40:55.211036+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:40:55.211659+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:40:55.481712+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:40:55.482123+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:40:55.482178+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:40:55.482207+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:40:55.482418+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:40:55.48246+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"},{"name":"heartbeat_events","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"heartbeat_events","replicaIdentity":"","schema":"public"},"interval":2000000000},"slot":{"name":"slot_test_heartbeat_lsn_v1","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:40:55.59925+02:00","level":"INFO","msg":"heartbeat table created","table":"\"public\".\"heartbeat_events\""}
+{"time":"2026-10-14T23:40:55.600449+02:00","level":"INFO","msg":"heartbeat table ready to use","table":"\"public\".\"heartbeat_events\""}
+{"time":"2026-10-14T23:40:55.603879+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:40:55.604742+02:00","level":"INFO","msg":"table replica identity updated","name":"heartbeat_events","replica_identity":"FULL"}
+{"time":"2026-10-14T23:40:55.608348+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:40:55.60838+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"},{"name":"heartbeat_events","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-10-14T23:40:55.612452+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:40:55.612635+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:40:55.665515+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_heartbeat_lsn_v1","failover":false}
+{"time":"2026-10-14T23:40:55.666648+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_heartbeat_lsn_v1","type":"logical","walStatus":"reserved","restartLSN":27557200,"confirmedFlushLSN":27557256,"currentLSN":27557256,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:40:55.688805+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:40:56.733854+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":27557312,"database:":"cdc_db"}
+{"time":"2026-10-14T23:40:56.73549+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_heartbeat_lsn_v1"}
+{"time":"2026-10-14T23:40:56.735568+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:40:56.735592+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:40:56.735587+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:40:56.735612+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:41:03.744151+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:41:03.950239+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:41:03.95086+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:41:03.950914+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:41:03.950936+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:41:03.951107+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:41:03.951136+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"cdc_user","password":"*******","database":"cdc_db","publication":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"},{"name":"heartbeat_events","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"heartbeat_events","replicaIdentity":"","schema":"public"},"interval":2000000000},"slot":{"name":"slot_test_heartbeat_lsn_v2","slotActivityCheckerInterval":1000,"protoVersion":2,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":0,"deliveryTimeout":0,"chunkBytes":0,"transactionBytes":0,"queueBytes":0,"checkpointInterval":0,"markerInterval":0},"mode":"","instanceId":"","id":"","tables":null,"chunkSize":0,"claimTimeout":0,"heartbeatInterval":0,"enabled":false,"resnapshot":false},"port":44921,"metric":{"port":8083},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:41:04.05558+02:00","level":"INFO","msg":"heartbeat table ready to use","table":"\"public\".\"heartbeat_events\""}
+{"time":"2026-10-14T23:41:04.058557+02:00","level":"INFO","msg":"table replica identity updated","name":"books","replica_identity":"FULL"}
+{"time":"2026-10-14T23:41:04.061812+02:00","level":"INFO","msg":"publication created","name":"cdc_publication"}
+{"time":"2026-10-14T23:41:04.061844+02:00","level":"INFO","msg":"publication","info":{"name":"cdc_publication","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"books","replicaIdentity":"FULL","schema":"public"},{"name":"heartbeat_events","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-10-14T23:41:04.065036+02:00","level":"INFO","msg":"server starting on port :8083"}
+{"time":"2026-10-14T23:41:04.064972+02:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-10-14T23:41:04.111096+02:00","level":"INFO","msg":"replication slot created","name":"slot_test_heartbeat_lsn_v2","failover":false}
+{"time":"2026-10-14T23:41:04.112413+02:00","level":"INFO","msg":"slot info","info":{"name":"slot_test_heartbeat_lsn_v2","type":"logical","walStatus":"reserved","restartLSN":27634232,"confirmedFlushLSN":27634288,"currentLSN":27634288,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-10-14T23:41:04.133012+02:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-10-14T23:41:05.183101+02:00","level":"INFO","msg":"system identification","systemID":"7696641456437514269","timeline":1,"xLogPos":27634288,"database:":"cdc_db"}
+{"time":"2026-10-14T23:41:05.185465+02:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"slot_test_heartbeat_lsn_v2"}
+{"time":"2026-10-14T23:41:05.185552+02:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-10-14T23:41:05.185572+02:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-10-14T23:41:05.185574+02:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-10-14T23:41:05.185614+02:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-10-14T23:41:12.1932+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:41:12.400648+02:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-10-14T23:41:12.401228+02:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-10-14T23:41:12.401285+02:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-10-14T23:41:12.401318+02:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-10-14T23:41:12.401484+02:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-10-14T23:41:12.401513+02:00","level":"INFO","msg":"[connector] connector closed successfully"}
+2026/10/14 23:41:12 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:12 ✅ Container created: 88592df25043
+2026/10/14 23:41:12 🐳 Starting container: 88592df25043
+2026/10/14 23:41:12 ✅ Container started: 88592df25043
+2026/10/14 23:41:12 🚧 Waiting for container id 88592df25043 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00026b798 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:13 🔔 Container is ready: 88592df25043
+2026/10/14 23:41:13 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:13 ✅ Container created: f0d9b916d57a
+2026/10/14 23:41:13 🐳 Starting container: f0d9b916d57a
+2026/10/14 23:41:13 ✅ Container started: f0d9b916d57a
+2026/10/14 23:41:13 🚧 Waiting for container id f0d9b916d57a image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002755d8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:14 🔔 Container is ready: f0d9b916d57a
+2026/10/14 23:41:16 🐳 Terminating container: f0d9b916d57a
+2026/10/14 23:41:16 🚫 Container terminated: f0d9b916d57a
+2026/10/14 23:41:16 🐳 Terminating container: 88592df25043
+2026/10/14 23:41:16 🚫 Container terminated: 88592df25043
+2026/10/14 23:41:16 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:16 ✅ Container created: 06ca2bfc5734
+2026/10/14 23:41:16 🐳 Starting container: 06ca2bfc5734
+2026/10/14 23:41:16 ✅ Container started: 06ca2bfc5734
+2026/10/14 23:41:16 🚧 Waiting for container id 06ca2bfc5734 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000470848 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:17 🔔 Container is ready: 06ca2bfc5734
+2026/10/14 23:41:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:17 ✅ Container created: 92b3d94ef3cf
+2026/10/14 23:41:17 🐳 Starting container: 92b3d94ef3cf
+2026/10/14 23:41:17 ✅ Container started: 92b3d94ef3cf
+2026/10/14 23:41:17 🚧 Waiting for container id 92b3d94ef3cf image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005cd028 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:18 🔔 Container is ready: 92b3d94ef3cf
+2026/10/14 23:41:20 🐳 Terminating container: 92b3d94ef3cf
+2026/10/14 23:41:20 🚫 Container terminated: 92b3d94ef3cf
+2026/10/14 23:41:20 🐳 Terminating container: 06ca2bfc5734
+2026/10/14 23:41:20 🚫 Container terminated: 06ca2bfc5734
+2026/10/14 23:41:20 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:20 ✅ Container created: 8e1c3121f7eb
+2026/10/14 23:41:20 🐳 Starting container: 8e1c3121f7eb
+2026/10/14 23:41:20 ✅ Container started: 8e1c3121f7eb
+2026/10/14 23:41:20 🚧 Waiting for container id 8e1c3121f7eb image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000688468 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:21 🔔 Container is ready: 8e1c3121f7eb
+2026/10/14 23:41:21 🐳 Terminating container: 8e1c3121f7eb
+2026/10/14 23:41:21 🚫 Container terminated: 8e1c3121f7eb
+2026/10/14 23:41:21 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:21 ✅ Container created: d5eba374bb4c
+2026/10/14 23:41:21 🐳 Starting container: d5eba374bb4c
+2026/10/14 23:41:21 ✅ Container started: d5eba374bb4c
+2026/10/14 23:41:21 🚧 Waiting for container id d5eba374bb4c image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000470608 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:22 🔔 Container is ready: d5eba374bb4c
+2026/10/14 23:41:23 🐳 Terminating container: d5eba374bb4c
+2026/10/14 23:41:24 🚫 Container terminated: d5eba374bb4c
+2026/10/14 23:41:24 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:24 ✅ Container created: 4962c051c021
+2026/10/14 23:41:24 🐳 Starting container: 4962c051c021
+2026/10/14 23:41:24 ✅ Container started: 4962c051c021
+2026/10/14 23:41:24 🚧 Waiting for container id 4962c051c021 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001f84a8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:24 🔔 Container is ready: 4962c051c021
+2026/10/14 23:41:25 🐳 Terminating container: 4962c051c021
+2026/10/14 23:41:25 🚫 Container terminated: 4962c051c021
+2026/10/14 23:41:25 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:25 ✅ Container created: ffbe2904aaff
+2026/10/14 23:41:25 🐳 Starting container: ffbe2904aaff
+2026/10/14 23:41:25 ✅ Container started: ffbe2904aaff
+2026/10/14 23:41:25 🚧 Waiting for container id ffbe2904aaff image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000471798 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:26 🔔 Container is ready: ffbe2904aaff
+2026/10/14 23:41:26 🐳 Terminating container: ffbe2904aaff
+2026/10/14 23:41:26 🚫 Container terminated: ffbe2904aaff
+2026/10/14 23:41:26 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:26 ✅ Container created: fe9d635afab6
+2026/10/14 23:41:26 🐳 Starting container: fe9d635afab6
+2026/10/14 23:41:26 ✅ Container started: fe9d635afab6
+2026/10/14 23:41:26 🚧 Waiting for container id fe9d635afab6 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000470098 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:27 🔔 Container is ready: fe9d635afab6
+2026/10/14 23:41:27 🐳 Terminating container: fe9d635afab6
+2026/10/14 23:41:27 🚫 Container terminated: fe9d635afab6
+2026/10/14 23:41:27 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:27 ✅ Container created: 70624bf63c2d
+2026/10/14 23:41:27 🐳 Starting container: 70624bf63c2d
+2026/10/14 23:41:28 ✅ Container started: 70624bf63c2d
+2026/10/14 23:41:28 🚧 Waiting for container id 70624bf63c2d image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001f8958 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:28 🔔 Container is ready: 70624bf63c2d
+2026/10/14 23:41:30 🐳 Terminating container: 70624bf63c2d
+2026/10/14 23:41:30 🚫 Container terminated: 70624bf63c2d
+2026/10/14 23:41:30 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:30 ✅ Container created: ca479c82a2c7
+2026/10/14 23:41:30 🐳 Starting container: ca479c82a2c7
+2026/10/14 23:41:30 ✅ Container started: ca479c82a2c7
+2026/10/14 23:41:30 🚧 Waiting for container id ca479c82a2c7 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005cc118 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:31 🔔 Container is ready: ca479c82a2c7
+2026/10/14 23:41:31 🐳 Terminating container: ca479c82a2c7
+2026/10/14 23:41:31 🚫 Container terminated: ca479c82a2c7
+2026/10/14 23:41:31 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:31 ✅ Container created: 3809c5115ffd
+2026/10/14 23:41:31 🐳 Starting container: 3809c5115ffd
+2026/10/14 23:41:31 ✅ Container started: 3809c5115ffd
+2026/10/14 23:41:31 🚧 Waiting for container id 3809c5115ffd image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000688d08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:32 🔔 Container is ready: 3809c5115ffd
+2026/10/14 23:41:32 🐳 Terminating container: 3809c5115ffd
+2026/10/14 23:41:32 🚫 Container terminated: 3809c5115ffd
+2026/10/14 23:41:32 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:32 ✅ Container created: 02688f50fe08
+2026/10/14 23:41:32 🐳 Starting container: 02688f50fe08
+2026/10/14 23:41:33 ✅ Container started: 02688f50fe08
+2026/10/14 23:41:33 🚧 Waiting for container id 02688f50fe08 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001da168 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:33 🔔 Container is ready: 02688f50fe08
+2026/10/14 23:41:34 🐳 Terminating container: 02688f50fe08
+2026/10/14 23:41:34 🚫 Container terminated: 02688f50fe08
+2026/10/14 23:41:34 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:34 ✅ Container created: 7bbfd739460d
+2026/10/14 23:41:34 🐳 Starting container: 7bbfd739460d
+2026/10/14 23:41:34 ✅ Container started: 7bbfd739460d
+2026/10/14 23:41:34 🚧 Waiting for container id 7bbfd739460d image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005cd268 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:35 🔔 Container is ready: 7bbfd739460d
+2026/10/14 23:41:35 🐳 Terminating container: 7bbfd739460d
+2026/10/14 23:41:35 🚫 Container terminated: 7bbfd739460d
+2026/10/14 23:41:35 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:35 ✅ Container created: 1dbda8de4011
+2026/10/14 23:41:35 🐳 Starting container: 1dbda8de4011
+2026/10/14 23:41:35 ✅ Container started: 1dbda8de4011
+2026/10/14 23:41:35 🚧 Waiting for container id 1dbda8de4011 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00027b608 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:36 🔔 Container is ready: 1dbda8de4011
+2026/10/14 23:41:36 🐳 Terminating container: 1dbda8de4011
+2026/10/14 23:41:36 🚫 Container terminated: 1dbda8de4011
+2026/10/14 23:41:36 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:36 ✅ Container created: ccc160eebaaa
+2026/10/14 23:41:36 🐳 Starting container: ccc160eebaaa
+2026/10/14 23:41:36 ✅ Container started: ccc160eebaaa
+2026/10/14 23:41:36 🚧 Waiting for container id ccc160eebaaa image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00027a638 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:37 🔔 Container is ready: ccc160eebaaa
+2026/10/14 23:41:38 🐳 Terminating container: ccc160eebaaa
+2026/10/14 23:41:38 🚫 Container terminated: ccc160eebaaa
+2026/10/14 23:41:38 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:38 ✅ Container created: 8a314413c558
+2026/10/14 23:41:38 🐳 Starting container: 8a314413c558
+2026/10/14 23:41:38 ✅ Container started: 8a314413c558
+2026/10/14 23:41:38 🚧 Waiting for container id 8a314413c558 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0003bae08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:39 🔔 Container is ready: 8a314413c558
+2026/10/14 23:41:39 🐳 Terminating container: 8a314413c558
+2026/10/14 23:41:39 🚫 Container terminated: 8a314413c558
+2026/10/14 23:41:39 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:39 ✅ Container created: de991be90b92
+2026/10/14 23:41:39 🐳 Starting container: de991be90b92
+2026/10/14 23:41:39 ✅ Container started: de991be90b92
+2026/10/14 23:41:39 🚧 Waiting for container id de991be90b92 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005998b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:40 🔔 Container is ready: de991be90b92
+2026/10/14 23:41:40 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:40 ✅ Container created: ac345a03f18b
+2026/10/14 23:41:40 🐳 Starting container: ac345a03f18b
+2026/10/14 23:41:40 ✅ Container started: ac345a03f18b
+2026/10/14 23:41:40 🚧 Waiting for container id ac345a03f18b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001db258 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:41 🔔 Container is ready: ac345a03f18b
+2026/10/14 23:41:42 🐳 Terminating container: ac345a03f18b
+2026/10/14 23:41:42 🚫 Container terminated: ac345a03f18b
+2026/10/14 23:41:42 🐳 Terminating container: de991be90b92
+2026/10/14 23:41:42 🚫 Container terminated: de991be90b92
+2026/10/14 23:41:42 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:42 ✅ Container created: 966bb6c9781e
+2026/10/14 23:41:42 🐳 Starting container: 966bb6c9781e
+2026/10/14 23:41:42 ✅ Container started: 966bb6c9781e
+2026/10/14 23:41:42 🚧 Waiting for container id 966bb6c9781e image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00068a1b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:43 🔔 Container is ready: 966bb6c9781e
+2026/10/14 23:41:43 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:43 ✅ Container created: 94f90763c301
+2026/10/14 23:41:43 🐳 Starting container: 94f90763c301
+2026/10/14 23:41:43 ✅ Container started: 94f90763c301
+2026/10/14 23:41:43 🚧 Waiting for container id 94f90763c301 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000594a58 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:44 🔔 Container is ready: 94f90763c301
+2026/10/14 23:41:45 🐳 Terminating container: 94f90763c301
+2026/10/14 23:41:45 🚫 Container terminated: 94f90763c301
+2026/10/14 23:41:45 🐳 Terminating container: 966bb6c9781e
+2026/10/14 23:41:45 🚫 Container terminated: 966bb6c9781e
+2026/10/14 23:41:45 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:45 ✅ Container created: 7bf3f5471ec6
+2026/10/14 23:41:45 🐳 Starting container: 7bf3f5471ec6
+2026/10/14 23:41:45 ✅ Container started: 7bf3f5471ec6
+2026/10/14 23:41:45 🚧 Waiting for container id 7bf3f5471ec6 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0003ba248 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:46 🔔 Container is ready: 7bf3f5471ec6
+2026/10/14 23:41:47 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:47 ✅ Container created: b85a61cc9cee
+2026/10/14 23:41:47 🐳 Starting container: b85a61cc9cee
+2026/10/14 23:41:47 ✅ Container started: b85a61cc9cee
+2026/10/14 23:41:47 🚧 Waiting for container id b85a61cc9cee image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0006169a8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:48 🔔 Container is ready: b85a61cc9cee
+2026/10/14 23:41:49 🐳 Terminating container: b85a61cc9cee
+2026/10/14 23:41:49 🚫 Container terminated: b85a61cc9cee
+2026/10/14 23:41:49 🐳 Terminating container: 7bf3f5471ec6
+2026/10/14 23:41:49 🚫 Container terminated: 7bf3f5471ec6
+2026/10/14 23:41:49 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:49 ✅ Container created: 72d30a670846
+2026/10/14 23:41:49 🐳 Starting container: 72d30a670846
+2026/10/14 23:41:49 ✅ Container started: 72d30a670846
+2026/10/14 23:41:49 🚧 Waiting for container id 72d30a670846 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005951e8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:50 🔔 Container is ready: 72d30a670846
+2026/10/14 23:41:51 🐳 Terminating container: 72d30a670846
+2026/10/14 23:41:51 🚫 Container terminated: 72d30a670846
+2026/10/14 23:41:51 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:51 ✅ Container created: bfa8a1d146d6
+2026/10/14 23:41:51 🐳 Starting container: bfa8a1d146d6
+2026/10/14 23:41:51 ✅ Container started: bfa8a1d146d6
+2026/10/14 23:41:51 🚧 Waiting for container id bfa8a1d146d6 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000594428 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:52 🔔 Container is ready: bfa8a1d146d6
+2026/10/14 23:41:52 🐳 Terminating container: bfa8a1d146d6
+2026/10/14 23:41:52 🚫 Container terminated: bfa8a1d146d6
+2026/10/14 23:41:52 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:52 ✅ Container created: c71da998ef57
+2026/10/14 23:41:52 🐳 Starting container: c71da998ef57
+2026/10/14 23:41:52 ✅ Container started: c71da998ef57
+2026/10/14 23:41:52 🚧 Waiting for container id c71da998ef57 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00051ee68 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:53 🔔 Container is ready: c71da998ef57
+2026/10/14 23:41:53 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:53 ✅ Container created: 9da33d39c429
+2026/10/14 23:41:53 🐳 Starting container: 9da33d39c429
+2026/10/14 23:41:53 ✅ Container started: 9da33d39c429
+2026/10/14 23:41:53 🚧 Waiting for container id 9da33d39c429 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000594e68 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:54 🔔 Container is ready: 9da33d39c429
+2026/10/14 23:41:54 🐳 Terminating container: 9da33d39c429
+2026/10/14 23:41:54 🚫 Container terminated: 9da33d39c429
+2026/10/14 23:41:54 🐳 Terminating container: c71da998ef57
+2026/10/14 23:41:54 🚫 Container terminated: c71da998ef57
+2026/10/14 23:41:54 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:54 ✅ Container created: 3e4eaa4ff025
+2026/10/14 23:41:54 🐳 Starting container: 3e4eaa4ff025
+2026/10/14 23:41:55 ✅ Container started: 3e4eaa4ff025
+2026/10/14 23:41:55 🚧 Waiting for container id 3e4eaa4ff025 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001da158 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:55 🔔 Container is ready: 3e4eaa4ff025
+2026/10/14 23:41:55 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:55 ✅ Container created: 561ac610aff6
+2026/10/14 23:41:55 🐳 Starting container: 561ac610aff6
+2026/10/14 23:41:55 ✅ Container started: 561ac610aff6
+2026/10/14 23:41:55 🚧 Waiting for container id 561ac610aff6 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001da178 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:56 🔔 Container is ready: 561ac610aff6
+2026/10/14 23:41:57 🐳 Terminating container: 561ac610aff6
+2026/10/14 23:41:57 🚫 Container terminated: 561ac610aff6
+2026/10/14 23:41:57 🐳 Terminating container: 3e4eaa4ff025
+2026/10/14 23:41:57 🚫 Container terminated: 3e4eaa4ff025
+2026/10/14 23:41:57 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:57 ✅ Container created: 0f69ae616323
+2026/10/14 23:41:57 🐳 Starting container: 0f69ae616323
+2026/10/14 23:41:57 ✅ Container started: 0f69ae616323
+2026/10/14 23:41:57 🚧 Waiting for container id 0f69ae616323 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00027b398 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:58 🔔 Container is ready: 0f69ae616323
+2026/10/14 23:41:58 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:58 ✅ Container created: 27a04c0e0bf5
+2026/10/14 23:41:58 🐳 Starting container: 27a04c0e0bf5
+2026/10/14 23:41:58 ✅ Container started: 27a04c0e0bf5
+2026/10/14 23:41:58 🚧 Waiting for container id 27a04c0e0bf5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00027bb08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:41:59 🔔 Container is ready: 27a04c0e0bf5
+2026/10/14 23:41:59 🐳 Terminating container: 27a04c0e0bf5
+2026/10/14 23:41:59 🚫 Container terminated: 27a04c0e0bf5
+2026/10/14 23:41:59 🐳 Terminating container: 0f69ae616323
+2026/10/14 23:41:59 🚫 Container terminated: 0f69ae616323
+2026/10/14 23:41:59 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:41:59 ✅ Container created: 53ebeeec9226
+2026/10/14 23:41:59 🐳 Starting container: 53ebeeec9226
+2026/10/14 23:41:59 ✅ Container started: 53ebeeec9226
+2026/10/14 23:41:59 🚧 Waiting for container id 53ebeeec9226 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005cc3d8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:00 🔔 Container is ready: 53ebeeec9226
+2026/10/14 23:42:00 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:00 ✅ Container created: 86e93ff12af5
+2026/10/14 23:42:00 🐳 Starting container: 86e93ff12af5
+2026/10/14 23:42:00 ✅ Container started: 86e93ff12af5
+2026/10/14 23:42:00 🚧 Waiting for container id 86e93ff12af5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002752e8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:01 🔔 Container is ready: 86e93ff12af5
+2026/10/14 23:42:01 🐳 Terminating container: 86e93ff12af5
+2026/10/14 23:42:02 🚫 Container terminated: 86e93ff12af5
+2026/10/14 23:42:02 🐳 Terminating container: 53ebeeec9226
+2026/10/14 23:42:02 🚫 Container terminated: 53ebeeec9226
+2026/10/14 23:42:03 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:03 ✅ Container created: 5f539c087e12
+2026/10/14 23:42:03 🐳 Starting container: 5f539c087e12
+2026/10/14 23:42:04 ✅ Container started: 5f539c087e12
+2026/10/14 23:42:04 🚧 Waiting for container id 5f539c087e12 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000530578 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:04 🔔 Container is ready: 5f539c087e12
+2026/10/14 23:42:04 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:04 ✅ Container created: bf484e16cedb
+2026/10/14 23:42:04 🐳 Starting container: bf484e16cedb
+2026/10/14 23:42:05 ✅ Container started: bf484e16cedb
+2026/10/14 23:42:05 🚧 Waiting for container id bf484e16cedb image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000531808 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:05 🔔 Container is ready: bf484e16cedb
+2026/10/14 23:42:06 🐳 Terminating container: bf484e16cedb
+2026/10/14 23:42:06 🚫 Container terminated: bf484e16cedb
+2026/10/14 23:42:06 🐳 Terminating container: 5f539c087e12
+2026/10/14 23:42:07 🚫 Container terminated: 5f539c087e12
+2026/10/14 23:42:07 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:07 ✅ Container created: 6c32ecd61cc8
+2026/10/14 23:42:07 🐳 Starting container: 6c32ecd61cc8
+2026/10/14 23:42:07 ✅ Container started: 6c32ecd61cc8
+2026/10/14 23:42:07 🚧 Waiting for container id 6c32ecd61cc8 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00062c288 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:08 🔔 Container is ready: 6c32ecd61cc8
+2026/10/14 23:42:08 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:08 ✅ Container created: 3b9a695c9bec
+2026/10/14 23:42:08 🐳 Starting container: 3b9a695c9bec
+2026/10/14 23:42:08 ✅ Container started: 3b9a695c9bec
+2026/10/14 23:42:08 🚧 Waiting for container id 3b9a695c9bec image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001f9b38 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:08 🔔 Container is ready: 3b9a695c9bec
+2026/10/14 23:42:09 🐳 Terminating container: 3b9a695c9bec
+2026/10/14 23:42:09 🚫 Container terminated: 3b9a695c9bec
+2026/10/14 23:42:09 🐳 Terminating container: 6c32ecd61cc8
+2026/10/14 23:42:09 🚫 Container terminated: 6c32ecd61cc8
+2026/10/14 23:42:09 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:09 ✅ Container created: 314bf19c4524
+2026/10/14 23:42:09 🐳 Starting container: 314bf19c4524
+2026/10/14 23:42:09 ✅ Container started: 314bf19c4524
+2026/10/14 23:42:09 🚧 Waiting for container id 314bf19c4524 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000576508 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:10 🔔 Container is ready: 314bf19c4524
+2026/10/14 23:42:10 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:10 ✅ Container created: 26b7c6cd9ce0
+2026/10/14 23:42:10 🐳 Starting container: 26b7c6cd9ce0
+2026/10/14 23:42:10 ✅ Container started: 26b7c6cd9ce0
+2026/10/14 23:42:10 🚧 Waiting for container id 26b7c6cd9ce0 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0004f5278 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:11 🔔 Container is ready: 26b7c6cd9ce0
+2026/10/14 23:42:12 🐳 Terminating container: 26b7c6cd9ce0
+2026/10/14 23:42:12 🚫 Container terminated: 26b7c6cd9ce0
+2026/10/14 23:42:12 🐳 Terminating container: 314bf19c4524
+2026/10/14 23:42:12 🚫 Container terminated: 314bf19c4524
+2026/10/14 23:42:12 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:12 ✅ Container created: 742e24a7adc1
+2026/10/14 23:42:12 🐳 Starting container: 742e24a7adc1
+2026/10/14 23:42:12 ✅ Container started: 742e24a7adc1
+2026/10/14 23:42:12 🚧 Waiting for container id 742e24a7adc1 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000577de8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:13 🔔 Container is ready: 742e24a7adc1
+2026/10/14 23:42:13 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:13 ✅ Container created: 60fdfaca67db
+2026/10/14 23:42:13 🐳 Starting container: 60fdfaca67db
+2026/10/14 23:42:13 ✅ Container started: 60fdfaca67db
+2026/10/14 23:42:13 🚧 Waiting for container id 60fdfaca67db image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0003bab98 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:14 🔔 Container is ready: 60fdfaca67db
+2026/10/14 23:42:15 🐳 Terminating container: 60fdfaca67db
+2026/10/14 23:42:15 🚫 Container terminated: 60fdfaca67db
+2026/10/14 23:42:15 🐳 Terminating container: 742e24a7adc1
+2026/10/14 23:42:15 🚫 Container terminated: 742e24a7adc1
+2026/10/14 23:42:15 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:15 ✅ Container created: eef616446faf
+2026/10/14 23:42:15 🐳 Starting container: eef616446faf
+2026/10/14 23:42:15 ✅ Container started: eef616446faf
+2026/10/14 23:42:15 🚧 Waiting for container id eef616446faf image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001db7c8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:16 🔔 Container is ready: eef616446faf
+2026/10/14 23:42:16 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:16 ✅ Container created: 48c9462f4f64
+2026/10/14 23:42:16 🐳 Starting container: 48c9462f4f64
+2026/10/14 23:42:16 ✅ Container started: 48c9462f4f64
+2026/10/14 23:42:16 🚧 Waiting for container id 48c9462f4f64 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002ba0f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:17 🔔 Container is ready: 48c9462f4f64
+2026/10/14 23:42:18 🐳 Terminating container: 48c9462f4f64
+2026/10/14 23:42:18 🚫 Container terminated: 48c9462f4f64
+2026/10/14 23:42:18 🐳 Terminating container: eef616446faf
+2026/10/14 23:42:18 🚫 Container terminated: eef616446faf
+2026/10/14 23:42:18 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:18 ✅ Container created: f32e865e4e3a
+2026/10/14 23:42:18 🐳 Starting container: f32e865e4e3a
+2026/10/14 23:42:18 ✅ Container started: f32e865e4e3a
+2026/10/14 23:42:18 🚧 Waiting for container id f32e865e4e3a image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000602248 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:19 🔔 Container is ready: f32e865e4e3a
+2026/10/14 23:42:19 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:19 ✅ Container created: 6528a93c9e1c
+2026/10/14 23:42:19 🐳 Starting container: 6528a93c9e1c
+2026/10/14 23:42:19 ✅ Container started: 6528a93c9e1c
+2026/10/14 23:42:19 🚧 Waiting for container id 6528a93c9e1c image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0005cd178 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:20 🔔 Container is ready: 6528a93c9e1c
+2026/10/14 23:42:20 🐳 Terminating container: 6528a93c9e1c
+2026/10/14 23:42:20 🚫 Container terminated: 6528a93c9e1c
+2026/10/14 23:42:20 🐳 Terminating container: f32e865e4e3a
+2026/10/14 23:42:21 🚫 Container terminated: f32e865e4e3a
+2026/10/14 23:42:21 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:21 ✅ Container created: 67320c5b7de0
+2026/10/14 23:42:21 🐳 Starting container: 67320c5b7de0
+2026/10/14 23:42:21 ✅ Container started: 67320c5b7de0
+2026/10/14 23:42:21 🚧 Waiting for container id 67320c5b7de0 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000688478 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:21 🔔 Container is ready: 67320c5b7de0
+2026/10/14 23:42:21 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:42:21 ✅ Container created: fd4d9e02a96d
+2026/10/14 23:42:21 🐳 Starting container: fd4d9e02a96d
+2026/10/14 23:42:21 ✅ Container started: fd4d9e02a96d
+2026/10/14 23:42:21 🚧 Waiting for container id fd4d9e02a96d image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000531b08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102cdcdb0 ResponseMatcher:0x102e1b4e0 PollInterval:100ms}
+2026/10/14 23:42:22 🔔 Container is ready: fd4d9e02a96d
+panic: test timed out after 20m0s
+	running tests:
+		TestOnlineInitialRecovery (17m35s)
+		TestOnlineInitialRecovery/after-select (17m24s)
+
+goroutine 2750 [running]:
+testing.(*M).startAlarm.func1()
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2802 +0x494
+created by time.goFunc
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/time/sleep.go:215 +0x44
+
+goroutine 1 [chan receive, 17 minutes]:
+testing.(*T).Run(0xc0003ea488, {0x102f06044, 0x19}, 0x103ae8480)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2109 +0x7dc
+testing.runTests.func1(0xc0003ea488)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2585 +0x7c
+testing.tRunner(0xc0003ea488, 0xc000693168)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x168
+testing.runTests({0x102f1f59e, 0x29}, {0x102f1f59e, 0x29}, 0xc0000266d8, {0x103bdc300, 0x63, 0x63}, {0xc000100008?, 0xc0000266c0?, ...})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2583 +0x7a4
+testing.(*M).Run(0xc0003463c0)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2443 +0xb3c
+github.com/Trendyol/go-pq-cdc/integration.TestMain(0xc0003463c0)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/main_test.go:97 +0x8e0
+main.main()
+	_testmain.go:244 +0x108
+
+goroutine 908 [select]:
+github.com/Trendyol/go-pq-cdc/pq/heartbeat.(*Heartbeat).Run(0xc0003bf140, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/heartbeat/heartbeat.go:105 +0x2d4
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 903
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:313 +0xe78
+
+goroutine 907 [chan receive, 18 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0003bc360, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 903
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 121 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc00029b7a0, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 117
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 123 [syscall, 19 minutes]:
+os/signal.signal_recv()
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/sigqueue.go:149 +0x108
+os/signal.loop()
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/os/signal/signal_unix.go:23 +0x24
+created by os/signal.Notify.func1.1 in goroutine 117
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/os/signal/signal.go:152 +0x50
+
+goroutine 193 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0003bc510, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 189
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 206 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0003003f0, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 296
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 376 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0003bc7e0, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 391
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 268 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0003005a0, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 265
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 390 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0003bc000, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 386
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 658 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc0002487e0, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 490
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 2731 [IO wait, 17 minutes]:
+internal/poll.runtime_pollWait(0x14efb1e00, 0x72)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/runtime/netpoll.go:351 +0xa0
+internal/poll.(*pollDesc).wait(0xc0003b40a0, 0x72, 0x0)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/internal/poll/fd_poll_runtime.go:84 +0xb8
+internal/poll.(*pollDesc).waitRead(...)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0xc0003b4080, {0xc00057a000, 0x2000, 0x2000})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/internal/poll/fd_unix.go:165 +0x34c
+net.(*netFD).Read(0xc0003b4080, {0xc00057a000, 0x2000, 0x2000})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/net/fd_posix.go:68 +0x48
+net.(*conn).Read(0xc00018a0d0, {0xc00057a000, 0x2000, 0x2000})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/net/net.go:196 +0x88
+github.com/jackc/pgx/v5/pgconn/internal/bgreader.(*BGReader).Read(0xc0002e66c0, {0xc00057a000, 0x2000, 0x2000})
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/internal/bgreader/bgreader.go:100 +0x138
+io.ReadAtLeast({0x103af5b00, 0xc0002e66c0}, {0xc00057a000, 0x2000, 0x2000}, 0x5)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/io/io.go:335 +0xc0
+github.com/jackc/pgx/v5/pgproto3.(*chunkReader).Next(0xc00050a7e0, 0x5)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/chunkreader.go:80 +0x620
+github.com/jackc/pgx/v5/pgproto3.(*Frontend).Receive(0xc00084a488)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgproto3/frontend.go:309 +0x60
+github.com/jackc/pgx/v5/pgconn.(*PgConn).peekMessage(0xc00013a008)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:595 +0x17c
+github.com/jackc/pgx/v5/pgconn.(*PgConn).receiveMessage(0xc00013a008)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:619 +0xb8
+github.com/jackc/pgx/v5/pgconn.(*ResultReader).receiveMessage(0xc00013a0b8)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1805 +0x74
+github.com/jackc/pgx/v5/pgconn.(*ResultReader).readUntilRowDescription(0xc00013a0b8, 0xc000254460, {0xc0005769f8, 0x1, 0x4})
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1772 +0x60
+github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix(0xc00013a008, 0xc00013a0b8, 0xc000254460, {0xc0005769f8, 0x1, 0x4})
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1307 +0x288
+github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement(0xc00013a008, {0x103b01658, 0x104b59700}, 0xc000254460, {0xc0003aa2b8, 0x1, 0x1}, {0xc0005769e8, 0x1, 0x4}, ...)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/pgconn/pgconn.go:1250 +0x1ac
+github.com/jackc/pgx/v5.(*Conn).Query(0xc00052ab40, {0x103b01658, 0x104b59700}, {0x102f38f31, 0x47}, {0xc0002c6990, 0x1, 0x1})
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:847 +0x1658
+github.com/jackc/pgx/v5.(*Conn).QueryRow(...)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/jackc/pgx/v5@v5.9.2/conn.go:931
+github.com/Trendyol/go-pq-cdc/integration.startCDCOracle(0xc0003ea6c8, {{0x103b1e270?, 0xc000311110?}, {0xc00002eaa0?, 0x0?}}, {0x102ef457a, 0xa}, {0xc000510120, 0x24}, 0x0, ...)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_cdc_oracle_test.go:34 +0x23c
+github.com/Trendyol/go-pq-cdc/integration.TestOnlineInitialRecovery.func1(0xc0003ea6c8)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_initial_recovery_test.go:226 +0xd20
+testing.tRunner(0xc0003ea6c8, 0xc000026060)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x168
+created by testing.(*T).Run in goroutine 2492
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x7c0
+
+goroutine 652 [chan receive, 19 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc000300510, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 648
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 655 [chan receive, 18 minutes]:
+github.com/Trendyol/go-pq-cdc/pq/slot.(*Slot).Metrics(0xc000248120, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/slot/slot.go:269 +0x78
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 962
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:309 +0xdb8
+
+goroutine 656 [select]:
+github.com/Trendyol/go-pq-cdc/pq/heartbeat.(*Heartbeat).Run(0xc0003be180, {0x103b01658, 0x104b59700})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/heartbeat/heartbeat.go:105 +0x2d4
+created by github.com/Trendyol/go-pq-cdc.(*connector).Start in goroutine 962
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:313 +0xe78
+
+goroutine 2492 [chan receive, 17 minutes]:
+testing.(*T).Run(0xc00029cb48, {0x102ef643d, 0xc}, 0xc000026060)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2109 +0x7dc
+github.com/Trendyol/go-pq-cdc/integration.TestOnlineInitialRecovery(0xc00029cb48)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_initial_recovery_test.go:163 +0x15c
+testing.tRunner(0xc00029cb48, 0x103ae8480)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2036 +0x168
+created by testing.(*T).Run in goroutine 1
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/testing/testing.go:2101 +0x7c0
+FAIL	github.com/Trendyol/go-pq-cdc/integration	1201.516s
+FAIL

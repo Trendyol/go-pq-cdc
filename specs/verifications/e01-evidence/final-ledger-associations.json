@@ -1,0 +1,627 @@
+[
+  {
+    "story": "e01s01",
+    "task": "story",
+    "verify": "test -f integration_test/online_initial_smoke_test.go && rg -q '^func TestOnlineInitialSmoke\\(' integration_test/online_initial_smoke_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialSmoke$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_initial_smoke_test.go",
+      "rg -q '^func TestOnlineInitialSmoke\\(' integration_test/online_initial_smoke_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s01",
+    "task": "1",
+    "verify": "go test -race -count=1 ./... && go vet ./... && test -f integration_test/online_target_test.go && rg -q '^func TestOnlineTargetContract\\(' integration_test/online_target_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineTargetContract$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_target_test.go",
+      "rg -q '^func TestOnlineTargetContract\\(' integration_test/online_target_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s01",
+    "task": "2",
+    "verify": "test -f config/online_strategy_test.go && test -f online_connector_test.go && rg -q '^func TestOnlineStrategyValidation\\(' config/online_strategy_test.go && rg -q '^func TestOnlineConstructorContract\\(' online_connector_test.go && go test -race -count=1 -run '^TestOnlineStrategyValidation$' ./config && go test -race -count=1 -run '^TestOnlineConstructorContract$' .",
+    "presenceGuards": [
+      "test -f config/online_strategy_test.go",
+      "test -f online_connector_test.go",
+      "rg -q '^func TestOnlineStrategyValidation\\(' config/online_strategy_test.go",
+      "rg -q '^func TestOnlineConstructorContract\\(' online_connector_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s01",
+    "task": "3",
+    "verify": "test -f pq/replication/online_test.go && test -f integration_test/online_control_test.go && rg -q '^func TestOnlineCommittedEnvelope\\(' pq/replication/online_test.go && rg -q '^func TestOnlineControlProtocol\\(' integration_test/online_control_test.go && go test -race -count=1 -run '^TestOnlineCommittedEnvelope$' ./pq/replication && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineControlProtocol$' ./...)",
+    "presenceGuards": [
+      "test -f pq/replication/online_test.go",
+      "test -f integration_test/online_control_test.go",
+      "rg -q '^func TestOnlineCommittedEnvelope\\(' pq/replication/online_test.go",
+      "rg -q '^func TestOnlineControlProtocol\\(' integration_test/online_control_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s01",
+    "task": "4",
+    "verify": "test -f integration_test/online_initial_smoke_test.go && rg -q '^func TestOnlineInitialSmoke\\(' integration_test/online_initial_smoke_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialSmoke$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_initial_smoke_test.go",
+      "rg -q '^func TestOnlineInitialSmoke\\(' integration_test/online_initial_smoke_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s02",
+    "task": "story",
+    "verify": "test -f integration_test/online_initial_recovery_test.go && rg -q '^func TestOnlineInitialRecovery\\(' integration_test/online_initial_recovery_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_initial_recovery_test.go",
+      "rg -q '^func TestOnlineInitialRecovery\\(' integration_test/online_initial_recovery_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s02",
+    "task": "1",
+    "verify": "test -f integration_test/online_checkpoint_test.go && rg -q '^func TestOnlineCheckpointAtomicity\\(' integration_test/online_checkpoint_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineCheckpointAtomicity$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_checkpoint_test.go",
+      "rg -q '^func TestOnlineCheckpointAtomicity\\(' integration_test/online_checkpoint_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s02",
+    "task": "2",
+    "verify": "test -f integration_test/online_initial_progress_test.go && rg -q '^func TestOnlineInitialProgress\\(' integration_test/online_initial_progress_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialProgress$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_initial_progress_test.go",
+      "rg -q '^func TestOnlineInitialProgress\\(' integration_test/online_initial_progress_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s02",
+    "task": "3",
+    "verify": "test -f integration_test/online_initial_recovery_test.go && rg -q '^func TestOnlineInitialRecovery\\(' integration_test/online_initial_recovery_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_initial_recovery_test.go",
+      "rg -q '^func TestOnlineInitialRecovery\\(' integration_test/online_initial_recovery_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s02",
+    "task": "4",
+    "verify": "test -f integration_test/online_failure_test.go && rg -q '^func TestOnlineInitialFailureSafety\\(' integration_test/online_failure_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialFailureSafety$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_failure_test.go",
+      "rg -q '^func TestOnlineInitialFailureSafety\\(' integration_test/online_failure_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s03",
+    "task": "story",
+    "verify": "test -f integration_test/online_capacity_test.go && rg -q '^func TestOnlineInitialCapacity\\(' integration_test/online_capacity_test.go && go test -race -count=1 ./... && go vet ./... && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...) && (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_capacity_test.go",
+      "rg -q '^func TestOnlineInitialCapacity\\(' integration_test/online_capacity_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      },
+      {
+        "name": "matched-capacity",
+        "command": "(cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 181.28,
+        "log": "specs/verifications/e01-evidence/final-type-matched-capacity.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s03",
+    "task": "1",
+    "verify": "test -f pq/snapshot/online/model_test.go && test -f integration_test/online_visibility_test.go && test -f integration_test/online_image_test.go && rg -q '^func TestOnlineModel\\(' pq/snapshot/online/model_test.go && rg -q '^func TestOnlineVisibilityBarrier\\(' integration_test/online_visibility_test.go && rg -q '^func TestOnlineFullImages\\(' integration_test/online_image_test.go && go test -race -count=1 -run '^TestOnlineModel$' ./pq/snapshot/online && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^(TestOnlineVisibilityBarrier|TestOnlineFullImages)$' ./...)",
+    "presenceGuards": [
+      "test -f pq/snapshot/online/model_test.go",
+      "test -f integration_test/online_visibility_test.go",
+      "test -f integration_test/online_image_test.go",
+      "rg -q '^func TestOnlineModel\\(' pq/snapshot/online/model_test.go",
+      "rg -q '^func TestOnlineVisibilityBarrier\\(' integration_test/online_visibility_test.go",
+      "rg -q '^func TestOnlineFullImages\\(' integration_test/online_image_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s03",
+    "task": "2",
+    "verify": "test -f integration_test/online_capacity_test.go && rg -q '^func TestOnlineInitialCapacity\\(' integration_test/online_capacity_test.go && (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+    "presenceGuards": [
+      "test -f integration_test/online_capacity_test.go",
+      "rg -q '^func TestOnlineInitialCapacity\\(' integration_test/online_capacity_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "matched-capacity",
+        "command": "(cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 181.28,
+        "log": "specs/verifications/e01-evidence/final-type-matched-capacity.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  },
+  {
+    "story": "e01s03",
+    "task": "3",
+    "verify": "test -f example/online-initial-poc/main.go && test -f example/online-initial-poc/README.md && test -f integration_test/online_initial_demo_test.go && rg -q '^func TestOnlineInitialDemo\\(' integration_test/online_initial_demo_test.go && go test -race -count=1 ./... && go vet ./... && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...) && test -s specs/verifications/e01-POC-RESULT.md",
+    "presenceGuards": [
+      "test -f example/online-initial-poc/main.go",
+      "test -f example/online-initial-poc/README.md",
+      "test -f integration_test/online_initial_demo_test.go",
+      "test -s specs/verifications/e01-POC-RESULT.md",
+      "rg -q '^func TestOnlineInitialDemo\\(' integration_test/online_initial_demo_test.go"
+    ],
+    "result": "passed",
+    "sharedGateEvidence": [
+      {
+        "name": "root-race",
+        "command": "go test -race -count=1 ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 5.024,
+        "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+      },
+      {
+        "name": "root-vet",
+        "command": "go vet ./...",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 1.004,
+        "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+      },
+      {
+        "name": "integration-vet",
+        "command": "(cd integration_test && go vet ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 0.685,
+        "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+      },
+      {
+        "name": "pg16-full",
+        "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+        "result": "passed",
+        "exitCode": 0,
+        "seconds": 440.639,
+        "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+      }
+    ],
+    "note": "Guards and shell syntax checked now; shared final root/full/capacity tests cover required names/scenarios. Exact redundant composite was NOT rerun."
+  }
+]

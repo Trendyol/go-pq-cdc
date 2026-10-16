@@ -1,0 +1,40 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:00:17 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: b9428eff467afadb5a4aea03c78733be1bf53f3c84fe067374c979c78fe6ba85
+  Test ProcessID: 9f239141-6969-4422-8700-5e500b701f70
+2026/10/14 16:00:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:00:17 ✅ Container created: df2f18addd28
+2026/10/14 16:00:17 🐳 Starting container: df2f18addd28
+2026/10/14 16:00:17 ✅ Container started: df2f18addd28
+2026/10/14 16:00:17 🚧 Waiting for container id df2f18addd28 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00038db58 Strategies:[0xc00039a640]}
+2026/10/14 16:00:17 🔔 Container is ready: df2f18addd28
+2026/10/14 16:00:19 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:00:19 ✅ Container created: a32439fbc7e3
+2026/10/14 16:00:19 🐳 Starting container: a32439fbc7e3
+2026/10/14 16:00:19 ✅ Container started: a32439fbc7e3
+2026/10/14 16:00:19 🚧 Waiting for container id a32439fbc7e3 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002a89a8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102c84f60 ResponseMatcher:0x102d9d370 PollInterval:100ms}
+2026/10/14 16:00:20 🔔 Container is ready: a32439fbc7e3
+2026/10/14 16:00:20 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:00:20 ✅ Container created: f26e2f1efd5a
+2026/10/14 16:00:20 🐳 Starting container: f26e2f1efd5a
+2026/10/14 16:00:20 ✅ Container started: f26e2f1efd5a
+2026/10/14 16:00:20 🚧 Waiting for container id f26e2f1efd5a image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001a8b08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x102c84f60 ResponseMatcher:0x102d9d370 PollInterval:100ms}
+2026/10/14 16:00:22 🔔 Container is ready: f26e2f1efd5a
+2026/10/14 16:00:22 🐳 Terminating container: f26e2f1efd5a
+2026/10/14 16:00:22 🚫 Container terminated: f26e2f1efd5a
+2026/10/14 16:00:22 🐳 Terminating container: a32439fbc7e3
+2026/10/14 16:00:22 🚫 Container terminated: a32439fbc7e3
+PASS
+2026/10/14 16:00:22 🐳 Terminating container: df2f18addd28
+2026/10/14 16:00:22 🚫 Container terminated: df2f18addd28
+ok  	github.com/Trendyol/go-pq-cdc/integration	7.531s

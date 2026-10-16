@@ -1,0 +1,11 @@
+# github.com/Trendyol/go-pq-cdc [github.com/Trendyol/go-pq-cdc.test]
+./online_connector_test.go:15:35: undefined: OnlineEvent
+./online_connector_test.go:17:12: undefined: NewOnlineConnector
+./online_connector_test.go:18:9: undefined: NewOnlineConnector
+FAIL	github.com/Trendyol/go-pq-cdc [build failed]
+FAIL
+# github.com/Trendyol/go-pq-cdc/pq/snapshot/online [github.com/Trendyol/go-pq-cdc/pq/snapshot/online.test]
+pq/snapshot/online/model_test.go:13:11: undefined: SelectedRow
+pq/snapshot/online/model_test.go:14:6: undefined: NewReadWindow
+FAIL	github.com/Trendyol/go-pq-cdc/pq/snapshot/online [build failed]
+FAIL

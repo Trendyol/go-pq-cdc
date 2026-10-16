@@ -1,0 +1,34 @@
+ok  	github.com/Trendyol/go-pq-cdc	1.542s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	1.541s
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 15:57:03 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 79607e1b1b3b666a0fad9961d7285e891f0dc62bb34f4bdd7ab583cd9a802112
+  Test ProcessID: 5f641061-bffe-4535-8c41-19275cf445a2
+2026/10/14 15:57:03 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 15:57:03 ✅ Container created: 00a9a0d5bede
+2026/10/14 15:57:03 🐳 Starting container: 00a9a0d5bede
+2026/10/14 15:57:03 ✅ Container started: 00a9a0d5bede
+2026/10/14 15:57:03 🚧 Waiting for container id 00a9a0d5bede image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00035d838 Strategies:[0xc0001d3600]}
+2026/10/14 15:57:04 🔔 Container is ready: 00a9a0d5bede
+2026/10/14 15:57:05 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 15:57:05 ✅ Container created: 0335ab3cffa2
+2026/10/14 15:57:05 🐳 Starting container: 0335ab3cffa2
+2026/10/14 15:57:05 ✅ Container started: 0335ab3cffa2
+2026/10/14 15:57:05 🚧 Waiting for container id 0335ab3cffa2 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000593328 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1052a4d30 ResponseMatcher:0x1053ba9b0 PollInterval:100ms}
+2026/10/14 15:57:07 🔔 Container is ready: 0335ab3cffa2
+2026/10/14 15:57:08 🐳 Terminating container: 0335ab3cffa2
+2026/10/14 15:57:08 🚫 Container terminated: 0335ab3cffa2
+PASS
+2026/10/14 15:57:08 🐳 Terminating container: 00a9a0d5bede
+2026/10/14 15:57:08 🚫 Container terminated: 00a9a0d5bede
+ok  	github.com/Trendyol/go-pq-cdc/integration	7.073s

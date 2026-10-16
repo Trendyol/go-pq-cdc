@@ -1,0 +1,43 @@
+Online snapshot assessment: baseline validation
+UTC: 2026-10-13T12:23:02Z
+Root HEAD: 4a7e9b094a19935591b691cf8de38546a98b69d0
+Root branch: fix/slot-info-reconnect-on-closed-conn
+Tracked working diff SHA-256: dbd50915cdf9b94f707546cb542435169085544c460f6b2a1b31d29410ca8549  -
+go version go1.26.2 darwin/arm64
+
+COMMAND: go test -race -count=1 ./...
+?   	github.com/Trendyol/go-pq-cdc	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/config	1.452s
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq	1.963s
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	1.747s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	2.434s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	2.064s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	1.582s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	2.713s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	3.127s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	2.865s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]
+
+COMMAND: go vet ./...
+go vet: PASS
+
+COMMAND (integration_test): POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=120s -run <seven named tests> ./...
+ok  	github.com/Trendyol/go-pq-cdc/integration	21.754s
+
+All selected baseline checks: PASS. Not a full integration or online-snapshot qualification run.

@@ -1,0 +1,100 @@
+[
+  {
+    "name": "e01s01-tasks-story",
+    "command": "test -f integration_test/online_initial_smoke_test.go && rg -q '^func TestOnlineInitialSmoke\\(' integration_test/online_initial_smoke_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialSmoke$' ./...)",
+    "exitCode": 0,
+    "seconds": 11.064,
+    "log": "specs/verifications/e01-evidence/e01s01-tasks-story.log"
+  },
+  {
+    "name": "e01s01-tasks-1",
+    "command": "go test -race -count=1 ./... && go vet ./... && test -f integration_test/online_target_test.go && rg -q '^func TestOnlineTargetContract\\(' integration_test/online_target_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineTargetContract$' ./...)",
+    "exitCode": 0,
+    "seconds": 13.736,
+    "log": "specs/verifications/e01-evidence/e01s01-tasks-1.log"
+  },
+  {
+    "name": "e01s01-tasks-2",
+    "command": "test -f config/online_strategy_test.go && test -f online_connector_test.go && rg -q '^func TestOnlineStrategyValidation\\(' config/online_strategy_test.go && rg -q '^func TestOnlineConstructorContract\\(' online_connector_test.go && go test -race -count=1 -run '^TestOnlineStrategyValidation$' ./config && go test -race -count=1 -run '^TestOnlineConstructorContract$' .",
+    "exitCode": 0,
+    "seconds": 4.184,
+    "log": "specs/verifications/e01-evidence/e01s01-tasks-2.log"
+  },
+  {
+    "name": "e01s01-tasks-3",
+    "command": "test -f pq/replication/online_test.go && test -f integration_test/online_control_test.go && rg -q '^func TestOnlineCommittedEnvelope\\(' pq/replication/online_test.go && rg -q '^func TestOnlineControlProtocol\\(' integration_test/online_control_test.go && go test -race -count=1 -run '^TestOnlineCommittedEnvelope$' ./pq/replication && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineControlProtocol$' ./...)",
+    "exitCode": 0,
+    "seconds": 9.481,
+    "log": "specs/verifications/e01-evidence/e01s01-tasks-3.log"
+  },
+  {
+    "name": "e01s01-tasks-4",
+    "command": "test -f integration_test/online_initial_smoke_test.go && rg -q '^func TestOnlineInitialSmoke\\(' integration_test/online_initial_smoke_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialSmoke$' ./...)",
+    "exitCode": 0,
+    "seconds": 7.876,
+    "log": "specs/verifications/e01-evidence/e01s01-tasks-4.log"
+  },
+  {
+    "name": "e01s02-tasks-story",
+    "command": "test -f integration_test/online_initial_recovery_test.go && rg -q '^func TestOnlineInitialRecovery\\(' integration_test/online_initial_recovery_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$' ./...)",
+    "exitCode": 0,
+    "seconds": 23.223,
+    "log": "specs/verifications/e01-evidence/e01s02-tasks-story.log"
+  },
+  {
+    "name": "e01s02-tasks-1",
+    "command": "test -f integration_test/online_checkpoint_test.go && rg -q '^func TestOnlineCheckpointAtomicity\\(' integration_test/online_checkpoint_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineCheckpointAtomicity$' ./...)",
+    "exitCode": 0,
+    "seconds": 11.455,
+    "log": "specs/verifications/e01-evidence/e01s02-tasks-1.log"
+  },
+  {
+    "name": "e01s02-tasks-2",
+    "command": "test -f integration_test/online_initial_progress_test.go && rg -q '^func TestOnlineInitialProgress\\(' integration_test/online_initial_progress_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialProgress$' ./...)",
+    "exitCode": 0,
+    "seconds": 9.108,
+    "log": "specs/verifications/e01-evidence/e01s02-tasks-2.log"
+  },
+  {
+    "name": "e01s02-tasks-3",
+    "command": "test -f integration_test/online_initial_recovery_test.go && rg -q '^func TestOnlineInitialRecovery\\(' integration_test/online_initial_recovery_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$' ./...)",
+    "exitCode": 0,
+    "seconds": 23.632,
+    "log": "specs/verifications/e01-evidence/e01s02-tasks-3.log"
+  },
+  {
+    "name": "e01s02-tasks-4",
+    "command": "test -f integration_test/online_failure_test.go && rg -q '^func TestOnlineInitialFailureSafety\\(' integration_test/online_failure_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialFailureSafety$' ./...)",
+    "exitCode": 0,
+    "seconds": 21.299,
+    "log": "specs/verifications/e01-evidence/e01s02-tasks-4.log"
+  },
+  {
+    "name": "e01s03-tasks-story",
+    "command": "test -f integration_test/online_capacity_test.go && rg -q '^func TestOnlineInitialCapacity\\(' integration_test/online_capacity_test.go && go test -race -count=1 ./... && go vet ./... && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...) && (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+    "exitCode": 1,
+    "seconds": 470.802,
+    "log": "specs/verifications/e01-evidence/e01s03-tasks-story.log"
+  },
+  {
+    "name": "e01s03-tasks-1",
+    "command": "test -f pq/snapshot/online/model_test.go && test -f integration_test/online_visibility_test.go && test -f integration_test/online_image_test.go && rg -q '^func TestOnlineModel\\(' pq/snapshot/online/model_test.go && rg -q '^func TestOnlineVisibilityBarrier\\(' integration_test/online_visibility_test.go && rg -q '^func TestOnlineFullImages\\(' integration_test/online_image_test.go && go test -race -count=1 -run '^TestOnlineModel$' ./pq/snapshot/online && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^(TestOnlineVisibilityBarrier|TestOnlineFullImages)$' ./...)",
+    "exitCode": 0,
+    "seconds": 22.41,
+    "log": "specs/verifications/e01-evidence/e01s03-tasks-1.log"
+  },
+  {
+    "name": "e01s03-tasks-2",
+    "command": "test -f integration_test/online_capacity_test.go && rg -q '^func TestOnlineInitialCapacity\\(' integration_test/online_capacity_test.go && (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+    "exitCode": 1,
+    "seconds": 109.782,
+    "log": "specs/verifications/e01-evidence/e01s03-tasks-2.log"
+  },
+  {
+    "name": "e01s03-tasks-3",
+    "command": "test -f example/online-initial-poc/main.go && test -f example/online-initial-poc/README.md && test -f integration_test/online_initial_demo_test.go && rg -q '^func TestOnlineInitialDemo\\(' integration_test/online_initial_demo_test.go && go test -race -count=1 ./... && go vet ./... && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...) && test -s specs/verifications/e01-POC-RESULT.md",
+    "exitCode": 0,
+    "seconds": 360.896,
+    "log": "specs/verifications/e01-evidence/e01s03-tasks-3.log"
+  }
+]

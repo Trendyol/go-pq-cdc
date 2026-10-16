@@ -1,0 +1,6 @@
+# github.com/Trendyol/go-pq-cdc
+../online_connector.go:112:207: cannot use c.cfg.Snapshot.ChunkSize (variable of type int64) as int value in struct literal
+FAIL	github.com/Trendyol/go-pq-cdc/integration [build failed]
+# github.com/Trendyol/go-pq-cdc/integration [github.com/Trendyol/go-pq-cdc/integration.test]
+./online_control_test.go:16:20: undefined: online.OpenStoreWithStartupTimeout
+FAIL	github.com/Trendyol/go-pq-cdc/integration [build failed]

@@ -1,0 +1,31 @@
+ok  	github.com/Trendyol/go-pq-cdc	2.850s
+ok  	github.com/Trendyol/go-pq-cdc/config	1.923s
+?   	github.com/Trendyol/go-pq-cdc/example/online-initial-poc	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-snapshot-cdc-regular	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-read	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	2.595s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	1.694s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	2.427s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	2.263s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	2.350s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	1.317s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	2.134s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	2.900s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]

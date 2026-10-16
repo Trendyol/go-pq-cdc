@@ -1,0 +1,106 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 23:09:44 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 33b641eb5c68c83dd0ddcda9b01c29651bc6163f6761a87078c603be3bfb16c3
+  Test ProcessID: ed077164-f502-42ba-bd7d-873b430c0ecd
+2026/10/14 23:09:44 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:09:44 ✅ Container created: 0fdacb10ea87
+2026/10/14 23:09:44 🐳 Starting container: 0fdacb10ea87
+2026/10/14 23:09:44 ✅ Container started: 0fdacb10ea87
+2026/10/14 23:09:44 🚧 Waiting for container id 0fdacb10ea87 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000134578 Strategies:[0xc000290740]}
+2026/10/14 23:09:45 🔔 Container is ready: 0fdacb10ea87
+=== RUN   TestOnlineInitialCapacity
+=== RUN   TestOnlineInitialCapacity/live-full-queue-feedback-cancellation
+2026/10/14 23:09:46 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:09:46 ✅ Container created: 216da66d57c9
+2026/10/14 23:09:46 🐳 Starting container: 216da66d57c9
+2026/10/14 23:09:46 ✅ Container started: 216da66d57c9
+2026/10/14 23:09:46 🚧 Waiting for container id 216da66d57c9 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0003fd7f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105242850 ResponseMatcher:0x10537ff90 PollInterval:100ms}
+2026/10/14 23:09:47 🔔 Container is ready: 216da66d57c9
+2026/10/14 23:09:49 🐳 Terminating container: 216da66d57c9
+2026/10/14 23:09:50 🚫 Container terminated: 216da66d57c9
+=== RUN   TestOnlineInitialCapacity/consistent
+2026/10/14 23:09:50 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:09:50 ✅ Container created: 222b45062d0b
+2026/10/14 23:09:50 🐳 Starting container: 222b45062d0b
+2026/10/14 23:09:50 ✅ Container started: 222b45062d0b
+2026/10/14 23:09:50 🚧 Waiting for container id 222b45062d0b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000400598 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105242850 ResponseMatcher:0x10537ff90 PollInterval:100ms}
+2026/10/14 23:09:51 🔔 Container is ready: 222b45062d0b
+2026/10/14 23:09:51 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:09:51 ✅ Container created: 24f30872cf58
+2026/10/14 23:09:51 🐳 Starting container: 24f30872cf58
+2026/10/14 23:09:51 ✅ Container started: 24f30872cf58
+2026/10/14 23:09:51 🚧 Waiting for container id 24f30872cf58 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000401638 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x105242850 ResponseMatcher:0x10537ff90 PollInterval:100ms}
+2026/10/14 23:09:52 🔔 Container is ready: 24f30872cf58
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"postgres","password":"*******","database":"online_poc","publication":{"name":"online_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"online_slot","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":3000000000,"deliveryTimeout":10000000000,"chunkBytes":4194304,"transactionBytes":16777216,"queueBytes":33554432,"checkpointInterval":20000000,"markerInterval":50000000},"mode":"initial","instanceId":"","id":"","tables":null,"chunkSize":100,"claimTimeout":30000000000,"heartbeatInterval":5000000000,"enabled":true,"resnapshot":false},"port":45597,"metric":{"port":64466},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-10-14T23:09:52.287943+02:00","level":"WARN","msg":"publication already exists"}
+{"time":"2026-10-14T23:09:52.287996+02:00","level":"INFO","msg":"publication","info":{"name":"online_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"","schema":"public"}],"createIfNotExists":false}}
+{"time":"2026-10-14T23:09:52.324572+02:00","level":"INFO","msg":"[snapshot-connection-pool] creating connection pool","size":5}
+{"time":"2026-10-14T23:09:52.410897+02:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool ready","size":5}
+{"time":"2026-10-14T23:09:52.487476+02:00","level":"INFO","msg":"server starting on port :64466"}
+{"time":"2026-10-14T23:09:52.530262+02:00","level":"INFO","msg":"replication slot created","name":"online_slot","failover":false}
+{"time":"2026-10-14T23:09:52.57372+02:00","level":"INFO","msg":"[coordinator] exporting snapshot"}
+{"time":"2026-10-14T23:09:52.575899+02:00","level":"INFO","msg":"[coordinator] snapshot exported","snapshotID":"00000010-00000009-1"}
+{"time":"2026-10-14T23:09:52.57592+02:00","level":"INFO","msg":"[coordinator] snapshot transaction ready for workers"}
+{"time":"2026-10-14T23:09:52.57593+02:00","level":"INFO","msg":"[coordinator] creating metadata and chunks"}
+{"time":"2026-10-14T23:09:52.579125+02:00","level":"INFO","msg":"[chunk] range chunks created","table":"workload","chunkSize":100,"numChunks":100,"rangeMin":1,"rangeMax":10000}
+{"time":"2026-10-14T23:09:52.58569+02:00","level":"INFO","msg":"[coordinator] chunks created","table":"public.workload","chunks":100}
+{"time":"2026-10-14T23:09:52.586584+02:00","level":"INFO","msg":"[coordinator] metadata committed","totalChunks":100,"lsn":"0/2506080"}
+panic: cannot create context from nil parent
+
+goroutine 205 [running]:
+context.WithDeadlineCause({0x0, 0x0}, {0x10614a760?, 0x2540be400?, 0x10614a760?}, {0x0, 0x0})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/context/context.go:634 +0x484
+context.WithDeadline(...)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/context/context.go:626
+context.WithTimeout({0x0, 0x0}, 0x2540be400)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.2.darwin-arm64/src/context/context.go:704 +0x58
+github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity.func2(0xc000122440)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:177 +0x768
+github.com/Trendyol/go-pq-cdc.(*connector).snapshotHandler(0xc0001c6360, 0xc0001a31f0)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:575 +0x10c
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunk(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, {0x106065988, 0xc00060ebe8}, 0xc0004cac00, 0x2506080, 0xc00005dc38)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/coordinator.go:478 +0x7cc
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1.1({0x106065988, 0xc00060ebe8})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:311 +0x74
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeInTransaction(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, {0xc00039b0e0, 0x13}, 0xc00005d578)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:349 +0x1b4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction.func1()
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:310 +0xf4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).retryDBOperation(0x140005d6f8?, {0x1060619e0, 0xc0002f43c0}, 0xc00005d6d8)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/helpers.go:62 +0x26c
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processChunkWithTransaction(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, 0xc0004cac00, {0xc00039b0e0, 0x13}, 0x2506080, 0xc00005dc38)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:309 +0x100
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeChunkProcessing(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, {0x105459fc0, 0xb}, {0xc0004d4b00, 0x10}, 0xc000482540, 0xc00005dc38, 0xc0004cac00)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:183 +0xa4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).processNextChunk(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, {0x105459fc0, 0xb}, {0xc0004d4b00, 0x10}, 0xc000482540, 0xc00005dc38, 0xc0004d3c00)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:172 +0x10c
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).workerProcess(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, {0x105459fc0, 0xb}, {0xc0004d4b00, 0x10}, 0xc000482540, 0xc00005dc38)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:132 +0xc4
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).executeWorker(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, {0x105459fc0, 0xb}, {0xc0004d4b00, 0x10}, 0xc000482540, 0xc00005dc38, {0x1060617d8?, ...})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/worker.go:119 +0x340
+github.com/Trendyol/go-pq-cdc/pq/snapshot.(*Snapshotter).Execute(0xc0002989c0, {0x1060619e0, 0xc0002f43c0}, 0xc00005dc38, {0x105459fc0, 0xb})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/pq/snapshot/snapshot.go:133 +0x224
+github.com/Trendyol/go-pq-cdc.(*connector).executeSnapshotWithRetry(0xc0001c6360, {0x1060619e0, 0xc0002f43c0})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:472 +0x100
+github.com/Trendyol/go-pq-cdc.(*connector).Start.(*connector).prepareSnapshotAndSlot.func2(0xc000263dc8?)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:381 +0x25c
+github.com/Trendyol/go-pq-cdc.(*connector).retryOperation(0xc0001c6360?, {0x10545703c, 0x8}, 0x3, 0xc00005dec8)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:557 +0x268
+github.com/Trendyol/go-pq-cdc.(*connector).prepareSnapshotAndSlot(...)
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:364
+github.com/Trendyol/go-pq-cdc.(*connector).Start(0xc0001c6360, {0x1060619e0, 0xc0002f43c0})
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/connector.go:269 +0x588
+created by github.com/Trendyol/go-pq-cdc/integration.runOnlineCapacity in goroutine 130
+	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_capacity_test.go:198 +0xb74
+FAIL	github.com/Trendyol/go-pq-cdc/integration	9.552s
+FAIL

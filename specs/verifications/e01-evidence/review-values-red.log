@@ -1,0 +1,5 @@
+# github.com/Trendyol/go-pq-cdc/pq/message/tuple [github.com/Trendyol/go-pq-cdc/pq/message/tuple.test]
+pq/message/tuple/online_test.go:10:50: undefined: DecodeOnlineText
+pq/message/tuple/online_test.go:11:70: undefined: DecodeOnlineText
+FAIL	github.com/Trendyol/go-pq-cdc/pq/message/tuple [build failed]
+FAIL

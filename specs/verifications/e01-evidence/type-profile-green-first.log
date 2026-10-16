@@ -1,0 +1,208 @@
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	1.473s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	2.629s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	1.534s
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/15 00:26:49 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 8b0a6f5efe3ee00799168b5d3cd5eb4c94e03a89fb5c3251921825055578ee94
+  Test ProcessID: cde23590-d902-422d-bd08-fd8175cc325e
+2026/10/15 00:26:49 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:49 ✅ Container created: 3d1d97b7a80d
+2026/10/15 00:26:49 🐳 Starting container: 3d1d97b7a80d
+2026/10/15 00:26:49 ✅ Container started: 3d1d97b7a80d
+2026/10/15 00:26:49 🚧 Waiting for container id 3d1d97b7a80d image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00028f6c8 Strategies:[0xc0003a8a40]}
+2026/10/15 00:26:50 🔔 Container is ready: 3d1d97b7a80d
+=== RUN   TestOnlineControlProtocol
+2026/10/15 00:26:51 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:51 ✅ Container created: 4a6ca26edb60
+2026/10/15 00:26:51 🐳 Starting container: 4a6ca26edb60
+2026/10/15 00:26:51 ✅ Container started: 4a6ca26edb60
+2026/10/15 00:26:51 🚧 Waiting for container id 4a6ca26edb60 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0003051f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:26:52 🔔 Container is ready: 4a6ca26edb60
+2026/10/15 00:26:52 🐳 Terminating container: 4a6ca26edb60
+2026/10/15 00:26:53 🚫 Container terminated: 4a6ca26edb60
+--- PASS: TestOnlineControlProtocol (1.68s)
+=== RUN   TestOnlineInitialSmoke
+2026/10/15 00:26:53 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:53 ✅ Container created: 1ce4365f6c54
+2026/10/15 00:26:53 🐳 Starting container: 1ce4365f6c54
+2026/10/15 00:26:53 ✅ Container started: 1ce4365f6c54
+2026/10/15 00:26:53 🚧 Waiting for container id 1ce4365f6c54 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00038c0f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:26:53 🔔 Container is ready: 1ce4365f6c54
+2026/10/15 00:26:53 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:53 ✅ Container created: af063a4933f9
+2026/10/15 00:26:53 🐳 Starting container: af063a4933f9
+2026/10/15 00:26:54 ✅ Container started: af063a4933f9
+2026/10/15 00:26:54 🚧 Waiting for container id af063a4933f9 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00038c898 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:26:54 🔔 Container is ready: af063a4933f9
+2026/10/15 00:26:55 🐳 Terminating container: af063a4933f9
+2026/10/15 00:26:55 🚫 Container terminated: af063a4933f9
+2026/10/15 00:26:55 🐳 Terminating container: 1ce4365f6c54
+2026/10/15 00:26:55 🚫 Container terminated: 1ce4365f6c54
+--- PASS: TestOnlineInitialSmoke (2.52s)
+=== RUN   TestOnlineTypeProfileStartup
+2026/10/15 00:26:55 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:55 ✅ Container created: 77c718b408da
+2026/10/15 00:26:55 🐳 Starting container: 77c718b408da
+2026/10/15 00:26:55 ✅ Container started: 77c718b408da
+2026/10/15 00:26:55 🚧 Waiting for container id 77c718b408da image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000250998 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:26:56 🔔 Container is ready: 77c718b408da
+=== RUN   TestOnlineTypeProfileStartup/unqualified_domain
+=== RUN   TestOnlineTypeProfileStartup/unqualified_enum
+=== RUN   TestOnlineTypeProfileStartup/unqualified_composite
+=== RUN   TestOnlineTypeProfileStartup/numeric
+=== RUN   TestOnlineTypeProfileStartup/timestamp
+=== RUN   TestOnlineTypeProfileStartup/timestamptz
+=== RUN   TestOnlineTypeProfileStartup/date
+=== RUN   TestOnlineTypeProfileStartup/bytea
+=== RUN   TestOnlineTypeProfileStartup/uuid
+=== RUN   TestOnlineTypeProfileStartup/int8range
+=== RUN   TestOnlineTypeProfileStartup/integer[][]
+2026/10/15 00:26:57 🐳 Terminating container: 77c718b408da
+2026/10/15 00:26:57 🚫 Container terminated: 77c718b408da
+--- PASS: TestOnlineTypeProfileStartup (2.15s)
+    --- PASS: TestOnlineTypeProfileStartup/unqualified_domain (0.12s)
+    --- PASS: TestOnlineTypeProfileStartup/unqualified_enum (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/unqualified_composite (0.09s)
+    --- PASS: TestOnlineTypeProfileStartup/numeric (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/timestamp (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/timestamptz (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/date (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/bytea (0.11s)
+    --- PASS: TestOnlineTypeProfileStartup/uuid (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/int8range (0.10s)
+    --- PASS: TestOnlineTypeProfileStartup/integer[][] (0.10s)
+=== RUN   TestOnlineQualifiedArrays
+=== RUN   TestOnlineQualifiedArrays/positive
+2026/10/15 00:26:57 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:57 ✅ Container created: 603ca95f96ef
+2026/10/15 00:26:57 🐳 Starting container: 603ca95f96ef
+2026/10/15 00:26:57 ✅ Container started: 603ca95f96ef
+2026/10/15 00:26:57 🚧 Waiting for container id 603ca95f96ef image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00038c0f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:26:58 🔔 Container is ready: 603ca95f96ef
+2026/10/15 00:26:58 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:26:58 ✅ Container created: a8b958881f96
+2026/10/15 00:26:58 🐳 Starting container: a8b958881f96
+2026/10/15 00:26:58 ✅ Container started: a8b958881f96
+2026/10/15 00:26:58 🚧 Waiting for container id a8b958881f96 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00014a1d8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:26:59 🔔 Container is ready: a8b958881f96
+    online_type_profile_test.go:59: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_run_helpers_test.go:74
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_type_profile_test.go:59
+        	Error:      	Received unexpected error:
+        	            	online metadata schema_version must be an ordinary permanent table: no rows in result set
+        	Test:       	TestOnlineQualifiedArrays/positive
+2026/10/15 00:26:59 🐳 Terminating container: a8b958881f96
+2026/10/15 00:26:59 🚫 Container terminated: a8b958881f96
+2026/10/15 00:26:59 🐳 Terminating container: 603ca95f96ef
+2026/10/15 00:27:00 🚫 Container terminated: 603ca95f96ef
+=== RUN   TestOnlineQualifiedArrays/READ-multidimensional
+2026/10/15 00:27:00 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:00 ✅ Container created: e3276896f41e
+2026/10/15 00:27:00 🐳 Starting container: e3276896f41e
+2026/10/15 00:27:00 ✅ Container started: e3276896f41e
+2026/10/15 00:27:00 🚧 Waiting for container id e3276896f41e image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000304448 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:01 🔔 Container is ready: e3276896f41e
+2026/10/15 00:27:01 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:01 ✅ Container created: f3255af296bf
+2026/10/15 00:27:01 🐳 Starting container: f3255af296bf
+2026/10/15 00:27:01 ✅ Container started: f3255af296bf
+2026/10/15 00:27:01 🚧 Waiting for container id f3255af296bf image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00014aa78 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:01 🔔 Container is ready: f3255af296bf
+    online_type_profile_test.go:79: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_type_profile_test.go:79
+        	Error:      	Received unexpected error:
+        	            	ERROR: relation "cdc_online.jobs" does not exist (SQLSTATE 42P01)
+        	Test:       	TestOnlineQualifiedArrays/READ-multidimensional
+2026/10/15 00:27:02 🐳 Terminating container: f3255af296bf
+2026/10/15 00:27:02 🚫 Container terminated: f3255af296bf
+2026/10/15 00:27:02 🐳 Terminating container: e3276896f41e
+2026/10/15 00:27:02 🚫 Container terminated: e3276896f41e
+=== RUN   TestOnlineQualifiedArrays/READ-lower-bound
+2026/10/15 00:27:02 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:02 ✅ Container created: 8ce8f035e647
+2026/10/15 00:27:02 🐳 Starting container: 8ce8f035e647
+2026/10/15 00:27:02 ✅ Container started: 8ce8f035e647
+2026/10/15 00:27:02 🚧 Waiting for container id 8ce8f035e647 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00014a518 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:03 🔔 Container is ready: 8ce8f035e647
+2026/10/15 00:27:03 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:03 ✅ Container created: 18519110465d
+2026/10/15 00:27:03 🐳 Starting container: 18519110465d
+2026/10/15 00:27:03 ✅ Container started: 18519110465d
+2026/10/15 00:27:03 🚧 Waiting for container id 18519110465d image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00014ad68 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:04 🔔 Container is ready: 18519110465d
+    online_type_profile_test.go:79: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_type_profile_test.go:79
+        	Error:      	Received unexpected error:
+        	            	ERROR: relation "cdc_online.jobs" does not exist (SQLSTATE 42P01)
+        	Test:       	TestOnlineQualifiedArrays/READ-lower-bound
+2026/10/15 00:27:04 🐳 Terminating container: 18519110465d
+2026/10/15 00:27:04 🚫 Container terminated: 18519110465d
+2026/10/15 00:27:04 🐳 Terminating container: 8ce8f035e647
+2026/10/15 00:27:04 🚫 Container terminated: 8ce8f035e647
+=== RUN   TestOnlineQualifiedArrays/CDC-multidimensional
+2026/10/15 00:27:04 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:04 ✅ Container created: 6dd6a5803c03
+2026/10/15 00:27:04 🐳 Starting container: 6dd6a5803c03
+2026/10/15 00:27:04 ✅ Container started: 6dd6a5803c03
+2026/10/15 00:27:04 🚧 Waiting for container id 6dd6a5803c03 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00014a898 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:05 🔔 Container is ready: 6dd6a5803c03
+2026/10/15 00:27:05 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:05 ✅ Container created: 16c76ade489c
+2026/10/15 00:27:05 🐳 Starting container: 16c76ade489c
+2026/10/15 00:27:05 ✅ Container started: 16c76ade489c
+2026/10/15 00:27:05 🚧 Waiting for container id 16c76ade489c image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00014a798 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:06 🔔 Container is ready: 16c76ade489c
+    online_type_profile_test.go:69: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_run_helpers_test.go:74
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_type_profile_test.go:69
+        	Error:      	Received unexpected error:
+        	            	online metadata schema_version must be an ordinary permanent table: no rows in result set
+        	Test:       	TestOnlineQualifiedArrays/CDC-multidimensional
+2026/10/15 00:27:06 🐳 Terminating container: 16c76ade489c
+2026/10/15 00:27:06 🚫 Container terminated: 16c76ade489c
+2026/10/15 00:27:06 🐳 Terminating container: 6dd6a5803c03
+2026/10/15 00:27:06 🚫 Container terminated: 6dd6a5803c03
+=== RUN   TestOnlineQualifiedArrays/CDC-lower-bound
+2026/10/15 00:27:06 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:06 ✅ Container created: 8cf270034a34
+2026/10/15 00:27:06 🐳 Starting container: 8cf270034a34
+2026/10/15 00:27:06 ✅ Container started: 8cf270034a34
+2026/10/15 00:27:06 🚧 Waiting for container id 8cf270034a34 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000316598 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:07 🔔 Container is ready: 8cf270034a34
+2026/10/15 00:27:07 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 00:27:07 ✅ Container created: c7d2a6eb9781
+2026/10/15 00:27:07 🐳 Starting container: c7d2a6eb9781
+2026/10/15 00:27:07 ✅ Container started: c7d2a6eb9781
+2026/10/15 00:27:07 🚧 Waiting for container id c7d2a6eb9781 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00038c0b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100d15f60 ResponseMatcher:0x100e55b30 PollInterval:100ms}
+2026/10/15 00:27:08 🔔 Container is ready: c7d2a6eb9781
+    online_type_profile_test.go:69: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_run_helpers_test.go:74
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_type_profile_test.go:69
+        	Error:      	Received unexpected error:
+        	            	online metadata schema_version must be an ordinary permanent table: no rows in result set
+        	Test:       	TestOnlineQualifiedArrays/CDC-lower-bound
+2026/10/15 00:27:08 🐳 Terminating container: c7d2a6eb9781
+2026/10/15 00:27:08 🚫 Container terminated: c7d2a6eb9781
+2026/10/15 00:27:08 🐳 Terminating container: 8cf270034a34
+2026/10/15 00:27:08 🚫 Container terminated: 8cf270034a34
+--- FAIL: TestOnlineQualifiedArrays (11.07s)
+    --- FAIL: TestOnlineQualifiedArrays/positive (2.32s)
+    --- FAIL: TestOnlineQualifiedArrays/READ-multidimensional (2.19s)
+    --- FAIL: TestOnlineQualifiedArrays/READ-lower-bound (2.34s)
+    --- FAIL: TestOnlineQualifiedArrays/CDC-multidimensional (2.18s)
+    --- FAIL: TestOnlineQualifiedArrays/CDC-lower-bound (2.04s)
+FAIL
+2026/10/15 00:27:08 🐳 Terminating container: 3d1d97b7a80d
+2026/10/15 00:27:08 🚫 Container terminated: 3d1d97b7a80d
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	20.481s

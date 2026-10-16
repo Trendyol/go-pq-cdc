@@ -1,0 +1,42 @@
+[
+  {
+    "name": "root-race",
+    "command": "go test -race -count=1 ./...",
+    "result": "passed",
+    "exitCode": 0,
+    "seconds": 5.024,
+    "log": "specs/verifications/e01-evidence/final-type-root-race.log"
+  },
+  {
+    "name": "root-vet",
+    "command": "go vet ./...",
+    "result": "passed",
+    "exitCode": 0,
+    "seconds": 1.004,
+    "log": "specs/verifications/e01-evidence/final-type-root-vet.log"
+  },
+  {
+    "name": "integration-vet",
+    "command": "(cd integration_test && go vet ./...)",
+    "result": "passed",
+    "exitCode": 0,
+    "seconds": 0.685,
+    "log": "specs/verifications/e01-evidence/final-type-integration-vet.log"
+  },
+  {
+    "name": "pg16-full",
+    "command": "(cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...)",
+    "result": "passed",
+    "exitCode": 0,
+    "seconds": 440.639,
+    "log": "specs/verifications/e01-evidence/final-type-pg16-full.log"
+  },
+  {
+    "name": "matched-capacity",
+    "command": "(cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)",
+    "result": "passed",
+    "exitCode": 0,
+    "seconds": 181.28,
+    "log": "specs/verifications/e01-evidence/final-type-matched-capacity.log"
+  }
+]

@@ -1,0 +1,5 @@
+--- FAIL: TestOnlineLosslessValues (0.00s)
+    online_test.go:10: unqualified OID accepted: 999999
+FAIL
+FAIL	github.com/Trendyol/go-pq-cdc/pq/message/tuple	0.717s
+FAIL

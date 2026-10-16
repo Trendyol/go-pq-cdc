@@ -1,0 +1,10 @@
+# github.com/Trendyol/go-pq-cdc/pq/snapshot/online [github.com/Trendyol/go-pq-cdc/pq/snapshot/online.test]
+pq/snapshot/online/model_test.go:56:16: undefined: matchMarker
+pq/snapshot/online/model_test.go:58:12: undefined: matchMarker
+pq/snapshot/online/model_test.go:59:16: undefined: matchMarker
+pq/snapshot/online/model_test.go:61:12: undefined: matchMarker
+pq/snapshot/online/model_test.go:62:12: undefined: matchMarker
+pq/snapshot/online/model_test.go:63:12: undefined: matchMarker
+pq/snapshot/online/model_test.go:65:12: undefined: matchMarker
+FAIL	github.com/Trendyol/go-pq-cdc/pq/snapshot/online [build failed]
+FAIL

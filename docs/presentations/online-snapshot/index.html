@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Online snapshots with WAL watermarks — go-pq-cdc</title>
+<style>
+:root{--ink:hsl(214 42% 16%);--muted:hsl(214 17% 39%);--paper:hsl(220 43% 97%);--blue:hsl(219 72% 49%);--blue-soft:hsl(219 100% 96%);--green:hsl(167 88% 25%);--green-soft:hsl(155 38% 95%);--amber:hsl(32 85% 30%);--amber-soft:hsl(39 100% 95%);--line:hsl(216 37% 89%)}
+*{box-sizing:border-box}body{margin:0;background:hsl(214 30% 12%);font-family:Arial,Helvetica,sans-serif;color:var(--ink);overflow:hidden}button,a{font:inherit}#stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform-origin:center center}.slide{display:none;width:1600px;height:900px;background:var(--paper);position:relative;padding:48px 64px 52px;overflow:hidden}.slide.active{display:block}.slide.diagram{padding:0}.diagram img{display:block;width:1600px;height:900px}.eyebrow{font-size:15px;font-weight:700;letter-spacing:2px;color:var(--blue);margin:0 0 42px;padding-left:24px;position:relative}.eyebrow:before{content:"";position:absolute;left:0;top:-1px;width:6px;height:28px;border-radius:3px;background:var(--blue)}h1{font-size:46px;line-height:1.12;letter-spacing:-1px;margin:0 0 20px;font-weight:700}.subtitle{font-size:22px;line-height:1.4;color:var(--muted);margin:0 0 32px}.label{font-size:15px;font-weight:700;letter-spacing:1px;color:var(--muted);margin:0 0 20px}.cards{display:grid;gap:24px}.two{grid-template-columns:1fr 1fr}.three{grid-template-columns:1fr 1fr 1fr}.card{padding:24px;background:white;border-radius:16px}.card.blue{background:var(--blue-soft)}.card.green{background:var(--green-soft)}.card.amber{background:var(--amber-soft)}h2{font-size:26px;line-height:1.25;margin:0 0 20px}p,li{font-size:21px;line-height:1.45;margin:0 0 12px;color:var(--muted)}strong{color:var(--ink)}ul{padding:0;list-style:none;margin:0}li{padding-left:24px;position:relative;margin-bottom:18px}li:before{content:"•";position:absolute;left:0;color:var(--blue);font-weight:bold}.green li:before{content:"+";color:var(--green)}.amber li:before{content:"−";color:var(--amber)}code,pre{font-family:Menlo,Consolas,monospace}code{font-size:.9em}pre{font-size:19px;line-height:1.45;margin:0;padding:24px;border-radius:12px;background:var(--ink);color:hsl(215 70% 95%);white-space:pre-wrap}.code-note{font-size:17px;line-height:1.4;margin:16px 0 0}.banner{position:absolute;left:64px;right:64px;bottom:52px;min-height:59px;padding:18px 24px;background:var(--ink);color:white;border-radius:12px;font-size:20px;font-weight:700}.footer{position:absolute;bottom:18px;left:64px;right:64px;display:flex;justify-content:space-between;gap:24px;color:var(--muted);font-size:16px}.compact p,.compact li{font-size:19px;line-height:1.35}.compact li{margin-bottom:12px}.compact li:last-child{margin-bottom:0}.tag{display:inline-block;padding:6px 10px;border-radius:6px;background:var(--blue-soft);color:var(--blue);font-size:15px;font-weight:700;white-space:nowrap}.comparison{display:grid;grid-template-columns:140px 1fr;gap:12px 16px;margin-top:20px}.comparison div{font-size:18px;line-height:1.35}.comparison .key{font-weight:700;color:var(--blue)}.status{display:flex;gap:20px;align-items:center;margin-top:16px;padding:14px 24px;background:white;border-radius:12px}.status p{margin:0;font-size:19px;line-height:1.35}#toolbar{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:12px;background:hsl(214 30% 12% / .94);color:white;font-size:14px;z-index:10}#toolbar button,#toolbar a{border:1px solid hsl(214 20% 46%);background:transparent;color:white;border-radius:6px;padding:6px 10px;text-decoration:none;cursor:pointer}#toolbar button:focus-visible,#toolbar a:focus-visible{outline:3px solid #93b5ff;outline-offset:2px}#toolbar span{min-width:45px;text-align:center}body.capture #toolbar{display:none}
+@media print{@page{size:1600px 900px;margin:0}html,body{width:1600px;background:white;overflow:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact}#stage{position:static;width:1600px;height:auto;transform:none!important}.slide{display:block!important;break-after:page;page-break-after:always}.slide:last-child{break-after:auto;page-break-after:auto}#toolbar{display:none}}
+</style>
+</head>
+<body>
+<main id="stage" aria-label="Five-slide architecture presentation">
+<section class="slide diagram active" aria-label="Architecture: continuous CDC and chunked backfill">
+<img src="architecture.svg" alt="Architecture: business tables feed a backfill worker and WAL. Logical markers enter WAL. The continuous reader and pending chunk state meet at a watermark merger, then feed ordered Kafka or Elasticsearch delivery. Source ACKs cover only recoverable work.">
+</section>
+<section class="slide diagram" aria-label="Walkthrough: stale READ elimination at HIGH">
+<img src="watermark-walkthrough.svg" alt="Between LOW and HIGH, UPDATE 42 and DELETE 85 cause their snapshot READs to be discarded. READ 99 survives and is ordered before a later UPDATE 99.">
+</section>
+<section class="slide" aria-label="Logical messages: an in-band synchronization protocol">
+<p class="eyebrow">CONTROL PROTOCOL · PG_LOGICAL_EMIT_MESSAGE</p>
+<h1>A small WAL message joins two independent readers.</h1>
+<p class="subtitle">Write on a normal SQL connection. Receive on the already-connected replication stream.</p>
+<div class="cards two">
+<div class="card blue">
+<p class="label">1 · SOURCE: EMIT AN IDENTIFIABLE MARKER</p>
+<pre>SELECT pg_logical_emit_message(
+  true,
+  'go-pq-cdc.snapshot.high.v1',
+  '{"connector_id":"catalog-es",
+    "snapshot_id":"s1", "generation":3,
+    "chunk_id":7, "table_oid":12345}'
+);</pre>
+<p class="code-note"><strong>Transactional:</strong> commit the marker in its own short transaction. Rollback must not close a window.</p>
+<p class="code-note"><strong>No watermark table:</strong> small control payload goes directly into WAL. No business-row mutation.</p>
+</div>
+<div class="card">
+<p class="label">2 · READER: DECODE, ROUTE, COORDINATE</p>
+<pre>START_REPLICATION ... (
+  proto_version '2',
+  publication_names 'catalog',
+  messages 'true',
+  streaming 'true'
+);</pre>
+<div class="comparison">
+<div class="key">Wire format</div><div><code>M</code> → optional streamed XID → flags → message LSN → prefix → payload</div>
+<div class="key">Routing</div><div>Validate connector, generation and chunk. Markers are not publication-table scoped.</div>
+<div class="key">Commit gate</div><div>Do not execute streamed transactional markers before COMMIT; discard on ABORT.</div>
+<div class="key">LSN ≠ ACK</div><div>Function return / marker arrival does not prove sink durability.</div>
+</div>
+</div>
+</div>
+<div class="banner">LOW commits → fresh chunk SELECT → HIGH commits. Never wrap all three in one transaction.</div>
+<div class="footer"><span>pgoutput logical-message forwarding: PostgreSQL 14+ · messages=true also works with protocol 1 on supported servers</span><span>03 / 05</span></div>
+</section>
+<section class="slide" aria-label="Recovery and correctness boundaries">
+<p class="eyebrow">CORRECTNESS · ORDERING + RECOVERY</p>
+<h1>Receiving a marker is not enough. Recovery must be safe.</h1>
+<p class="subtitle">Three independent boundaries: transaction commit, same-key output order, and recoverable progress.</p>
+<div class="cards three compact">
+<div class="card blue">
+<p class="label">A · CAPTURE / MERGE</p>
+<h2>Do not emit stale READs.</h2>
+<ul>
+<li>Track conflicting keys while a chunk is pending—even if SELECT has not returned.</li>
+<li>At HIGH, enqueue surviving READs before later same-key CDC.</li>
+<li>Handle DELETE, old/new PKs and table-level TRUNCATE explicitly.</li>
+<li>Full-row/upsert or reconstruction is needed when UPDATE arrives before READ.</li>
+</ul>
+</div>
+<div class="card green">
+<p class="label">B · DURABILITY / FEEDBACK</p>
+<h2>Do not ACK volatile state.</h2>
+<ul>
+<li>Source feedback covers a <strong>contiguous recoverable prefix</strong>, not latest received WAL.</li>
+<li>Output must be delivered or durably staged, with enough state to resume the merge.</li>
+<li>Advance the backfill cursor only when recovery cannot skip unfinished output.</li>
+<li>At-least-once delivery: replay-safe IDs and idempotent sinks remain necessary.</li>
+</ul>
+</div>
+<div class="card amber">
+<p class="label">C · FAILURE / CAPACITY</p>
+<h2>Bound pressure; retry safely.</h2>
+<ul>
+<li>Unknown or old generation → ignore safely; retry pending work with fresh reads.</li>
+<li>SELECT fails after LOW → expire / abandon the window and retry.</li>
+<li>HIGH races with task result → wait for the matching chunk; do not close early.</li>
+<li>Sink or spool full → backpressure. WAL retention can grow again.</li>
+</ul>
+</div>
+</div>
+<div class="status"><span class="tag">TRACK BOTH</span><p><strong>Source health:</strong> slot active, confirmed progress, retained WAL, disk headroom. <strong>Pipeline health:</strong> buffer age, pending chunks, sink lag.</p></div>
+<div class="banner">This is online, convergent bootstrap—not a global, cross-table point-in-time snapshot.</div>
+<div class="footer"><span>Durable storage alone is insufficient unless checkpoint + replay semantics protect the window state.</span><span>04 / 05</span></div>
+</section>
+<section class="slide" aria-label="Pros, cons and implementation recommendation">
+<p class="eyebrow">DECISION · BENEFITS, COSTS, IMPLEMENTATION</p>
+<h1>Prefer online backfill for large, write-heavy clusters.</h1>
+<p class="subtitle">Keep the consistent initial mode for workloads that need a single snapshot boundary.</p>
+<div class="cards two compact">
+<div class="card green">
+<p class="label">PROS</p>
+<h2>Lower source risk; faster operational recovery.</h2>
+<ul>
+<li><strong>No planned inactive-slot phase:</strong> CDC capture continues throughout backfill.</li>
+<li><strong>Less prolonged WAL pinning:</strong> safe feedback can advance while rows are scanned.</li>
+<li><strong>Short chunk reads:</strong> avoids a whole-job MVCC transaction and its prolonged vacuum horizon.</li>
+<li><strong>Resumable / repeatable:</strong> checkpointed keyset pages support restart and selective backfill.</li>
+<li><strong>Small control overhead:</strong> logical markers avoid a dedicated watermark table.</li>
+</ul>
+</div>
+<div class="card amber">
+<p class="label">CONS / LIMITS</p>
+<h2>More protocol complexity; no magic capacity fix.</h2>
+<ul>
+<li><strong>Not one global T₀ view:</strong> chunks observe different times; CDC resolves concurrent changes.</li>
+<li><strong>Harder implementation:</strong> marker decoding, windows, commit gates and durable checkpoints.</li>
+<li><strong>Key + payload constraints:</strong> stable indexed PKs; PK changes, TOAST, filters and DDL need policy.</li>
+<li><strong>Sink coupling:</strong> same-key ordering, retry behavior and bootstrap upserts must be correct.</li>
+<li><strong>Capacity still matters:</strong> slow sinks, large transactions or buffer limits can grow retained WAL.</li>
+</ul>
+</div>
+</div>
+<div class="status"><span class="tag">IMPLEMENTATION PATH</span><p>Opt-in mode → <code>M</code> decoder → window merger → ordered sink / safe feedback → failure + sustained-write tests.</p></div>
+<div class="banner">Adopt Sequin’s principles, not a blind code copy: its current PK-registration + HIGH variant differs from LOW/HIGH.</div>
+<div class="footer"><span>Proposed go-pq-cdc design · Not implemented here · Sequin source reviewed at revision 46ce4e1</span><span>05 / 05</span></div>
+</section>
+</main>
+<nav id="toolbar" aria-label="Presentation controls">
+<button id="prev" type="button" aria-label="Previous slide">←</button><span id="counter" aria-live="polite">1 / 5</span><button id="next" type="button" aria-label="Next slide">→</button>
+<button id="fullscreen" type="button">Fullscreen</button><button id="print" type="button">Print / PDF</button><a href="README.md">Speaker notes</a>
+</nav>
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+let current=Math.max(0,Math.min(slides.length-1,Number(new URLSearchParams(location.search).get('slide')||1)-1));
+if(new URLSearchParams(location.search).get('capture')==='1')document.body.classList.add('capture');
+function show(index){current=Math.max(0,Math.min(slides.length-1,index));slides.forEach((slide,i)=>{slide.classList.toggle('active',i===current);slide.setAttribute('aria-hidden',i===current?'false':'true')});document.getElementById('counter').textContent=`${current+1} / ${slides.length}`;document.getElementById('prev').disabled=current===0;document.getElementById('next').disabled=current===slides.length-1;}
+function resize(){document.getElementById('stage').style.transform=`translate(-50%,-50%) scale(${Math.min(innerWidth/1600,innerHeight/900)})`;}
+document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);
+document.getElementById('print').onclick=()=>window.print();document.getElementById('fullscreen').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{});};
+addEventListener('keydown',event=>{if(['ArrowRight','PageDown',' '].includes(event.key)){event.preventDefault();show(current+1)}else if(['ArrowLeft','PageUp'].includes(event.key)){event.preventDefault();show(current-1)}else if(event.key==='Home')show(0);else if(event.key==='End')show(slides.length-1)});
+addEventListener('resize',resize);show(current);resize();
+</script>
+</body>
+</html>

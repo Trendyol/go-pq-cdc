@@ -1,0 +1,1 @@
+PASS: 33 explicit integration-owned source/doc paths whitespace checked (new-file diff exit 1 accepted only without diagnostics); tracked diff clean; no staged paths; branch/HEAD unchanged; all seven reconnect .go.txt archives present.

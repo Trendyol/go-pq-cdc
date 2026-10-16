@@ -1,0 +1,127 @@
+---
+story_id: e01s03
+title: Qualify bounded operation and legacy compatibility
+spec: e01s03-qualification.md
+# startup; fixture corrected and focused recovery passes, but fresh full gate
+# required. Not passing.
+status:
+  # Final restricted-profile automated gates pass; human UAT unconfirmed.
+  passing
+bcps: 5
+verify: >-
+  test -f integration_test/online_capacity_test.go && rg -q '^func
+  TestOnlineInitialCapacity\(' integration_test/online_capacity_test.go
+  && go test -race -count=1 ./... && go vet ./... && (cd
+  integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1
+  -p=1 -timeout=20m ./...) && (cd integration_test &&
+  CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race
+  -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)
+tasks:
+  - id: 1
+    description: >-
+      Complete deterministic model schedules, restart-complete
+      visibility tests, full-image/TOAST cases, cross-table and
+      post-HIGH ordering, and fail-closed unsupported-operation tests.
+      Preserve minimized counterexamples and add fuzz coverage for
+      control identities and bounded envelope handling.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios:
+      [
+        SC-e01s03-P0-01,
+        SC-e01s03-P0-02,
+        SC-e01s03-P0-03,
+        SC-e01s03-P0-04
+      ]
+    files:
+      [
+        pq/snapshot/online/model_test.go,
+        pq/replication/online_test.go,
+        integration_test/online_visibility_test.go,
+        integration_test/online_image_test.go
+      ]
+    verify: >-
+      test -f pq/snapshot/online/model_test.go && test -f
+      integration_test/online_visibility_test.go && test -f
+      integration_test/online_image_test.go && rg -q '^func
+      TestOnlineModel\(' pq/snapshot/online/model_test.go && rg -q
+      '^func TestOnlineVisibilityBarrier\('
+      integration_test/online_visibility_test.go && rg -q '^func
+      TestOnlineFullImages\(' integration_test/online_image_test.go &&
+      go test -race -count=1 -run '^TestOnlineModel$'
+      ./pq/snapshot/online && (cd integration_test &&
+      POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1
+      -timeout=15m -run
+      '^(TestOnlineVisibilityBarrier|TestOnlineFullImages)$' ./...)
+    allure:
+      severity: critical
+      categories: [ model, integration, correctness ]
+  - id: 2
+    description: >-
+      Measure source confirmation during active writes and multiple
+      windows, bounded queues/transactions, feedback responsiveness,
+      memory peaks, and retained WAL. Compare the legacy and online
+      strategies under matching fixtures. Demonstrate safe ACK retention
+      during sink failure. Record actual rates and classify an unmet
+      workload as non-qualifying rather than passing.
+    risk: P1
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s03-P1-05, SC-e01s03-P1-06, SC-e01s03-P1-07 ]
+    files:
+      [
+        integration_test/online_capacity_test.go,
+        integration_test/online_control_test.go,
+        pq/replication/online_test.go,
+        internal/metric/
+      ]
+    verify: >-
+      test -f integration_test/online_capacity_test.go && rg -q '^func
+      TestOnlineInitialCapacity\('
+      integration_test/online_capacity_test.go && (cd integration_test
+      && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race
+      -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$'
+      ./...)
+    allure:
+      severity: high
+      categories: [ load, retention, backpressure ]
+  - id: 3
+    description: >-
+      Add the opt-in runnable example and provisioning SQL, verify all
+      legacy contracts, and record a POC result with source/config/image
+      revisions, tests, measurements, limitations, and adapter
+      prerequisites. Reconcile unrelated baseline failures with their
+      owner instead of skipping them.
+    risk: P0
+    # oracle startup; fixture corrected and focused recovery passes, but
+    # fresh full gate required. Not passing.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s03-P0-08 ]
+    files:
+      [
+        example/online-initial-poc/,
+        integration_test/online_initial_demo_test.go,
+        README.md,
+        docs/SNAPSHOT_FEATURE.md,
+        specs/verifications/e01-POC-RESULT.md
+      ]
+    verify: >-
+      test -f example/online-initial-poc/main.go && test -f
+      example/online-initial-poc/README.md && test -f
+      integration_test/online_initial_demo_test.go && rg -q '^func
+      TestOnlineInitialDemo\('
+      integration_test/online_initial_demo_test.go && go test -race
+      -count=1 ./... && go vet ./... && (cd integration_test &&
+      POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1
+      -timeout=20m ./...) && test -s
+      specs/verifications/e01-POC-RESULT.md
+    allure:
+      severity: critical
+      categories: [ regression, documentation, poc-gate ]

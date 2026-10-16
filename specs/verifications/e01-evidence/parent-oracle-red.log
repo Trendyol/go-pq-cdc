@@ -1,0 +1,41 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/15 01:10:22 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: ec5db15e077a3897225d832cd1a2bb15f84514129f543fbc5253d8c634c77554
+  Test ProcessID: 4794b310-fc71-4ad3-a5bc-2599d48dec51
+2026/10/15 01:10:22 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/15 01:10:22 ✅ Container created: 854556b061ff
+2026/10/15 01:10:22 🐳 Starting container: 854556b061ff
+2026/10/15 01:10:22 ✅ Container started: 854556b061ff
+2026/10/15 01:10:22 🚧 Waiting for container id 854556b061ff image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc0003048e8 Strategies:[0xc00029a300]}
+2026/10/15 01:10:23 🔔 Container is ready: 854556b061ff
+--- FAIL: TestOnlineJSONOracleTypes (0.00s)
+    --- FAIL: TestOnlineJSONOracleTypes/number-is-not-string (0.00s)
+        online_json_oracle_test.go:28: source/target equality = true, want false
+        online_json_oracle_test.go:31: target/source equality = true, want false
+    --- FAIL: TestOnlineJSONOracleTypes/fraction-is-not-string (0.00s)
+        online_json_oracle_test.go:28: source/target equality = true, want false
+        online_json_oracle_test.go:31: target/source equality = true, want false
+    --- FAIL: TestOnlineJSONOracleTypes/nested-array-types (0.00s)
+        online_json_oracle_test.go:28: source/target equality = true, want false
+        online_json_oracle_test.go:31: target/source equality = true, want false
+    --- FAIL: TestOnlineJSONOracleTypes/large-number-is-not-string (0.00s)
+        online_json_oracle_test.go:28: source/target equality = true, want false
+        online_json_oracle_test.go:31: target/source equality = true, want false
+    --- FAIL: TestOnlineJSONOracleTypes/trailing-input (0.00s)
+        online_json_oracle_test.go:28: source/target equality = true, want false
+        online_json_oracle_test.go:31: target/source equality = true, want false
+FAIL
+2026/10/15 01:10:24 🐳 Terminating container: 854556b061ff
+2026/10/15 01:10:24 🚫 Container terminated: 854556b061ff
+FAIL	github.com/Trendyol/go-pq-cdc/integration	2.951s
+FAIL

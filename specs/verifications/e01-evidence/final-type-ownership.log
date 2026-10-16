@@ -1,0 +1,8 @@
+PASS: 53 retained primary paths whitespace checked; no staged files; branch/HEAD unchanged; seven archived reconnect tests preserved.
+specs/archive/reconnect-tests-before-online-poc/config/slot_config_test.go.txt
+specs/archive/reconnect-tests-before-online-poc/integration_test/replication_disconnect_test.go.txt
+specs/archive/reconnect-tests-before-online-poc/integration_test/slot_info_reconnect_test.go.txt
+specs/archive/reconnect-tests-before-online-poc/pq/connection_test.go.txt
+specs/archive/reconnect-tests-before-online-poc/pq/slot/config_test.go.txt
+specs/archive/reconnect-tests-before-online-poc/pq/slot/recovery_test.go.txt
+specs/archive/reconnect-tests-before-online-poc/pq/slot/wire_test.go.txt

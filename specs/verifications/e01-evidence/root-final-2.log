@@ -1,0 +1,37 @@
+ok  	github.com/Trendyol/go-pq-cdc	2.171s
+ok  	github.com/Trendyol/go-pq-cdc/config	2.154s
+?   	github.com/Trendyol/go-pq-cdc/example/online-initial-poc	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-snapshot-cdc-regular	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-read	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	2.493s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	1.267s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	3.030s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	2.642s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	2.527s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	1.498s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	2.885s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	2.577s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]
+fuzz: elapsed: 0s, gathering baseline coverage: 0/2 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 2/2 completed, now fuzzing with 12 workers
+fuzz: elapsed: 3s, execs: 236182 (78726/sec), new interesting: 21 (total: 23)
+fuzz: elapsed: 3s, execs: 236182 (0/sec), new interesting: 21 (total: 23)
+PASS
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	3.633s

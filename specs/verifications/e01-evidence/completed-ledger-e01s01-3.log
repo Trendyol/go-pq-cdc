@@ -1,0 +1,5 @@
+$ test -f pq/replication/online_test.go && test -f integration_test/online_control_test.go && rg -q '^func TestOnlineCommittedEnvelope\(' pq/replication/online_test.go && rg -q '^func TestOnlineControlProtocol\(' integration_test/online_control_test.go && go test -race -count=1 -run '^TestOnlineCommittedEnvelope$' ./pq/replication && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineControlProtocol$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	1.312s
+ok  	github.com/Trendyol/go-pq-cdc/integration	5.097s
+
+EXIT 0

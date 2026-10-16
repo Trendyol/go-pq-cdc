@@ -1,0 +1,60 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 17:05:45 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 3ef7304be82e4e05b3d5d5ddddbeee68e8a6e5cd57a83d6db1e8f3c9df0c56d9
+  Test ProcessID: 8bd98687-fd0f-43ae-9e72-93ba259fe012
+2026/10/14 17:05:45 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:05:45 ✅ Container created: bbd683b326f1
+2026/10/14 17:05:45 🐳 Starting container: bbd683b326f1
+2026/10/14 17:05:45 ✅ Container started: bbd683b326f1
+2026/10/14 17:05:45 🚧 Waiting for container id bbd683b326f1 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc0004187b8 Strategies:[0xc000249280]}
+2026/10/14 17:05:46 🔔 Container is ready: bbd683b326f1
+=== RUN   TestOnlineCheckpointAtomicity
+=== RUN   TestOnlineCheckpointAtomicity/restart-old-generation-stale-attempt
+2026/10/14 17:05:47 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:05:47 ✅ Container created: 18f51694ee1b
+2026/10/14 17:05:47 🐳 Starting container: 18f51694ee1b
+2026/10/14 17:05:47 ✅ Container started: 18f51694ee1b
+2026/10/14 17:05:47 🚧 Waiting for container id 18f51694ee1b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00025f768 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10113e200 ResponseMatcher:0x101267d40 PollInterval:100ms}
+2026/10/14 17:05:48 🔔 Container is ready: 18f51694ee1b
+2026/10/14 17:05:48 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:05:48 ✅ Container created: 46a5de57a1a5
+2026/10/14 17:05:48 🐳 Starting container: 46a5de57a1a5
+2026/10/14 17:05:48 ✅ Container started: 46a5de57a1a5
+2026/10/14 17:05:48 🚧 Waiting for container id 46a5de57a1a5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002bbbf8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10113e200 ResponseMatcher:0x101267d40 PollInterval:100ms}
+2026/10/14 17:05:49 🔔 Container is ready: 46a5de57a1a5
+2026/10/14 17:05:51 🐳 Terminating container: 46a5de57a1a5
+2026/10/14 17:05:51 🚫 Container terminated: 46a5de57a1a5
+2026/10/14 17:05:51 🐳 Terminating container: 18f51694ee1b
+2026/10/14 17:05:51 🚫 Container terminated: 18f51694ee1b
+2026/10/14 17:05:51 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:05:51 ✅ Container created: 2b0671003059
+2026/10/14 17:05:51 🐳 Starting container: 2b0671003059
+2026/10/14 17:05:51 ✅ Container started: 2b0671003059
+2026/10/14 17:05:51 🚧 Waiting for container id 2b0671003059 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00040a0e8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10113e200 ResponseMatcher:0x101267d40 PollInterval:100ms}
+2026/10/14 17:05:52 🔔 Container is ready: 2b0671003059
+2026/10/14 17:05:52 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 17:05:52 ✅ Container created: 1a62a6b7986c
+2026/10/14 17:05:52 🐳 Starting container: 1a62a6b7986c
+2026/10/14 17:05:52 ✅ Container started: 1a62a6b7986c
+2026/10/14 17:05:52 🚧 Waiting for container id 1a62a6b7986c image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0001d00b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10113e200 ResponseMatcher:0x101267d40 PollInterval:100ms}
+2026/10/14 17:05:53 🔔 Container is ready: 1a62a6b7986c
+2026/10/14 17:05:55 🐳 Terminating container: 1a62a6b7986c
+2026/10/14 17:05:55 🚫 Container terminated: 1a62a6b7986c
+2026/10/14 17:05:55 🐳 Terminating container: 2b0671003059
+2026/10/14 17:05:55 🚫 Container terminated: 2b0671003059
+--- PASS: TestOnlineCheckpointAtomicity (8.12s)
+    --- PASS: TestOnlineCheckpointAtomicity/restart-old-generation-stale-attempt (4.20s)
+PASS
+2026/10/14 17:05:55 🐳 Terminating container: bbd683b326f1
+2026/10/14 17:05:55 🚫 Container terminated: bbd683b326f1
+ok  	github.com/Trendyol/go-pq-cdc/integration	12.061s

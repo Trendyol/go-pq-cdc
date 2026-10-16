@@ -1,0 +1,41 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:07:52 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: f1757b093230b4e93d4c4a5dd354c8e83fb41cff03b3903ac8de312f4466909c
+  Test ProcessID: 9f55c5b0-d345-4c25-9bb6-b293a02674fb
+2026/10/14 16:07:52 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:07:52 ✅ Container created: 9ec7aad2363b
+2026/10/14 16:07:52 🐳 Starting container: 9ec7aad2363b
+2026/10/14 16:07:52 ✅ Container started: 9ec7aad2363b
+2026/10/14 16:07:52 🚧 Waiting for container id 9ec7aad2363b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000240428 Strategies:[0xc000020200]}
+2026/10/14 16:07:53 🔔 Container is ready: 9ec7aad2363b
+=== RUN   TestOnlineVisibilityBarrier
+2026/10/14 16:07:54 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:07:54 ✅ Container created: 322c609c886e
+2026/10/14 16:07:54 🐳 Starting container: 322c609c886e
+2026/10/14 16:07:54 ✅ Container started: 322c609c886e
+2026/10/14 16:07:54 🚧 Waiting for container id 322c609c886e image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000240028 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x104fb16b0 ResponseMatcher:0x1050d0dc0 PollInterval:100ms}
+2026/10/14 16:07:55 🔔 Container is ready: 322c609c886e
+    online_visibility_test.go:119: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_helpers_test.go:82
+        	            				/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_visibility_test.go:119
+        	Error:      	Received unexpected error:
+        	            	ERROR: ALTER SYSTEM cannot run inside a transaction block (SQLSTATE 25001)
+        	Test:       	TestOnlineVisibilityBarrier
+2026/10/14 16:07:55 🐳 Terminating container: 322c609c886e
+2026/10/14 16:07:56 🚫 Container terminated: 322c609c886e
+--- FAIL: TestOnlineVisibilityBarrier (1.30s)
+FAIL
+2026/10/14 16:07:56 🐳 Terminating container: 9ec7aad2363b
+2026/10/14 16:07:56 🚫 Container terminated: 9ec7aad2363b
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	4.219s

@@ -1,0 +1,5 @@
+--- FAIL: TestOnlineConstructorContract (0.00s)
+    online_connector_test.go:27: impossible BEGIN/COMMIT budget accepted before Run
+FAIL
+FAIL	github.com/Trendyol/go-pq-cdc	0.914s
+FAIL

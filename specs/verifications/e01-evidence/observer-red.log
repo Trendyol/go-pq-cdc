@@ -1,0 +1,8 @@
+# github.com/Trendyol/go-pq-cdc [github.com/Trendyol/go-pq-cdc.test]
+./online_connector_test.go:21:64: undefined: WithOnlineObserver
+./online_connector_test.go:21:64: too many arguments in call to NewOnlineConnector
+	have (context.Context, config.Config, func(context.Context, OnlineEvent) error, unknown type)
+	want (context.Context, config.Config, OnlineHandler)
+./online_connector_test.go:21:104: undefined: OnlineObservation
+FAIL	github.com/Trendyol/go-pq-cdc [build failed]
+FAIL

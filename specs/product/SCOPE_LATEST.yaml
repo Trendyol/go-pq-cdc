@@ -1,0 +1,61 @@
+initiative: online-initial-snapshot-poc
+status: scoped
+core_value: Bootstrap existing PostgreSQL rows without the current snapshot-wide CDC delay, while preserving the legacy snapshot strategy.
+summary: >-
+  Prove a one-window online initial-snapshot strategy in go-pq-cdc. The source
+  database may contain new metadata and watermark tables, but not snapshot row
+  payloads or an output outbox. The POC must demonstrate correct merge ordering,
+  explicit durable-delivery requirements, restart recovery, and bounded behavior
+  against a separate durable PostgreSQL test target.
+user_decisions:
+  - One pod and one active chunk window.
+  - A separate initial strategy, not replacement of the existing snapshot path.
+  - Source tables contain metadata only.
+  - A published table transports LOW and HIGH watermarks.
+  - Core library and durable test sink are in scope; Kafka and Elasticsearch changes are deferred.
+in_scope:
+  - story: e01s01
+    outcome: Select the new strategy explicitly and complete a chunk while source writes and replication I/O continue.
+  - story: e01s01
+    outcome: Reject unsupported tables and configuration combinations before unsafe capture.
+  - story: e01s02
+    outcome: Recover incomplete work with at-least-once delivery and no stale applied state in the qualified durable test target.
+  - story: e01s02
+    outcome: Preserve source WAL until required delivery and metadata progress are safe.
+  - story: e01s03
+    outcome: Demonstrate exact final state, measured resource limits, and unchanged legacy behavior.
+out_of_scope:
+  - item: Full snapshot output stored in source tables.
+    reason: Adds snapshot-sized source WAL and write load.
+  - item: Kafka and Elasticsearch adapter implementation.
+    reason: Qualify the library contract first; adapters require independent durability and replay work.
+  - item: Multiple active windows or distributed snapshot workers.
+    reason: Avoid parallel completion and cross-worker recovery complexity in the first proof.
+  - item: Cross-table point-in-time snapshots in the online strategy.
+    reason: Short reads observe different source states; the legacy strategy remains available.
+  - item: Arbitrary asynchronous callbacks, exactly-once side effects, or unversioned target guarantees.
+    reason: The POC uses a strict durable handler and order-aware replay contract.
+  - item: Protocol-2 streaming, mutable/composite keys, partitions, filters, RLS, and schema evolution.
+    reason: These require additional proofs beyond the restricted first profile.
+  - item: Automatic HA promotion, lost-slot recovery, and unlimited downstream outage tolerance.
+    reason: Metadata-only storage cannot replace missing WAL or independently durable output.
+constraints:
+  postgres: PostgreSQL 16 qualification first; later versions require their own test run.
+  key_profile: Immutable single-column integer-family primary key on an ordinary permanent table.
+  ownership: One active source owner, with fail-fast rejection of a second owner.
+  compatibility: Existing modes, defaults, ListenerFunc behavior, and snapshot metadata remain intact.
+  change_authority: Planning artifacts only in this task; no implementation or external infrastructure changes.
+success_criteria:
+  - All expected keys and values match at a controlled source/output fence, including deletes.
+  - Snapshot READs never overwrite newer CDC in a normal run; replay does not regress the qualified target.
+  - Source acknowledgements do not cross incomplete delivery or an unresolved window.
+  - A hard process restart preserves completed intervals and safely repeats incomplete work.
+  - No new source metadata/control table contains selected-row payloads; metadata cannot leak into business output.
+  - A qualified sustained-write run demonstrates source progress during the overall snapshot.
+  - The POC reports its measured workload and outage envelope without a production-readiness claim.
+references:
+  - specs/epics/e01-online-initial-poc/implementation-plan.md
+  - docs/online-snapshot/design-rfc.md
+  - docs/online-snapshot/validation-plan.md
+  - docs/research/2026-10-13-go-online-snapshot-implementations.md
+  - https://netflixtechblog.com/dblog-a-generic-change-data-capture-framework-69351fb9099b

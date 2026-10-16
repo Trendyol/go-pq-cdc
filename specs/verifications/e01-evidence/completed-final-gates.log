@@ -1,0 +1,38 @@
+ok  	github.com/Trendyol/go-pq-cdc	1.329s
+ok  	github.com/Trendyol/go-pq-cdc/config	1.692s
+?   	github.com/Trendyol/go-pq-cdc/example/online-initial-poc	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-snapshot-cdc-regular	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-read	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	1.799s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	1.850s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	1.830s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	1.995s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	3.124s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	2.522s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	2.677s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	2.702s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]
+online_capacity_test.go:126:33: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields
+online_cdc_oracle_test.go:42:61: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields
+online_fault_scenarios_test.go:181:85: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields
+online_initial_demo_test.go:86:39: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields
+online_initial_demo_test.go:100:39: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields
+online_review_test.go:30:33: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields
+online_review_test.go:145:42: github.com/Trendyol/go-pq-cdc/pq/snapshot/online.Table struct literal uses unkeyed fields

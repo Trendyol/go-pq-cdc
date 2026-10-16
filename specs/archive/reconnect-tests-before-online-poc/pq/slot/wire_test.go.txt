@@ -1,0 +1,123 @@
+package slot
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/stretchr/testify/require"
+)
+
+type slotWireHooks struct {
+	connect func(context.Context, int) error
+	query   func(context.Context, *pgproto3.Backend) error
+}
+
+type slotWireStats struct {
+	connections atomic.Int32
+	queries     atomic.Int32
+}
+
+// Exercise real pq.Connection/pgconn against a minimal wire server. Ping and
+// CancelRequest are separate from status-query and connection counters.
+func newWireSlot(t *testing.T, hooks slotWireHooks) (*Slot, *slotWireStats) {
+	t.Helper()
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	stats := &slotWireStats{}
+	serverCtx := t.Context()
+	var workers sync.WaitGroup
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				defer conn.Close()
+				stop := context.AfterFunc(serverCtx, func() { _ = conn.Close() })
+				defer stop()
+				serveSlotQueries(serverCtx, conn, stats, hooks)
+			}()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		workers.Wait()
+	})
+	dsn := fmt.Sprintf("postgres://test@%s/test?sslmode=disable&connect_timeout=0", listener.Addr())
+	s := newTestSlot(t, pq.NewConnectionTemplate(dsn))
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	require.NoError(t, s.Connect(ctx))
+	return s, stats
+}
+
+func serveSlotQueries(ctx context.Context, conn net.Conn, stats *slotWireStats, hooks slotWireHooks) {
+	backend := pgproto3.NewBackend(conn, conn)
+	startup, err := backend.ReceiveStartupMessage()
+	if err != nil {
+		return
+	}
+	if _, ok := startup.(*pgproto3.StartupMessage); !ok {
+		return // CancelRequest: close the socket to acknowledge it.
+	}
+	id := int(stats.connections.Add(1))
+	if hooks.connect != nil {
+		if err := hooks.connect(ctx, id); err != nil {
+			return
+		}
+	}
+	backend.Send(&pgproto3.AuthenticationOk{})
+	backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+	if err := backend.Flush(); err != nil {
+		return
+	}
+	for {
+		message, err := backend.Receive()
+		if err != nil {
+			return
+		}
+		q, ok := message.(*pgproto3.Query)
+		if !ok {
+			return
+		}
+		if q.String == "-- ping" {
+			backend.Send(&pgproto3.EmptyQueryResponse{})
+			backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+			err = backend.Flush()
+		} else {
+			stats.queries.Add(1)
+			if hooks.query != nil {
+				err = hooks.query(ctx, backend)
+			} else {
+				err = sendSlotInfo(backend)
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func sendSlotInfo(backend *pgproto3.Backend) error {
+	backend.Send(&pgproto3.RowDescription{Fields: []pgproto3.FieldDescription{
+		{Name: []byte("slot_name"), DataTypeOID: pgtype.TextOID, DataTypeSize: -1},
+		{Name: []byte("slot_type"), DataTypeOID: pgtype.TextOID, DataTypeSize: -1},
+	}})
+	backend.Send(&pgproto3.DataRow{Values: [][]byte{[]byte("test_slot"), []byte("logical")}})
+	backend.Send(&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")})
+	backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+	return backend.Flush()
+}

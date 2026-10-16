@@ -1,0 +1,80 @@
+$ test -f integration_test/online_capacity_test.go && rg -q '^func TestOnlineInitialCapacity\(' integration_test/online_capacity_test.go && go test -race -count=1 ./... && go vet ./... && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=20m ./...) && (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc	1.331s
+ok  	github.com/Trendyol/go-pq-cdc/config	2.849s
+?   	github.com/Trendyol/go-pq-cdc/example/online-initial-poc	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-snapshot-cdc-regular	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-read	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	2.986s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	2.177s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	1.597s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	1.433s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	3.237s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	2.029s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	1.829s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	2.631s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/integration	349.718s
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:39:15 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 4b98582e6260e3ac3231a969a048890b18df095409adbbdd6e8ec3c8822489b4
+  Test ProcessID: 29f1c5ee-0b84-4458-b52e-1a0cfe7e5127
+2026/10/14 16:39:15 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:39:15 ✅ Container created: d3dfa9cbdac0
+2026/10/14 16:39:15 🐳 Starting container: d3dfa9cbdac0
+2026/10/14 16:39:15 ✅ Container started: d3dfa9cbdac0
+2026/10/14 16:39:15 🚧 Waiting for container id d3dfa9cbdac0 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc0002e0f48 Strategies:[0xc0002d6600]}
+2026/10/14 16:39:16 🔔 Container is ready: d3dfa9cbdac0
+2026/10/14 16:39:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:39:17 ✅ Container created: 254954e2b440
+2026/10/14 16:39:17 🐳 Starting container: 254954e2b440
+2026/10/14 16:39:17 ✅ Container started: 254954e2b440
+2026/10/14 16:39:17 🚧 Waiting for container id 254954e2b440 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc00026d558 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100faa020 ResponseMatcher:0x1010cdfa0 PollInterval:100ms}
+2026/10/14 16:39:18 🔔 Container is ready: 254954e2b440
+2026/10/14 16:39:18 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:39:18 ✅ Container created: 94452f9de0f5
+2026/10/14 16:39:18 🐳 Starting container: 94452f9de0f5
+2026/10/14 16:39:18 ✅ Container started: 94452f9de0f5
+2026/10/14 16:39:18 🚧 Waiting for container id 94452f9de0f5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0004986b8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100faa020 ResponseMatcher:0x1010cdfa0 PollInterval:100ms}
+2026/10/14 16:39:19 🔔 Container is ready: 94452f9de0f5
+2026/10/14 16:41:03 🐳 Terminating container: 94452f9de0f5
+2026/10/14 16:41:03 🚫 Container terminated: 94452f9de0f5
+2026/10/14 16:41:03 🐳 Terminating container: 254954e2b440
+2026/10/14 16:41:04 🚫 Container terminated: 254954e2b440
+--- FAIL: TestOnlineInitialCapacity (106.57s)
+    online_capacity_test.go:113: capacity sample before drain duration=1m0.291723041s achieved_tps=119.73 writes=7219 deliveries=7521 peak_process_heap=10485464 peak_retained_wal=8168728 max_feedback_age_seconds=0.772 peak_target_us=34422
+    online_capacity_test.go:121: capacity source=254954e2b4409bbba102482cad7065bff4ee5423e9767708a20bdb09cf9e9852 target=94452f9de0f525b33ce3ba2d210c0d9a379af5fbaabe8ef78bc54ee833a9aea0 rows=10000 payload=1024 chunkRows=100 duration=1m0.291723041s writer_target_tps=120 achieved_tps=119.73 writes=7219 deliveries=17116 peak_process_heap=10485464 peak_retained_wal=8168728 max_feedback_age_seconds=0.772 peak_target_us=102627
+    online_capacity_test.go:127: capacity qualification incomplete: matched consistent run and actual chunk/transaction/queue bytes, RSS and read latency measurements are not yet implemented (online correctness workload achieved 119.73 tx/s)
+FAIL
+2026/10/14 16:41:04 🐳 Terminating container: d3dfa9cbdac0
+2026/10/14 16:41:04 🚫 Container terminated: d3dfa9cbdac0
+FAIL	github.com/Trendyol/go-pq-cdc/integration	109.233s
+FAIL
+
+EXIT 1

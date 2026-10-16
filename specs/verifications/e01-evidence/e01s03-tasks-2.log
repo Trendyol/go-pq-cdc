@@ -1,0 +1,48 @@
+$ test -f integration_test/online_capacity_test.go && rg -q '^func TestOnlineInitialCapacity\(' integration_test/online_capacity_test.go && (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:41:30 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 5d077d5c6411721046b78050ccc48669c680a167c3785648a10ba8540fca635e
+  Test ProcessID: e35c945c-020a-4410-acd2-c38daf41a9c4
+2026/10/14 16:41:30 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:41:30 ✅ Container created: 3544a2bd6c8b
+2026/10/14 16:41:30 🐳 Starting container: 3544a2bd6c8b
+2026/10/14 16:41:30 ✅ Container started: 3544a2bd6c8b
+2026/10/14 16:41:30 🚧 Waiting for container id 3544a2bd6c8b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00002b638 Strategies:[0xc00017cd80]}
+2026/10/14 16:41:31 🔔 Container is ready: 3544a2bd6c8b
+2026/10/14 16:41:32 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:41:32 ✅ Container created: 81a2e84a66fe
+2026/10/14 16:41:32 🐳 Starting container: 81a2e84a66fe
+2026/10/14 16:41:32 ✅ Container started: 81a2e84a66fe
+2026/10/14 16:41:32 🚧 Waiting for container id 81a2e84a66fe image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000427578 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1057da020 ResponseMatcher:0x1058fdfa0 PollInterval:100ms}
+2026/10/14 16:41:33 🔔 Container is ready: 81a2e84a66fe
+2026/10/14 16:41:33 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:41:33 ✅ Container created: 4214e0c1e01f
+2026/10/14 16:41:33 🐳 Starting container: 4214e0c1e01f
+2026/10/14 16:41:33 ✅ Container started: 4214e0c1e01f
+2026/10/14 16:41:33 🚧 Waiting for container id 4214e0c1e01f image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000279ee8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1057da020 ResponseMatcher:0x1058fdfa0 PollInterval:100ms}
+2026/10/14 16:41:34 🔔 Container is ready: 4214e0c1e01f
+2026/10/14 16:43:15 🐳 Terminating container: 4214e0c1e01f
+2026/10/14 16:43:16 🚫 Container terminated: 4214e0c1e01f
+2026/10/14 16:43:16 🐳 Terminating container: 81a2e84a66fe
+2026/10/14 16:43:16 🚫 Container terminated: 81a2e84a66fe
+--- FAIL: TestOnlineInitialCapacity (103.76s)
+    online_capacity_test.go:113: capacity sample before drain duration=1m0.278645042s achieved_tps=119.25 writes=7188 deliveries=7137 peak_process_heap=13480208 peak_retained_wal=8036752 max_feedback_age_seconds=0.759 peak_target_us=91269
+    online_capacity_test.go:121: capacity source=81a2e84a66fe5d4fed29e821cc467f3d301dfebfbd59a05641fc10eb0d423d08 target=4214e0c1e01f4bf7c40bb0cd76e8b6a24f585c971d418398e433b19542da3104 rows=10000 payload=1024 chunkRows=100 duration=1m0.278645042s writer_target_tps=120 achieved_tps=119.25 writes=7188 deliveries=17076 peak_process_heap=13480208 peak_retained_wal=8036752 max_feedback_age_seconds=0.759 peak_target_us=91269
+    online_capacity_test.go:127: capacity qualification incomplete: matched consistent run and actual chunk/transaction/queue bytes, RSS and read latency measurements are not yet implemented (online correctness workload achieved 119.25 tx/s)
+FAIL
+2026/10/14 16:43:16 🐳 Terminating container: 3544a2bd6c8b
+2026/10/14 16:43:16 🚫 Container terminated: 3544a2bd6c8b
+FAIL	github.com/Trendyol/go-pq-cdc/integration	106.312s
+FAIL
+
+EXIT 1

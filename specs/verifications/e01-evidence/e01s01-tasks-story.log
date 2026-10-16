@@ -1,0 +1,4 @@
+$ test -f integration_test/online_initial_smoke_test.go && rg -q '^func TestOnlineInitialSmoke\(' integration_test/online_initial_smoke_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialSmoke$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc/integration	6.443s
+
+EXIT 0

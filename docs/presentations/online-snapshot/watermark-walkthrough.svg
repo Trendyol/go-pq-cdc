@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+<title id="title">At HIGH, discard stale READs and insert the survivors</title>
+<desc id="desc">A chunk reads rows 42, 85 and 99. Between committed LOW and HIGH markers, CDC updates row 42 and deletes row 85. At HIGH the merger drops READs 42 and 85, emits READ 99, and then permits a later UPDATE 99. The diagram is conceptual and not to scale.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0L8 4L0 8" fill="#526174"/></marker><style>text{font-family:Arial,Helvetica,sans-serif;fill:#172638}.eyebrow{font-size:15px;font-weight:700;letter-spacing:2px;fill:#2463d5}.heading{font-size:46px;font-weight:700;letter-spacing:-1px}.sub{font-size:22px;fill:#526174}.label{font-size:15px;font-weight:700;letter-spacing:1px;fill:#526174}.name{font-size:25px;font-weight:700}.body{font-size:20px;fill:#526174}.small{font-size:17px;fill:#526174}.mono{font-family:Menlo,Consolas,monospace;font-size:20px}.edge{fill:none;stroke:#526174;stroke-width:3;marker-end:url(#arrow)}</style></defs>
+<rect width="1600" height="900" fill="#f5f7fb"/>
+<rect x="64" y="48" width="6" height="28" rx="3" fill="#2463d5"/>
+<text x="88" y="69" class="eyebrow">WATERMARK WALKTHROUGH · ONE CHUNK</text>
+<text x="64" y="137" class="heading">At HIGH, discard stale READs. Insert the survivors.</text>
+<text x="64" y="179" class="sub">Markers are log boundaries—not timestamps and not permission to ACK.</text>
+
+<rect x="64" y="220" width="1472" height="268" rx="18" fill="white"/>
+<text x="88" y="252" class="label">COMMITTED LOGICAL EVENT ORDER →</text>
+<rect x="266" y="278" width="650" height="144" rx="12" fill="#eef4ff"/>
+<text x="290" y="308" class="label" style="fill:#2463d5">OVERLAP WINDOW: TRACK CHANGED KEYS</text>
+<path d="M88 352H1500" class="edge"/>
+<g fill="#2463d5"><circle cx="220" cy="352" r="10"/><circle cx="943" cy="352" r="10"/></g>
+<g fill="#087a61"><circle cx="463" cy="352" r="9"/><circle cx="701" cy="352" r="9"/><circle cx="1380" cy="352" r="9"/></g>
+<text x="220" y="391" class="mono" text-anchor="middle">LOW</text>
+<text x="463" y="391" class="mono" text-anchor="middle">UPDATE 42</text>
+<text x="701" y="391" class="mono" text-anchor="middle">DELETE 85</text>
+<text x="943" y="391" class="mono" text-anchor="middle">HIGH</text>
+<text x="1190" y="391" class="mono" text-anchor="middle">READ 99</text>
+<text x="1380" y="391" class="mono" text-anchor="middle">UPDATE 99</text>
+<rect x="1070" y="317" width="236" height="53" rx="10" fill="#edf7f3" stroke="#087a61" stroke-width="2"/>
+<text x="1188" y="350" class="small" text-anchor="middle" style="fill:#087a61;font-weight:700">INSERT SURVIVING READs</text>
+<text x="88" y="454" class="small">Reader processes CDC throughout the window. Brief coordination at HIGH prevents later same-key CDC overtaking READs.</text>
+
+<rect x="64" y="520" width="444" height="229" rx="16" fill="white"/>
+<text x="88" y="558" class="label">1 · SELECT RESULT → CHUNK BUFFER</text>
+<text x="88" y="603" class="mono">42 → price=100</text>
+<text x="88" y="646" class="mono">85 → price=200</text>
+<text x="88" y="689" class="mono">99 → price=300</text>
+<text x="88" y="725" class="small">Fresh read starts after LOW commits.</text>
+<path d="M510 634H555" class="edge"/>
+<rect x="556" y="520" width="478" height="229" rx="16" fill="#e8f0ff"/>
+<text x="580" y="558" class="label">2 · CDC WINS FOR CONFLICTING KEYS</text>
+<text x="580" y="603" class="mono">changedKeys = {42, 85}</text>
+<text x="580" y="646" class="body">DROP READ 42 · UPDATE already captured</text>
+<text x="580" y="689" class="body">DROP READ 85 · DELETE must stay final</text>
+<text x="580" y="725" class="small">Track keys even before SELECT returns.</text>
+<path d="M1035 634H1080" class="edge"/>
+<rect x="1082" y="520" width="454" height="229" rx="16" fill="#edf7f3"/>
+<text x="1106" y="558" class="label">3 · MATERIALIZED STATE AFTER REPLAY</text>
+<text x="1106" y="603" class="mono">42 → price=120  [CDC]</text>
+<text x="1106" y="646" class="mono">85 → deleted    [CDC]</text>
+<text x="1106" y="689" class="mono">99 → price=350  [READ → CDC]</text>
+<text x="1106" y="725" class="small">Sink must preserve same-key order.</text>
+
+<rect x="64" y="789" width="1472" height="59" rx="12" fill="#172638"/>
+<text x="88" y="826" style="font-size:20px;fill:white;font-weight:700">Merge = keep every committed CDC event + emit only non-conflicting snapshot READs.</text>
+<text x="64" y="878" class="small">Conceptual timeline · SELECT and CDC are concurrent · Read values shown are illustrative</text>
+<text x="1536" y="878" class="small" text-anchor="end">02 / 05</text>
+</svg>

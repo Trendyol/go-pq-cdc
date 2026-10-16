@@ -1,0 +1,194 @@
+package integration
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	cdc "github.com/Trendyol/go-pq-cdc"
+	"github.com/Trendyol/go-pq-cdc/config"
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/replication"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	replicationDisconnectHelperEnv   = "CDC_REPLICATION_DISCONNECT_HELPER"
+	replicationDisconnectHelperReady = "CDC_HELPER_READY"
+)
+
+// TestUnexpectedDisconnectRestartsProcess terminates the live walsender after CDC
+// is streaming. The process must panic with "corrupted connection" after closing
+// so a supervisor can restart it with a fresh replication connection.
+func TestUnexpectedDisconnectRestartsProcess(t *testing.T) {
+	ctx := context.Background()
+
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_test_replication_disconnect"
+	cdcCfg.Publication.Name = "cdc_pub_replication_disconnect"
+	cdcCfg.Metric.Port = 18083
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
+
+	t.Cleanup(func() {
+		_ = pgExec(ctx, postgresConn, fmt.Sprintf("DROP PUBLICATION IF EXISTS %s", cdcCfg.Publication.Name))
+		_ = pgExec(ctx, postgresConn, fmt.Sprintf(
+			"SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE slot_name = '%s'",
+			cdcCfg.Slot.Name,
+		))
+		require.NoError(t, RestoreDB(ctx))
+		require.NoError(t, postgresConn.Close(ctx))
+	})
+
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(),
+		replicationDisconnectHelperEnv+"=1",
+		"CDC_TEST_HOST="+cdcCfg.Host,
+		"CDC_TEST_PORT="+strconv.Itoa(cdcCfg.Port),
+		"CDC_TEST_SLOT="+cdcCfg.Slot.Name,
+		"CDC_TEST_PUBLICATION="+cdcCfg.Publication.Name,
+		"CDC_TEST_METRIC_PORT="+strconv.Itoa(cdcCfg.Metric.Port),
+	)
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	require.NoError(t, cmd.Start())
+
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+
+	require.NoError(t, waitForHelperReady(stdout, 30*time.Second))
+
+	var pid int
+	require.Eventually(t, func() bool {
+		pid, err = replicationSlotPID(ctx, postgresConn, cdcCfg.Slot.Name)
+		return err == nil && pid > 0
+	}, 10*time.Second, 100*time.Millisecond, "replication slot did not become active")
+
+	require.NoError(t, pgExec(ctx, postgresConn, fmt.Sprintf("SELECT pg_terminate_backend(%d)", pid)))
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "CDC process should exit after the replication connection is terminated")
+		require.Contains(t, stderr.String(), "panic: corrupted connection",
+			"expected a graceful crash so the process can restart with a fresh connection; stderr:\n%s", stderr.String())
+	case <-time.After(35 * time.Second):
+		t.Fatalf("CDC process did not panic after walsender termination; stderr:\n%s", stderr.String())
+	}
+}
+
+func waitForHelperReady(stdout io.Reader, timeout time.Duration) error {
+	ready := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			if strings.TrimSpace(scanner.Text()) == replicationDisconnectHelperReady {
+				ready <- nil
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			ready <- err
+			return
+		}
+		ready <- fmt.Errorf("helper stdout closed before %s", replicationDisconnectHelperReady)
+	}()
+
+	select {
+	case err := <-ready:
+		return err
+	case <-time.After(timeout):
+		return fmt.Errorf("timed out waiting for helper %s", replicationDisconnectHelperReady)
+	}
+}
+
+func replicationSlotPID(ctx context.Context, conn pq.Connection, slotName string) (int, error) {
+	sql := fmt.Sprintf("SELECT active_pid FROM pg_replication_slots WHERE slot_name = '%s'", slotName)
+	rr := conn.Exec(ctx, sql)
+	results, err := rr.ReadAll()
+	if err != nil {
+		return 0, err
+	}
+	if err = rr.Close(); err != nil {
+		return 0, err
+	}
+	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
+		return 0, fmt.Errorf("slot %s not found", slotName)
+	}
+	pidBytes := results[0].Rows[0][0]
+	if len(pidBytes) == 0 {
+		return 0, fmt.Errorf("slot %s is not active", slotName)
+	}
+	return strconv.Atoi(string(pidBytes))
+}
+
+func runReplicationDisconnectHelper() int {
+	cfg, err := config.ReadConfigYAML("./test_connector.yaml")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	cfg.SetDefault()
+
+	cfg.Host = os.Getenv("CDC_TEST_HOST")
+	port, err := strconv.Atoi(os.Getenv("CDC_TEST_PORT"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	cfg.Port = port
+	cfg.Slot.Name = os.Getenv("CDC_TEST_SLOT")
+	cfg.Publication.Name = os.Getenv("CDC_TEST_PUBLICATION")
+	metricPort, err := strconv.Atoi(os.Getenv("CDC_TEST_METRIC_PORT"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	cfg.Metric.Port = metricPort
+
+	ctx := context.Background()
+	connector, err := cdc.NewConnector(ctx, cfg, func(lCtx *replication.ListenerContext) {
+		_ = lCtx.Ack()
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := connector.WaitUntilReady(waitCtx); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	fmt.Println(replicationDisconnectHelperReady)
+	_ = os.Stdout.Sync()
+
+	select {}
+}

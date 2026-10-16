@@ -1,0 +1,6 @@
+--- FAIL: TestOnlineConstructorContract (0.00s)
+    --- FAIL: TestOnlineConstructorContract/caller-input-immutable (0.00s)
+        online_connector_test.go:17: caller-owned slices changed
+FAIL
+FAIL	github.com/Trendyol/go-pq-cdc	0.593s
+FAIL

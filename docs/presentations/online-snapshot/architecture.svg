@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+<title id="title">Online snapshots: keep CDC moving, merge one chunk at a time</title>
+<desc id="desc">Proposed go-pq-cdc architecture. PostgreSQL table scans feed a bounded snapshot chunk buffer. LOW and HIGH logical messages enter PostgreSQL WAL. A continuously connected replication reader feeds a merger that removes conflicting READs and orders survivors at HIGH. A delivery layer writes Kafka or Elasticsearch; source acknowledgments advance only across recoverable work.</desc>
+<defs>
+  <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0L8 4L0 8" fill="#526174"/></marker>
+  <marker id="blueArrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0L8 4L0 8" fill="#2463d5"/></marker>
+  <marker id="greenArrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0L8 4L0 8" fill="#087a61"/></marker>
+  <style>
+  text{font-family:Arial,Helvetica,sans-serif;fill:#172638} .eyebrow{font-size:15px;font-weight:700;letter-spacing:2px;fill:#2463d5} .heading{font-size:46px;font-weight:700;letter-spacing:-1px} .sub{font-size:22px;fill:#526174} .label{font-size:15px;font-weight:700;letter-spacing:1px;fill:#526174} .name{font-size:24px;font-weight:700} .body{font-size:19px;fill:#526174} .small{font-size:16px;fill:#526174} .mono{font-family:Menlo,Consolas,monospace;font-size:17px} .edge{fill:none;stroke:#526174;stroke-width:3;marker-end:url(#arrow)} .control{fill:none;stroke:#2463d5;stroke-width:3;stroke-dasharray:8 6;marker-end:url(#blueArrow)} .ack{fill:none;stroke:#087a61;stroke-width:3;stroke-dasharray:8 6;marker-end:url(#greenArrow)}
+  </style>
+</defs>
+<rect width="1600" height="900" fill="#f5f7fb"/>
+<rect x="64" y="48" width="6" height="28" rx="3" fill="#2463d5"/>
+<text x="88" y="69" class="eyebrow">PROPOSED DESIGN · GO-PQ-CDC</text>
+<text x="64" y="137" class="heading">Keep CDC moving. Merge one chunk at a time.</text>
+<text x="64" y="179" class="sub">Online backfill replaces the long “snapshot first → replication later” phase.</text>
+
+<rect x="64" y="223" width="288" height="482" rx="20" fill="#e9eef5"/>
+<text x="88" y="259" class="label">SOURCE POSTGRESQL · PRIMARY</text>
+<rect x="88" y="283" width="240" height="134" rx="12" fill="white"/>
+<text x="108" y="320" class="name">Business tables</text>
+<text x="108" y="354" class="body">Business writes</text>
+<text x="108" y="387" class="small">Short, fresh chunk SELECTs</text>
+<path d="M207 418V479" class="edge"/>
+<text x="222" y="457" class="small">changes</text>
+<rect x="88" y="492" width="240" height="171" rx="12" fill="white"/>
+<text x="108" y="530" class="name">WAL + logical slot</text>
+<text x="108" y="565" class="body">DML + control messages</text>
+<text x="108" y="598" class="mono">pgoutput</text>
+<text x="108" y="633" class="small">One active reader per slot</text>
+
+<rect x="398" y="223" width="630" height="482" rx="20" fill="white" stroke="#dbe3ee"/>
+<text x="422" y="259" class="label">COMMON LIBRARY · GO-PQ-CDC</text>
+<rect x="422" y="283" width="255" height="134" rx="12" fill="#eef4ff"/>
+<text x="442" y="320" class="name">Backfill worker</text>
+<text x="442" y="354" class="body">Indexed PK / keyset pages</text>
+<text x="442" y="387" class="small">Commit LOW → SELECT → HIGH</text>
+<path d="M422 339H329" class="edge"/>
+<text x="360" y="325" class="small">SQL</text>
+<rect x="727" y="283" width="277" height="134" rx="12" fill="#eef4ff"/>
+<text x="747" y="320" class="name">Pending chunk state</text>
+<text x="747" y="354" class="body">READ rows + changed keys</text>
+<text x="747" y="387" class="small">Bounded state · saved cursor</text>
+<path d="M677 352H726" class="edge"/>
+<path d="M442 418V447H312V491" class="control"/>
+<text x="452" y="453" class="small" fill="#2463d5">LOW / HIGH → pg_logical_emit_message(true, …)</text>
+
+<rect x="422" y="492" width="255" height="171" rx="12" fill="#edf7f3"/>
+<text x="442" y="530" class="name">Replication reader</text>
+<text x="442" y="566" class="body">Capture stays connected</text>
+<text x="442" y="599" class="body">DML + “M” decoder</text>
+<text x="442" y="633" class="small">Commit / abort-aware dispatch</text>
+<path d="M328 577H421" class="edge"/>
+<rect x="727" y="492" width="277" height="171" rx="12" fill="#e8f0ff" stroke="#2463d5" stroke-width="2"/>
+<text x="747" y="530" class="name">Watermark merger</text>
+<text x="747" y="566" class="body">Keep CDC; drop stale READs</text>
+<text x="747" y="599" class="body">At HIGH, enqueue survivors</text>
+<text x="747" y="633" class="small">Barrier before later same-key CDC</text>
+<path d="M677 577H726" class="edge"/>
+<path d="M865 418V491" class="edge"/>
+
+<rect x="1076" y="223" width="460" height="482" rx="20" fill="white" stroke="#dbe3ee"/>
+<text x="1100" y="259" class="label">DELIVERY + RECOVERY</text>
+<rect x="1100" y="283" width="412" height="176" rx="12" fill="#eef2f7"/>
+<text x="1120" y="322" class="name">Coordinated output</text>
+<text x="1120" y="357" class="body">Per-key ordering · retries · idempotency</text>
+<text x="1120" y="392" class="body">Optional durable staging / spool</text>
+<text x="1120" y="427" class="small">Memory-only intake is NOT an ACK boundary.</text>
+<path d="M1005 559H1050V371H1099" class="edge"/>
+<path d="M1210 459V492" class="edge"/>
+<path d="M1400 459V492" class="edge"/>
+<rect x="1100" y="492" width="192" height="109" rx="12" fill="#edf7f3"/>
+<text x="1120" y="530" class="name">Kafka</text>
+<text x="1120" y="565" class="small">Broker-confirmed writes</text>
+<rect x="1310" y="492" width="202" height="109" rx="12" fill="#edf7f3"/>
+<text x="1330" y="530" class="name">Elasticsearch</text>
+<text x="1330" y="565" class="small">Successful bulk items</text>
+<text x="1100" y="641" class="body">Safe ACK + recoverable chunk progress</text>
+<text x="1100" y="675" class="small">Delivered OR durably recoverable · no gaps</text>
+<path d="M1306 706V745H207V664" class="ack"/>
+<rect x="555" y="728" width="578" height="34" rx="8" fill="#f5f7fb"/>
+<text x="571" y="752" class="small" style="fill:#087a61;font-weight:700">ACK only across a contiguous, recoverable prefix of the stream</text>
+
+<rect x="64" y="789" width="1472" height="59" rx="12" fill="#172638"/>
+<text x="88" y="826" style="font-size:20px;fill:white;font-weight:700">Watermarks coordinate ordering. Continuous capture + safe ACKs manage WAL pressure.</text>
+<text x="64" y="878" class="small">Solid arrows: data / SQL · Blue dashed: control messages · Green dashed: safe source feedback</text>
+<text x="1536" y="878" class="small" text-anchor="end">01 / 05</text>
+</svg>

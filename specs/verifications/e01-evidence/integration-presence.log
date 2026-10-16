@@ -1,0 +1,37 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:51:17 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 157c928eef00174b1b546889c416c7db77641c00c15f07eef033d9d755d8c43e
+  Test ProcessID: 0827ff2b-1640-492b-a3de-1d50db1b7380
+2026/10/14 16:51:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:51:17 ✅ Container created: c1b27cbe5237
+2026/10/14 16:51:17 🐳 Starting container: c1b27cbe5237
+2026/10/14 16:51:17 ✅ Container started: c1b27cbe5237
+2026/10/14 16:51:17 🚧 Waiting for container id c1b27cbe5237 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0x5cd2eefa0ae0 Strategies:[0x5cd2eef61880]}
+2026/10/14 16:51:18 🔔 Container is ready: c1b27cbe5237
+TestOnlineInitialCapacity
+TestOnlineCheckpointAtomicity
+TestOnlineControlProtocol
+TestOnlineOwnerLifetime
+TestOnlineInitialFailureSafety
+TestOnlineFullImages
+TestOnlineInitialDemo
+TestOnlineInitialProgress
+TestOnlineInitialRecovery
+TestOnlineInitialSmoke
+TestOnlineTargetContract
+TestOnlineMetadataAttempts
+TestOnlineMetadataBoundaries
+TestOnlineVisibilityBarrier
+2026/10/14 16:51:19 🐳 Terminating container: c1b27cbe5237
+2026/10/14 16:51:19 🚫 Container terminated: c1b27cbe5237
+ok  	github.com/Trendyol/go-pq-cdc/integration	3.385s

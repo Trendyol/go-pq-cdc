@@ -1,0 +1,30 @@
+id: e01
+title: One-window online initial snapshot POC
+status: planned
+risk: P0
+plan: implementation-plan.md
+scope: ../../product/SCOPE_LATEST.yaml
+test_plan: ../../tech-architecture/e01-TEST_PLAN_LATEST.md
+estimate_note: BCPs indicate relative design complexity, not elapsed time or a delivery promise.
+stories:
+  - id: e01s01
+    title: Demonstrate one online chunk through a durable test target
+    spec: e01s01-single-window.md
+    tasks: e01s01-tasks.yaml
+    bcps: 8
+    delta: ADDED
+    depends_on: []
+  - id: e01s02
+    title: Resume multi-chunk capture without stale target state
+    spec: e01s02-recovery.md
+    tasks: e01s02-tasks.yaml
+    bcps: 8
+    delta: ADDED
+    depends_on: [e01s01]
+  - id: e01s03
+    title: Qualify bounded operation and legacy compatibility
+    spec: e01s03-qualification.md
+    tasks: e01s03-tasks.yaml
+    bcps: 5
+    delta: ADDED
+    depends_on: [e01s02]

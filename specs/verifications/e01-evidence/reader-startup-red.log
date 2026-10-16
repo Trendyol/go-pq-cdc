@@ -1,0 +1,5 @@
+# github.com/Trendyol/go-pq-cdc/pq/replication [github.com/Trendyol/go-pq-cdc/pq/replication.test]
+pq/replication/online_startup_test.go:18:8: undefined: StartOnlineReaderWithStartupTimeout
+pq/replication/online_startup_test.go:22:11: undefined: StartOnlineReaderWithStartupTimeout
+FAIL	github.com/Trendyol/go-pq-cdc/pq/replication [build failed]
+FAIL

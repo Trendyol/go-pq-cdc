@@ -1,0 +1,39 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 16:03:15 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: 4f290b2cb07d31ca85a52886b263768f12341f739742812fbbef23609f0e817f
+  Test ProcessID: 7665607f-5f81-4e87-bad2-9fbfed13409b
+2026/10/14 16:03:15 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:03:15 ✅ Container created: cfd6029d2d96
+2026/10/14 16:03:15 🐳 Starting container: cfd6029d2d96
+2026/10/14 16:03:15 ✅ Container started: cfd6029d2d96
+2026/10/14 16:03:15 🚧 Waiting for container id cfd6029d2d96 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc000537758 Strategies:[0xc00054a480]}
+2026/10/14 16:03:16 🔔 Container is ready: cfd6029d2d96
+2026/10/14 16:03:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 16:03:17 ✅ Container created: 0e0b8f09f4c0
+2026/10/14 16:03:17 🐳 Starting container: 0e0b8f09f4c0
+2026/10/14 16:03:18 ✅ Container started: 0e0b8f09f4c0
+2026/10/14 16:03:18 🚧 Waiting for container id 0e0b8f09f4c0 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0004193f8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1032ed610 ResponseMatcher:0x103408eb0 PollInterval:100ms}
+2026/10/14 16:03:18 🔔 Container is ready: 0e0b8f09f4c0
+2026/10/14 16:03:19 🐳 Terminating container: 0e0b8f09f4c0
+2026/10/14 16:03:19 🚫 Container terminated: 0e0b8f09f4c0
+--- FAIL: TestOnlineControlProtocol (1.31s)
+    online_control_test.go:21: 
+        	Error Trace:	/Users/huseyin.akuzum/Projects/trendyol/go-pq-cdc/integration_test/online_control_test.go:21
+        	Error:      	An error is expected but got nil.
+        	Test:       	TestOnlineControlProtocol
+        	Messages:   	missing watermark membership accepted
+FAIL
+2026/10/14 16:03:19 🐳 Terminating container: cfd6029d2d96
+2026/10/14 16:03:19 🚫 Container terminated: cfd6029d2d96
+exit status 1
+FAIL	github.com/Trendyol/go-pq-cdc/integration	4.297s

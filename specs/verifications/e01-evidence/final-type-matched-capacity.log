@@ -1,0 +1,4 @@
+$ (cd integration_test && CDC_ONLINE_CAPACITY=1 POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialCapacity$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc/integration	177.135s
+
+EXIT 0

@@ -1,0 +1,1 @@
+PASS: 50 exact primary paths whitespace checked; no staged paths; branch/HEAD unchanged; seven archived reconnect tests preserved.

@@ -1,0 +1,51 @@
+START 2026-10-14T23:14:23Z
+feat/online-initial-poc
+6110b91596ea9597b588954f94a89a1b5f4cfcd6
+go version go1.26.2 darwin/arm64
+
+ROOT RACE
+ok  	github.com/Trendyol/go-pq-cdc	1.402s
+ok  	github.com/Trendyol/go-pq-cdc/config	2.765s
+?   	github.com/Trendyol/go-pq-cdc/example/online-initial-poc	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-snapshot-cdc-regular	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-read	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	2.379s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	2.542s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	2.221s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	1.727s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	4.099s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	1.593s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	1.955s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	3.010s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]
+
+ROOT VET
+
+INTEGRATION VET
+
+FULL POSTGRESQL 16 RACE SUITE
+ok  	github.com/Trendyol/go-pq-cdc/integration	435.311s
+
+EXPLICIT MATCHED CAPACITY
+ok  	github.com/Trendyol/go-pq-cdc/integration	169.196s
+
+SOURCE INTEGRITY
+END 2026-10-14T23:24:41Z
+FINAL PARENT GATES: PASS

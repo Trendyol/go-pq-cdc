@@ -1,0 +1,71 @@
+package integration
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/Trendyol/go-pq-cdc/logger"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSlotInfoReconnectsAfterBackendTermination(t *testing.T) {
+	const (
+		slotName = "slot_info_reconnect_test"
+		appName  = "go_pq_cdc_slot_info_reconnect_test"
+	)
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	admin, err := newPostgresConn()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_ = admin.Close(cleanupCtx)
+	})
+
+	dropSQL := fmt.Sprintf("SELECT pg_drop_replication_slot('%s') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '%s')", slotName, slotName)
+	require.NoError(t, pgExec(ctx, admin, dropSQL))
+	cfg := Config.Slot
+	cfg.Name = slotName
+	cfg.CreateIfNotExists = true
+	cfg.SlotActivityCheckerInterval = 1000
+	s := slot.NewSlot(Config.ReplicationDSN(), Config.DSN()+"?application_name="+appName, cfg, nil, nil)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		s.Close(cleanupCtx)
+		require.NoError(t, pgExec(cleanupCtx, admin, dropSQL))
+	})
+
+	_, err = s.Create(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.Connect(ctx))
+	info, err := s.Info(ctx)
+	require.NoError(t, err)
+	require.Equal(t, slotName, info.Name)
+
+	backendFilter := fmt.Sprintf("FROM pg_stat_activity WHERE application_name = '%s' AND datname = current_database()", appName)
+	pid := pgScalar(t, ctx, admin, "SELECT pid "+backendFilter)
+	require.Equal(t, "t", pgScalar(t, ctx, admin, "SELECT pg_terminate_backend("+pid+")"))
+	require.Eventually(t, func() bool {
+		return pgScalar(t, ctx, admin, "SELECT count(*) FROM pg_stat_activity WHERE pid = "+pid) == "0"
+	}, 5*time.Second, 20*time.Millisecond)
+
+	// No explicit Connect call: Info must replace the dead connection itself.
+	info, err = s.Info(ctx)
+	require.NoError(t, err)
+	require.Equal(t, slotName, info.Name)
+	require.Equal(t, slot.Logical, info.Type)
+	reconnectedPID := pgScalar(t, ctx, admin, "SELECT pid "+backendFilter)
+	require.NotEqual(t, pid, reconnectedPID)
+
+	// The next poll reuses the recovered connection.
+	_, err = s.Info(ctx)
+	require.NoError(t, err)
+	require.Equal(t, reconnectedPID, pgScalar(t, ctx, admin, "SELECT pid "+backendFilter))
+}

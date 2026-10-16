@@ -1,0 +1,35 @@
+$ go test -race -count=1 ./... && go vet ./... && test -f integration_test/online_target_test.go && rg -q '^func TestOnlineTargetContract\(' integration_test/online_target_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=10m -run '^TestOnlineTargetContract$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc	2.081s
+ok  	github.com/Trendyol/go-pq-cdc/config	1.441s
+?   	github.com/Trendyol/go-pq-cdc/example/online-initial-poc	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-snapshot-cdc-regular	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/partitioned-table-mapping	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-nothing	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-identity-using-index	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/replica-read	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-column-filtering	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/simple-with-heartbeat	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-ctid-partitioning	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-initial-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-only-mode	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/snapshot-with-query-condition	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/example/visibility-guard	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/http	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/metric	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/internal/retry	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/logger	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq	[no test files]
+?   	github.com/Trendyol/go-pq-cdc/pq/heartbeat	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/pq/message	2.954s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/format	2.793s
+ok  	github.com/Trendyol/go-pq-cdc/pq/message/tuple	1.234s
+ok  	github.com/Trendyol/go-pq-cdc/pq/publication	2.624s
+ok  	github.com/Trendyol/go-pq-cdc/pq/replication	3.169s
+ok  	github.com/Trendyol/go-pq-cdc/pq/slot	1.852s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot	1.650s
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	2.532s
+?   	github.com/Trendyol/go-pq-cdc/pq/timescaledb	[no test files]
+ok  	github.com/Trendyol/go-pq-cdc/integration	6.079s
+
+EXIT 0

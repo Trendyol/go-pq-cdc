@@ -1,0 +1,141 @@
+---
+story_id: e01s02
+title: Resume multi-chunk capture without stale target state
+spec: e01s02-recovery.md
+# assertions implemented.
+status:
+  # Final restricted-profile automated gates pass; human UAT unconfirmed.
+  passing
+bcps: 8
+verify: >-
+  test -f integration_test/online_initial_recovery_test.go && rg -q
+  '^func TestOnlineInitialRecovery\('
+  integration_test/online_initial_recovery_test.go && (cd
+  integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1
+  -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$' ./...)
+tasks:
+  - id: 1
+    description: >-
+      Couple table progress, attempt completion, and the source
+      checkpoint in metadata transactions. Hold the ACK ceiling at LOW
+      until required delivery succeeds. Keep heartbeat and commit
+      obligations gap-aware. Resolve unknown metadata commit outcomes by
+      attempt identity before retry.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s02-P0-01, SC-e01s02-P0-02 ]
+    files:
+      [
+        pq/snapshot/online/metadata.go,
+        pq/snapshot/online/progress.go,
+        pq/replication/online.go,
+        integration_test/online_checkpoint_test.go
+      ]
+    verify: >-
+      test -f integration_test/online_checkpoint_test.go && rg -q '^func
+      TestOnlineCheckpointAtomicity\('
+      integration_test/online_checkpoint_test.go && (cd integration_test
+      && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1
+      -timeout=10m -run '^TestOnlineCheckpointAtomicity$' ./...)
+    allure:
+      severity: critical
+      categories: [ integration, checkpoint, durability ]
+  - id: 2
+    description: >-
+      Persist upper bounds and sequential per-table cursors. Cover empty
+      tables, minimum/negative and sparse integer keys, all-conflict
+      chunks, several tables, and inserts behind the cursor or above the
+      bound. Advance by the last selected key, not the last delivered
+      READ.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s02-P1-06, SC-e01s02-P0-07 ]
+    files:
+      [
+        pq/snapshot/online/coordinator.go,
+        pq/snapshot/online/reader.go,
+        integration_test/online_initial_progress_test.go
+      ]
+    verify: >-
+      test -f integration_test/online_initial_progress_test.go && rg -q
+      '^func TestOnlineInitialProgress\('
+      integration_test/online_initial_progress_test.go && (cd
+      integration_test && POSTGRES_VERSION=16-alpine go test -race
+      -count=1 -p=1 -timeout=10m -run '^TestOnlineInitialProgress$'
+      ./...)
+    allure:
+      severity: critical
+      categories: [ integration, cursor, coverage ]
+  - id: 3
+    description: >-
+      Implement restart from the original slot binding and durable
+      checkpoint. Add the early TestMain helper branch, hard-kill
+      barriers, stable CDC IDs, fresh snapshot attempts, and target
+      order-token/tombstone tests. Force a lost sink reply and late old
+      READ after newer target state.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios: [ SC-e01s02-P0-03, SC-e01s02-P0-04 ]
+    files:
+      [
+        pq/snapshot/online/recovery.go,
+        online_connector.go,
+        integration_test/main_test.go,
+        integration_test/online_helpers_test.go,
+        integration_test/online_initial_recovery_test.go
+      ]
+    verify: >-
+      test -f integration_test/online_initial_recovery_test.go && rg -q
+      '^func TestOnlineInitialRecovery\('
+      integration_test/online_initial_recovery_test.go && (cd
+      integration_test && POSTGRES_VERSION=16-alpine go test -race
+      -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$'
+      ./...)
+    allure:
+      severity: critical
+      categories: [ e2e, restart, ordering ]
+  - id: 4
+    description: >-
+      Fail closed on read/handler/metadata errors, rows.Err, query or
+      byte limits, slot loss or advanced confirmation, source identity
+      mismatch, owner-lock loss, and stale attempt transitions. Reject
+      unsupported resnapshot and mode changes. Do not silently recreate
+      slots or checkpoint partial chunks.
+    risk: P0
+    # assertions implemented.
+    status:
+      # shared final automated gate evidence; human UAT unconfirmed.
+      passing
+    scenarios:
+      [
+        SC-e01s02-P0-05,
+        SC-e01s02-P0-08,
+        SC-e01s02-P0-09,
+        SC-e01s02-P0-10
+      ]
+    files:
+      [
+        pq/snapshot/online/recovery.go,
+        pq/snapshot/online/metadata.go,
+        pq/snapshot/online/reader.go,
+        online_connector.go,
+        integration_test/online_failure_test.go
+      ]
+    verify: >-
+      test -f integration_test/online_failure_test.go && rg -q '^func
+      TestOnlineInitialFailureSafety\('
+      integration_test/online_failure_test.go && (cd integration_test &&
+      POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1
+      -timeout=15m -run '^TestOnlineInitialFailureSafety$' ./...)
+    allure:
+      severity: critical
+      categories: [ integration, failure, Security Review ]

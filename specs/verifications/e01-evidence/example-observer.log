@@ -1,0 +1,84 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/10/14 23:04:15 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.0.2
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Resolved Docker Socket Path: /var/folders/ps/417b0vvd09z1xcnr9tvbmjnw0000gp/T/podman/podman-machine-default-api.sock
+  Test SessionID: f0d24ac9c2b6f3037b28b7547f03b757bd517025ae3f82e466337404fe3bdb42
+  Test ProcessID: ad072e79-b47e-4f17-a792-7d1b63633a86
+2026/10/14 23:04:15 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:15 ✅ Container created: be003c9d565e
+2026/10/14 23:04:15 🐳 Starting container: be003c9d565e
+2026/10/14 23:04:15 ✅ Container started: be003c9d565e
+2026/10/14 23:04:15 🚧 Waiting for container id be003c9d565e image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0xc00025f998 Strategies:[0xc0004c0fc0]}
+2026/10/14 23:04:16 🔔 Container is ready: be003c9d565e
+=== RUN   TestOnlineInitialDemo
+2026/10/14 23:04:19 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:19 ✅ Container created: f48a7db75afa
+2026/10/14 23:04:19 🐳 Starting container: f48a7db75afa
+2026/10/14 23:04:19 ✅ Container started: f48a7db75afa
+2026/10/14 23:04:19 🚧 Waiting for container id f48a7db75afa image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000266c08 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10504e850 ResponseMatcher:0x105188800 PollInterval:100ms}
+2026/10/14 23:04:20 🔔 Container is ready: f48a7db75afa
+2026/10/14 23:04:20 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:20 ✅ Container created: abaf6be99465
+2026/10/14 23:04:20 🐳 Starting container: abaf6be99465
+2026/10/14 23:04:20 ✅ Container started: abaf6be99465
+2026/10/14 23:04:20 🚧 Waiting for container id abaf6be99465 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000582fa8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10504e850 ResponseMatcher:0x105188800 PollInterval:100ms}
+2026/10/14 23:04:21 🔔 Container is ready: abaf6be99465
+2026/10/14 23:04:22 🐳 Terminating container: abaf6be99465
+2026/10/14 23:04:22 🚫 Container terminated: abaf6be99465
+2026/10/14 23:04:22 🐳 Terminating container: f48a7db75afa
+2026/10/14 23:04:22 🚫 Container terminated: f48a7db75afa
+--- PASS: TestOnlineInitialDemo (4.98s)
+=== RUN   TestOnlineObserverLifecycle
+=== RUN   TestOnlineObserverLifecycle/LOW_RECORDED
+2026/10/14 23:04:22 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:22 ✅ Container created: 661a2d14aec4
+2026/10/14 23:04:22 🐳 Starting container: 661a2d14aec4
+2026/10/14 23:04:22 ✅ Container started: 661a2d14aec4
+2026/10/14 23:04:22 🚧 Waiting for container id 661a2d14aec4 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0002668c8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10504e850 ResponseMatcher:0x105188800 PollInterval:100ms}
+2026/10/14 23:04:23 🔔 Container is ready: 661a2d14aec4
+2026/10/14 23:04:23 🐳 Terminating container: 661a2d14aec4
+2026/10/14 23:04:23 🚫 Container terminated: 661a2d14aec4
+=== RUN   TestOnlineObserverLifecycle/COMPLETION_COMMITTED
+2026/10/14 23:04:23 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:23 ✅ Container created: e771187b4ea5
+2026/10/14 23:04:23 🐳 Starting container: e771187b4ea5
+2026/10/14 23:04:23 ✅ Container started: e771187b4ea5
+2026/10/14 23:04:23 🚧 Waiting for container id e771187b4ea5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000299268 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10504e850 ResponseMatcher:0x105188800 PollInterval:100ms}
+2026/10/14 23:04:24 🔔 Container is ready: e771187b4ea5
+2026/10/14 23:04:24 🐳 Terminating container: e771187b4ea5
+2026/10/14 23:04:25 🚫 Container terminated: e771187b4ea5
+=== RUN   TestOnlineObserverLifecycle/ACK_ADVANCED
+2026/10/14 23:04:25 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:25 ✅ Container created: 17b343b1b7a2
+2026/10/14 23:04:25 🐳 Starting container: 17b343b1b7a2
+2026/10/14 23:04:25 ✅ Container started: 17b343b1b7a2
+2026/10/14 23:04:25 🚧 Waiting for container id 17b343b1b7a2 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc0000145c8 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10504e850 ResponseMatcher:0x105188800 PollInterval:100ms}
+2026/10/14 23:04:25 🔔 Container is ready: 17b343b1b7a2
+2026/10/14 23:04:26 🐳 Terminating container: 17b343b1b7a2
+2026/10/14 23:04:26 🚫 Container terminated: 17b343b1b7a2
+=== RUN   TestOnlineObserverLifecycle/cancellation
+2026/10/14 23:04:26 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/10/14 23:04:26 ✅ Container created: 62faa8694783
+2026/10/14 23:04:26 🐳 Starting container: 62faa8694783
+2026/10/14 23:04:26 ✅ Container started: 62faa8694783
+2026/10/14 23:04:26 🚧 Waiting for container id 62faa8694783 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0xc000290378 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10504e850 ResponseMatcher:0x105188800 PollInterval:100ms}
+2026/10/14 23:04:27 🔔 Container is ready: 62faa8694783
+2026/10/14 23:04:27 🐳 Terminating container: 62faa8694783
+2026/10/14 23:04:27 🚫 Container terminated: 62faa8694783
+--- PASS: TestOnlineObserverLifecycle (5.28s)
+    --- PASS: TestOnlineObserverLifecycle/LOW_RECORDED (1.46s)
+    --- PASS: TestOnlineObserverLifecycle/COMPLETION_COMMITTED (1.26s)
+    --- PASS: TestOnlineObserverLifecycle/ACK_ADVANCED (1.32s)
+    --- PASS: TestOnlineObserverLifecycle/cancellation (1.24s)
+PASS
+2026/10/14 23:04:27 🐳 Terminating container: be003c9d565e
+2026/10/14 23:04:27 🚫 Container terminated: be003c9d565e
+ok  	github.com/Trendyol/go-pq-cdc/integration	14.050s

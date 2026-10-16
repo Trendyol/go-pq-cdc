@@ -1,0 +1,5 @@
+$ test -f pq/snapshot/online/model_test.go && test -f integration_test/online_visibility_test.go && test -f integration_test/online_image_test.go && rg -q '^func TestOnlineModel\(' pq/snapshot/online/model_test.go && rg -q '^func TestOnlineVisibilityBarrier\(' integration_test/online_visibility_test.go && rg -q '^func TestOnlineFullImages\(' integration_test/online_image_test.go && go test -race -count=1 -run '^TestOnlineModel$' ./pq/snapshot/online && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^(TestOnlineVisibilityBarrier|TestOnlineFullImages)$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc/pq/snapshot/online	1.321s
+ok  	github.com/Trendyol/go-pq-cdc/integration	16.372s
+
+EXIT 0

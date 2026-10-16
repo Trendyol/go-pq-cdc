@@ -1,0 +1,4 @@
+specs/epics/e01-online-initial-poc/e01s01-tasks.yaml: passing, 4 tasks
+specs/epics/e01-online-initial-poc/e01s02-tasks.yaml: failing, 4 tasks
+specs/epics/e01-online-initial-poc/e01s03-tasks.yaml: failing, 3 tasks
+YAML parsed: 3 stories, 11 tasks; all 14 command syntaxes separately checked and executed

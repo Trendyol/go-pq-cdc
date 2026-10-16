@@ -1,0 +1,4 @@
+$ test -f integration_test/online_initial_recovery_test.go && rg -q '^func TestOnlineInitialRecovery\(' integration_test/online_initial_recovery_test.go && (cd integration_test && POSTGRES_VERSION=16-alpine go test -race -count=1 -p=1 -timeout=15m -run '^TestOnlineInitialRecovery$' ./...)
+ok  	github.com/Trendyol/go-pq-cdc/integration	41.697s
+
+EXIT 0

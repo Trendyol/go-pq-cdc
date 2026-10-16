@@ -1,0 +1,45 @@
+panic: file requires newer Go version go1.26 (application built with go1.25) [recovered, repanicked]
+
+goroutine 2444 [running]:
+go/types.(*Checker).handleBailout(0x1400fe090e0, 0x140115cd998)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/check.go:467 +0x9c
+panic({0x101991b00?, 0x1400ab28fb0?})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/runtime/panic.go:783 +0x120
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).convertError(0x14002743920, {0x101c76340?, 0x1400c1018c0})
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:478 +0x534
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).loadFromSource.func2({0x101c76340?, 0x1400c1018c0?})
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:202 +0x38
+go/types.(*Checker).handleError(0x1400fe090e0, 0x0, {0x101c773c0, 0x14007dfd0a0}, 0x97, {0x140041132c0, 0x45}, 0x0)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/errors.go:221 +0x2fc
+go/types.(*error_).report(0x140115cd718)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/errors.go:148 +0x228
+go/types.(*Checker).errorf(0x1400040ed40?, {0x101c773c0, 0x14007dfd0a0}, 0x6?, {0x1013f8afa?, 0x14004e00cf0?}, {0x140115cd830?, 0x1003aa62c?, 0x2000?})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/errors.go:243 +0x108
+go/types.(*Checker).initFiles(0x1400fe090e0, {0x1401035b7d0, 0x5, 0x1003a7380?})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/check.go:415 +0x530
+go/types.(*Checker).checkFiles(0x1400fe090e0, {0x1401035b7d0?, 0x18?, 0x101b51860?})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/check.go:516 +0x190
+go/types.(*Checker).Files(0x101a94ac0?, {0x1401035b7d0?, 0x14010189da0?, 0x5?})
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/go/types/check.go:485 +0x80
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).loadFromSource(0x14002743920, 0x2)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:208 +0x5c0
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).loadImportedPackageWithFacts(0x14002743920, 0x2)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:372 +0x2e0
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).loadWithFacts(0x14002f22d78?, 0x14002f22ce0?)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:315 +0x124
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).analyze(0x14002743920, {0x101c86ec0, 0x140022198b0}, 0x14002623090, 0x2, 0x140025f3b90)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:74 +0xd4
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).analyzeRecursive.func1()
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:57 +0x13c
+sync.(*Once).doSlow(0x0?, 0x0?)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/sync/once.go:78 +0xe0
+sync.(*Once).Do(...)
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/sync/once.go:69
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).analyzeRecursive(0x0?, {0x101c86ec0?, 0x140022198b0?}, 0x0?, 0x0?, 0x0?)
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:45 +0x54
+github.com/golangci/golangci-lint/v2/pkg/goanalysis.(*loadingPackage).analyzeRecursive.func1.1()
+	/Users/huseyin.akuzum/go/pkg/mod/github.com/golangci/golangci-lint/v2@v2.11.4/pkg/goanalysis/runner_loadingpackage.go:51 +0x28
+sync.(*WaitGroup).Go.func1()
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/sync/waitgroup.go:239 +0x4c
+created by sync.(*WaitGroup).Go in goroutine 1845
+	/Users/huseyin.akuzum/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/sync/waitgroup.go:237 +0x70

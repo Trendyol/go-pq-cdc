@@ -2,7 +2,7 @@
 
 This example uses a **separate durable PostgreSQL target cluster**, not a print/enqueue callback. Nil from its handler means identity ledger + full-image versioned projection committed with synchronous_commit=on. DELETE leaves a versioned tombstone. Keep the ledger for the entire job; do not prune it on restart. This is a test-contract demonstration, not a production sink adapter or exactly-once transport.
 
-Requirements: PostgreSQL **16 primary**, protocol **1**, fsync=on at source and target, immutable single integer-family primary keys, REPLICA IDENTITY FULL, explicit I/U/D/TRUNCATE publication, frozen schema. All published business tables are validated, even those not selected for READs. Partitions, inheritance, RLS, generated columns, publication filters/column lists, two-phase slots and protocol 2 are rejected. Runtime TRUNCATE, key changes and detected schema drift stop the run. Source payloads remain in bounded memory; slow sinks retain WAL.
+Requirements: PostgreSQL **primary**, protocol **1**, fsync=on at source and target, immutable single integer-family primary keys, REPLICA IDENTITY FULL, explicit I/U/D/TRUNCATE publication, frozen schema. All published business tables are validated, even those not selected for READs. Partitions, inheritance, RLS, generated columns, publication filters/column lists, two-phase slots and protocol 2 are rejected. Runtime TRUNCATE, key changes and detected schema drift stop the run. Source payloads remain in bounded memory; slow sinks retain WAL.
 
 From the repository root:
 
@@ -60,6 +60,8 @@ Pre-provision an explicit publication for `public.items, cdc_online.watermarks` 
 A new job requires a **fresh connector-created slot**. An existing unbound slot or a slot left after interrupted initialization requires explicit operator reconciliation; the example does not adopt/drop/recreate it. Resume requires the original source identity, slot binding, config/catalog fingerprint and a confirmed position no newer than durable metadata. Never point an existing job at another source or silently change strategies.
 
 READ IDs are job/attempt/table/key and their order is `(HIGH end LSN,1,selected ordinal)`; `CommitLSN` is zero. CDC IDs are stable slot binding/end LSN/ordinal and use phase 0. A restart can repeat older deliveries; the target rejects stale effects and inconsistent ID reuse. Source ACK advances only after synchronous delivery and committed metadata, with unresolved windows held at LOW.
+
+The CI profiles are `15-alpine`, `15.7-alpine`, `16-alpine`, `16.3-alpine`, and `17-alpine`. There is no PostgreSQL-major allowlist: unsupported features, incompatible slots, and violations of correctness guards fail admission. Untested releases are not automatically qualified. See `specs/verifications/e02-feature-admission-result.md` for the current policy and verification limits.
 
 Limits are provisional experimental defaults, not production recommendations. Encoded-byte limits do not bound total heap/RSS. Feedback uses a 1s interval; provision/qualify wal_sender_timeout comfortably above it and the write deadlines. Review `specs/verifications/e01-POC-RESULT.md` for executed evidence and unmet qualification gates. Kafka/Elasticsearch adapters are not enabled.
 

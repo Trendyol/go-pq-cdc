@@ -44,7 +44,7 @@ const (
 	OnlineRead   = online.Read
 )
 
-// OnlineConnector is opt-in, primary-only PostgreSQL 16/protocol 1. Run invokes
+// OnlineConnector is opt-in, primary-only PostgreSQL, protocol 1. Run invokes
 // one handler at a time. Nil MUST mean durable completion, not enqueue success.
 // Handlers must honor cancellation; Go cannot terminate an arbitrary callback.
 // Readiness means capture started / snapshot delivered, not production safety.
@@ -250,17 +250,16 @@ func (c *OnlineConnector) Run(ctx context.Context) (result error) {
 	}); err != nil {
 		return err
 	}
-	// Validate primary/PG16 before creating state or selecting rows.
+	// Validate primary/source identity before creating slot/job state or selecting rows.
 	var primary bool
-	var version int
 	var system, database string
 	var timeline int32
 	if err := c.query(run, func(ctx context.Context) error {
-		return sql.QueryRow(ctx, `SELECT NOT pg_is_in_recovery(),current_setting('server_version_num')::int,system_identifier::text,current_database(),('x'||substr(pg_walfile_name(pg_current_wal_lsn()),1,8))::bit(32)::int FROM pg_control_system()`).Scan(&primary, &version, &system, &database, &timeline)
+		return sql.QueryRow(ctx, `SELECT NOT pg_is_in_recovery(),system_identifier::text,current_database(),('x'||substr(pg_walfile_name(pg_current_wal_lsn()),1,8))::bit(32)::int FROM pg_control_system()`).Scan(&primary, &system, &database, &timeline)
 	}); err != nil {
 		return fmt.Errorf("online identity query (GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO <cdc_role>): %w", err)
 	}
-	if !primary || version/10000 != 16 || source != (online.SourceIdentity{SystemID: system, Database: database, Timeline: timeline}) {
+	if !primary || source != (online.SourceIdentity{SystemID: system, Database: database, Timeline: timeline}) {
 		return online.ErrBinding
 	}
 	var schemas []online.TableSchema

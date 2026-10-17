@@ -329,7 +329,7 @@ func TestOnlineSourceIdentityGate(t *testing.T) {
 	for _, change := range []struct {
 		index int
 		value string
-	}{{0, "t"}, {1, "other"}, {2, "456"}, {3, "2"}, {4, "malformed"}, {5, "170000"}} {
+	}{{0, "t"}, {1, "other"}, {2, "456"}, {3, "2"}, {4, "malformed"}, {5, "malformed"}} {
 		original := row[change.index]
 		row[change.index] = change.value
 		require.Error(t, g.wait(context.Background(), 50))

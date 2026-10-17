@@ -9,7 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 type onlinePGFixture struct {
 	Container testcontainers.Container
 	DSN       string
+	// ServerVersionNum is probed from this cluster, not inferred from its tag.
+	ServerVersionNum int
 }
 
 func newOnlinePGFixture(t *testing.T) onlinePGFixture { return newOnlinePGFixtureDurability(t, true) }
@@ -35,16 +38,12 @@ func newOnlinePGFixture(t *testing.T) onlinePGFixture { return newOnlinePGFixtur
 func newOnlinePGFixtureDurability(t *testing.T, fsyncEnabled bool, settings ...string) onlinePGFixture {
 	t.Helper()
 	ctx := context.Background()
-	version := os.Getenv(PostgresVersion)
-	if version == "" {
-		version = "16-alpine"
-	}
 	command := []string{"postgres", "-c", fmt.Sprintf("fsync=%t", fsyncEnabled), "-c", "synchronous_commit=on", "-c", "full_page_writes=on", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"}
 	for _, setting := range settings {
 		command = append(command, "-c", setting)
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{
-		Image: "docker.io/postgres:" + version, Env: map[string]string{"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "online_poc"}, ExposedPorts: []string{"5432/tcp"},
+		Image: postgresImage(), Env: map[string]string{"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "online_poc"}, ExposedPorts: []string{"5432/tcp"},
 		Cmd:        command,
 		WaitingFor: wait.ForExec([]string{"pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "online_poc"}).WithStartupTimeout(60 * time.Second),
 	}, Started: true})
@@ -56,15 +55,24 @@ func newOnlinePGFixtureDurability(t *testing.T, fsyncEnabled bool, settings ...s
 	require.NoError(t, err)
 	fixture := onlinePGFixture{Container: container, DSN: fmt.Sprintf("postgres://postgres:postgres@%s/online_poc?sslmode=disable", net.JoinHostPort(host, port.Port()))}
 	conn := fixture.Connect(t)
-	var fsync, sync, major string
-	require.NoError(t, conn.QueryRow(ctx, "SELECT current_setting('fsync'),current_setting('synchronous_commit'),current_setting('server_version_num')").Scan(&fsync, &sync, &major))
+	var fsync, sync, server, wal string
+	require.NoError(t, conn.QueryRow(ctx, "SELECT current_setting('fsync'),current_setting('synchronous_commit'),current_setting('server_version_num')::int,version(),current_setting('wal_level')").Scan(&fsync, &sync, &fixture.ServerVersionNum, &server, &wal))
 	expectedFsync := "off"
 	if fsyncEnabled {
 		expectedFsync = "on"
 	}
 	require.Equal(t, expectedFsync, fsync)
 	require.Equal(t, "on", sync)
-	require.True(t, len(major) == 6 && major[:2] == "16", "online POC requires PG16: %s", major)
+	expectedMajor, err := strconv.Atoi(strings.SplitN(postgresImageVersion(), ".", 2)[0])
+	if err != nil {
+		expectedMajor, err = strconv.Atoi(strings.SplitN(postgresImageVersion(), "-", 2)[0])
+	}
+	require.NoError(t, err, "fixture image tag must identify its major")
+	require.Equal(t, expectedMajor, fixture.ServerVersionNum/10000, "image/server major mismatch")
+	require.Equal(t, "logical", wal)
+	imageEvidence, err := postgresImageEvidence(ctx, container)
+	require.NoError(t, err)
+	t.Logf("online fixture: image=%s %s server_version_num=%d server=%s effective_online_protocol=1 fsync=%s synchronous_commit=%s wal_level=%s", postgresImage(), imageEvidence, fixture.ServerVersionNum, server, fsync, sync, wal)
 	return fixture
 }
 func (f onlinePGFixture) Connect(t *testing.T) *pgx.Conn {

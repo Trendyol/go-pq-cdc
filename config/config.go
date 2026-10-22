@@ -18,20 +18,26 @@ import (
 const defaultSchema = "public"
 
 type Config struct {
-	Logger           LoggerConfig          `json:"logger" yaml:"logger"`
-	Host             string                `json:"host" yaml:"host"`
-	Username         string                `json:"username" yaml:"username"`
-	Password         string                `json:"password" yaml:"password"`
-	Database         string                `json:"database" yaml:"database"`
-	Publication      publication.Config    `json:"publication" yaml:"publication"`
-	Heartbeat        HeartbeatConfig       `json:"heartbeat" yaml:"heartbeat"`
-	Slot             slot.Config           `json:"slot" yaml:"slot"`
-	VisibilityGuard  VisibilityGuardConfig `json:"visibilityGuard" yaml:"visibilityGuard"`
-	Snapshot         SnapshotConfig        `json:"snapshot" yaml:"snapshot"`
-	Port             int                   `json:"port" yaml:"port"`
-	Metric           MetricConfig          `json:"metric" yaml:"metric"`
-	DebugMode        bool                  `json:"debugMode" yaml:"debugMode"`
-	ExtensionSupport ExtensionSupport      `json:"extensionSupport" yaml:"extensionSupport"`
+	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
+	Host        string             `json:"host" yaml:"host"`
+	Username    string             `json:"username" yaml:"username"`
+	Password    string             `json:"password" yaml:"password"`
+	Database    string             `json:"database" yaml:"database"`
+	Publication publication.Config `json:"publication" yaml:"publication"`
+	Heartbeat   HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
+	Slot        slot.Config        `json:"slot" yaml:"slot"`
+	// StatusUpdateInterval bounds how long the standby may stay silent while WAL
+	// is flowing back-to-back. Postgres only requests a reply when it has
+	// nothing left to send, so a stream busy draining a backlog never
+	// acknowledges and the primary terminates the walsender once
+	// wal_sender_timeout elapses. Keep it well below wal_sender_timeout.
+	StatusUpdateInterval time.Duration         `json:"statusUpdateInterval" yaml:"statusUpdateInterval"`
+	VisibilityGuard      VisibilityGuardConfig `json:"visibilityGuard" yaml:"visibilityGuard"`
+	Snapshot             SnapshotConfig        `json:"snapshot" yaml:"snapshot"`
+	Port                 int                   `json:"port" yaml:"port"`
+	Metric               MetricConfig          `json:"metric" yaml:"metric"`
+	DebugMode            bool                  `json:"debugMode" yaml:"debugMode"`
+	ExtensionSupport     ExtensionSupport      `json:"extensionSupport" yaml:"extensionSupport"`
 }
 
 // VisibilityGuardConfig holds the first message of every transaction until the
@@ -152,6 +158,13 @@ func (c *Config) SetDefault() {
 
 	if c.Slot.ProtoVersion == 0 {
 		c.Slot.ProtoVersion = 2
+	}
+
+	// Postgres kills a standby that has not replied within wal_sender_timeout
+	// (60s by default). The idle path replies far more often than that, but a
+	// backlog keeps the sink busy, so the loop needs its own cadence.
+	if c.StatusUpdateInterval <= 0 {
+		c.StatusUpdateInterval = 10 * time.Second
 	}
 
 	if c.Logger.Logger == nil {

@@ -185,6 +185,15 @@ func (s *stream) Open(ctx context.Context) error {
 	go s.sink(runCtx)
 	go s.process(runCtx)
 
+	// Postgres only requests a reply when it has nothing left to send, and the
+	// sink cannot answer while it is blocked feeding a backlog to a slow
+	// consumer. Without an independent timer the standby goes silent, the
+	// primary terminates the walsender at wal_sender_timeout, and the consumer
+	// restarts from the last confirmed position forever
+	if s.config.StatusUpdateInterval > 0 {
+		go s.statusUpdateLoop(runCtx)
+	}
+
 	logger.Info("cdc stream started")
 
 	return nil
@@ -984,8 +993,8 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			defer conn.Close(ctx)
 
 			query := fmt.Sprintf(`
-				SELECT snapshot_lsn, completed 
-				FROM cdc_snapshot_job 
+				SELECT snapshot_lsn, completed
+				FROM cdc_snapshot_job
 				WHERE slot_name = '%s'
 			`, s.config.Slot.Name)
 
@@ -1049,6 +1058,41 @@ func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
 	return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
+}
+
+// statusUpdateLoop acknowledges the primary on a fixed cadence, independent of
+// how busy the sink is. Keeping it off the read loop matters: a sink blocked on
+// a slow consumer stops reading and never reaches its idle-timeout reply, which
+// is exactly when the walsender is killed. Every write goes through
+// sendStandbyStatusUpdate, so connMu still serializes it with the reads.
+func (s *stream) statusUpdateLoop(ctx context.Context) {
+	if s.config.StatusUpdateInterval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(s.config.StatusUpdateInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Nothing received yet: the update would carry a zero position.
+			if s.closed.Load() || s.LoadXLogPos() == 0 {
+				continue
+			}
+			if err := s.sendStandbyStatusUpdate(ctx); err != nil {
+				if s.closed.Load() || ctx.Err() != nil {
+					return
+				}
+				// The connection is gone; the sink's next read hits the same
+				// error and restarts the stream with a fresh connection.
+				logger.Error("send periodic stand by status update", "error", err)
+				return
+			}
+			logger.Debug("send periodic stand by status update")
+		}
+	}
 }
 
 // flushFinalStandbyStatusUpdateLocked sends the final confirmed position.

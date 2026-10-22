@@ -694,3 +694,13 @@ func TestVisibilityGuardReplicasConfig(t *testing.T) {
 		assert.Equal(t, "postgres://u:p%40ss@[::1]:5433/d", cfg.ReplicaDSN("[::1]:5433"))
 	})
 }
+
+func TestSetDefaultStatusUpdateInterval(t *testing.T) {
+	cfg := Config{}
+	cfg.SetDefault()
+	require.Equal(t, 10*time.Second, cfg.StatusUpdateInterval)
+
+	explicit := Config{StatusUpdateInterval: 3 * time.Second}
+	explicit.SetDefault()
+	require.Equal(t, 3*time.Second, explicit.StatusUpdateInterval)
+}

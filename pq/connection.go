@@ -2,6 +2,7 @@ package pq
 
 import (
 	"context"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/internal/retry"
 	"github.com/go-playground/errors"
@@ -52,6 +53,16 @@ func (c *connection) Connect(ctx context.Context) error {
 
 func (c *connection) IsClosed() bool {
 	return c.PgConn == nil || c.PgConn.IsClosed()
+}
+
+// SetWriteDeadline bounds the next socket write. The replication stream uses it
+// for standby status updates so a peer that stops reading cannot hold connMu
+// (and with it Close) indefinitely. A zero time clears the deadline.
+func (c *connection) SetWriteDeadline(t time.Time) error {
+	if c.PgConn == nil {
+		return errors.New("connection is not open")
+	}
+	return c.PgConn.Conn().SetWriteDeadline(t)
 }
 
 func connect(ctx context.Context, dsn string) (*pgconn.PgConn, error) {

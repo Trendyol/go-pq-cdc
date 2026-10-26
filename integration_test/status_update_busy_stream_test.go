@@ -15,19 +15,21 @@ import (
 )
 
 // TestStatusUpdateAdvancesSlotWhileStreamIsBusy covers the backlog case: a
-// slow consumer keeps the sink fed end to end, so the stream never idles.
-// Postgres only requests a reply when it has nothing to send, and the idle
-// path never runs, so without statusUpdateInterval confirmed_flush_lsn stays
-// frozen for the whole drain. Every consumer restart then replays the same WAL,
-// and once the walsender waits long enough Postgres terminates it at
-// wal_sender_timeout, which the connector treats as a corrupted connection.
+// consumer with a fixed per-message cost keeps the sink fed end to end during
+// the observation window, so the stream does not reach its idle path. Postgres
+// requests a reply about every wal_sender_timeout/2, but that request sits
+// behind the unread backlog; the periodic update is written without waiting
+// for a read. This asserts the reduced feedback window (confirmed_flush_lsn
+// advances within 8s while WAL is flowing), not that a full wal_sender_timeout
+// is survived.
 func TestStatusUpdateAdvancesSlotWhileStreamIsBusy(t *testing.T) {
 	ctx := context.Background()
 
 	cdcCfg := Config
 	cdcCfg.Slot.Name = "slot_test_status_update_busy"
 	cdcCfg.Publication.Tables = append(publication.Tables(nil), Config.Publication.Tables...)
-	cdcCfg.StatusUpdateInterval = 200 * time.Millisecond
+	statusUpdateInterval := 200 * time.Millisecond
+	cdcCfg.StatusUpdateInterval = &statusUpdateInterval
 
 	postgresConn, err := newPostgresConn()
 	require.NoError(t, err)
@@ -42,7 +44,7 @@ func TestStatusUpdateAdvancesSlotWhileStreamIsBusy(t *testing.T) {
 		var consumed atomic.Int64
 		connector, err := cdc.NewConnector(ctx, cdcCfg, func(l *replication.ListenerContext) {
 			consumed.Add(1)
-			time.Sleep(50 * time.Microsecond) // slow consumer: the sink blocks on backpressure
+			time.Sleep(50 * time.Microsecond) // fixed per-message cost keeps the drain running
 			_ = l.Ack()
 		})
 		require.NoError(t, err)
@@ -71,6 +73,6 @@ func TestStatusUpdateAdvancesSlotWhileStreamIsBusy(t *testing.T) {
 		_, finalConfirmed, err := readSlotLSNs(ctx, postgresConn, cdcCfg.Slot.Name)
 		require.NoError(t, err)
 		assert.NotEqual(t, initialConfirmed, finalConfirmed,
-			"confirmed_flush_lsn did not advance while the stream was busy: the primary was never acknowledged")
+			"confirmed_flush_lsn did not advance while the stream was busy: no periodic status update was sent")
 	})
 }

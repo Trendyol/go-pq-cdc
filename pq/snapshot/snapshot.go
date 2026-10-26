@@ -37,6 +37,7 @@ type Snapshotter struct {
 	decoderCache       *DecoderCache
 	connectionPool     *ConnectionPool
 	orderByCache       map[string]orderByCacheEntry
+	leafRoots          map[string]string // leaf "schema.name" -> configured root name; coordinator only
 	keepaliveDone      chan struct{}
 	dsn                string
 	cachedSnapshotID   string

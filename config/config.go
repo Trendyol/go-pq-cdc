@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -37,7 +38,12 @@ type Config struct {
 // transaction is visible to new snapshots on the primary. See
 // docs/visibility-gate-design.md.
 type VisibilityGuardConfig struct {
+	// Replicas lists standbys (host:port) that must have replayed the
+	// transaction's commit record before its first message is dispatched.
+	// Credentials and database come from the main config. Direct hosts only,
+	// never a pooled endpoint. See docs/replica-guard-design.md.
 	FailMode     VisibilityFailMode `json:"failMode" yaml:"failMode"`
+	Replicas     []string           `json:"replicas" yaml:"replicas"`
 	Timeout      time.Duration      `json:"timeout" yaml:"timeout"`
 	PollInterval time.Duration      `json:"pollInterval" yaml:"pollInterval"`
 	Enabled      bool               `json:"enabled" yaml:"enabled"`
@@ -54,9 +60,22 @@ const (
 
 func (v *VisibilityGuardConfig) Validate() error {
 	if !v.Enabled {
+		if len(v.Replicas) > 0 {
+			return errors.New("visibilityGuard.replicas requires visibilityGuard.enabled: true")
+		}
 		return nil
 	}
 	var err error
+	seen := make(map[string]bool, len(v.Replicas))
+	for _, r := range v.Replicas {
+		if _, _, e := net.SplitHostPort(r); e != nil {
+			err = errors.Join(err, fmt.Errorf("visibilityGuard.replicas: %q must be host:port", r))
+		}
+		if seen[r] {
+			err = errors.Join(err, fmt.Errorf("visibilityGuard.replicas: %q listed twice", r))
+		}
+		seen[r] = true
+	}
 	if v.FailMode != VisibilityFailClosed && v.FailMode != VisibilityFailOpen {
 		err = errors.Join(err, errors.New("visibilityGuard.failMode must be 'closed' or 'open'"))
 	}
@@ -97,6 +116,11 @@ func (c *Config) DSN() string {
 // This connection counts against max_wal_senders limit
 func (c *Config) ReplicationDSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?replication=database", url.QueryEscape(c.Username), url.QueryEscape(c.Password), c.Host, c.Port, c.Database)
+}
+
+// ReplicaDSN is DSN() pointed at one visibilityGuard.replicas entry (host:port).
+func (c *Config) ReplicaDSN(hostPort string) string {
+	return fmt.Sprintf("postgres://%s:%s@%s/%s", url.QueryEscape(c.Username), url.QueryEscape(c.Password), hostPort, c.Database)
 }
 
 func (c *Config) DSNWithoutSSL() string {

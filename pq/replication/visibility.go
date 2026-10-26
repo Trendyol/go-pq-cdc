@@ -148,7 +148,6 @@ func (g *visibilityGuard) wait(ctx context.Context, xid uint32) (err error) {
 	pollCount := 0
 	defer func() {
 		waited := time.Since(start)
-		g.metric.ObserveVisibilityWait(waited)
 		if err != nil || pollCount == 0 {
 			return
 		}
@@ -181,19 +180,24 @@ func (g *visibilityGuard) wait(ctx context.Context, xid uint32) (err error) {
 			g.metric.VisibilityTimeoutIncrement()
 			return fmt.Errorf("%w: xid %d not visible after %s", ErrVisibilityTimeout, xid, g.cfg.Timeout)
 		}
-		sleep := delay + rand.N(delay/2+1) //nolint:gosec // jitter only
-		if sleep > remaining {
-			sleep = remaining
-		}
+		var sleep time.Duration
+		sleep, delay = backoff(delay, remaining)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(sleep):
 		}
-		if delay *= 2; delay > maxPollInterval {
-			delay = maxPollInterval
-		}
 	}
+}
+
+// backoff returns this round's jittered sleep, capped at remaining, and the
+// next base delay (doubling up to maxPollInterval). Shared with the replica guard.
+func backoff(delay, remaining time.Duration) (sleep, next time.Duration) {
+	sleep = delay + rand.N(delay/2+1) //nolint:gosec // jitter only
+	if sleep > remaining {
+		sleep = remaining
+	}
+	return sleep, min(delay*2, maxPollInterval)
 }
 
 func (g *visibilityGuard) poll(ctx context.Context) (pgSnapshot, error) {

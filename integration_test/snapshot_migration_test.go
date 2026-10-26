@@ -194,6 +194,15 @@ func TestSnapshotSchemaMigration(t *testing.T) {
 	partitionStrategyExists := string(results[0].Rows[0][0]) == "t"
 	assert.True(t, partitionStrategyExists, "partition_strategy should exist after migration")
 
+	results, err = execQuery(ctx, postgresConn, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_name = 'cdc_snapshot_chunks'
+		AND column_name IN ('physical_table_schema', 'physical_table_name')
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "2", string(results[0].Rows[0][0]), "physical partition columns should exist after migration")
+
 	// Step 4: Verify snapshot completed successfully
 	assert.True(t, snapshotReceived, "should receive snapshot end event")
 

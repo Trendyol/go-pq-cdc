@@ -161,6 +161,13 @@ func isTransientError(err error) bool {
 	return false
 }
 
+// isUndefinedTableError reports SQLSTATE 42P01 (undefined_table), also through Wrap chains
+func isUndefinedTableError(err error) bool {
+	// errors.Cause: go-playground/errors chains do not implement Unwrap
+	var pgErr *pgconn.PgError
+	return goerrors.As(errors.Cause(err), &pgErr) && pgErr.Code == "42P01"
+}
+
 // isInvalidSnapshotError checks if an error is due to invalid snapshot identifier
 // This occurs when the coordinator's snapshot transaction is closed/expired
 // Common in multi-pod deployments when coordinator restarts

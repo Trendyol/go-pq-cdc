@@ -229,3 +229,84 @@ func TestBuildChunkQueryWithCondition(t *testing.T) {
 		assert.Contains(t, q, "ORDER BY id LIMIT 10")
 	})
 }
+
+func TestBuildChunkQueryUsesPhysicalPartition(t *testing.T) {
+	s := &Snapshotter{}
+
+	tests := []struct {
+		name    string
+		chunk   *Chunk
+		orderBy string
+		pk      []string
+	}{
+		{
+			name: "integer range",
+			chunk: &Chunk{
+				TableSchema:         "public",
+				TableName:           "events",
+				PhysicalTableSchema: "archive",
+				PhysicalTableName:   "events_2026_01",
+				PartitionStrategy:   PartitionStrategyIntegerRange,
+				RangeStart:          ptrInt64(1),
+				RangeEnd:            ptrInt64(10),
+				ChunkSize:           10,
+			},
+			orderBy: "id",
+			pk:      []string{"id"},
+		},
+		{
+			name: "ctid block",
+			chunk: &Chunk{
+				TableSchema:         "public",
+				TableName:           "events",
+				PhysicalTableSchema: "archive",
+				PhysicalTableName:   "events_2026_01",
+				PartitionStrategy:   PartitionStrategyCTIDBlock,
+				BlockStart:          ptrInt64(0),
+				IsLastChunk:         true,
+			},
+		},
+		{
+			name: "offset",
+			chunk: &Chunk{
+				TableSchema:         "public",
+				TableName:           "events",
+				PhysicalTableSchema: "archive",
+				PhysicalTableName:   "events_2026_01",
+				PartitionStrategy:   PartitionStrategyOffset,
+				ChunkSize:           10,
+			},
+			orderBy: "id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query := s.buildChunkQuery(tt.chunk, tt.orderBy, tt.pk, "")
+			assert.Contains(t, query, "FROM archive.events_2026_01")
+			assert.NotContains(t, query, "FROM public.events")
+		})
+	}
+}
+
+func TestBuildChunkValueStringIncludesPhysicalPartition(t *testing.T) {
+	s := &Snapshotter{}
+	chunk := &Chunk{
+		SlotName:            "snapshot",
+		TableSchema:         "public",
+		TableName:           "events",
+		PhysicalTableSchema: "public",
+		PhysicalTableName:   "events_2026_01",
+		ChunkSize:           100,
+		Status:              ChunkStatusPending,
+		PartitionStrategy:   PartitionStrategyCTIDBlock,
+	}
+
+	value := s.buildChunkValueString(chunk)
+	assert.Contains(t, value, "'public', 'events', 'public', 'events_2026_01'")
+
+	chunk.PhysicalTableSchema = ""
+	chunk.PhysicalTableName = ""
+	value = s.buildChunkValueString(chunk)
+	assert.Contains(t, value, "'public', 'events', NULL, NULL")
+}

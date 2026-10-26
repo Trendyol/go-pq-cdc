@@ -751,6 +751,23 @@ snapshot:
 
 ---
 
+### Partitioned Tables
+
+When a snapshot table is a partitioned root, the coordinator plans chunks per leaf partition (sub-partitions
+included) and each chunk reads its leaf directly. Events still carry the configured root schema and table name.
+
+- **Upgrade all instances before a snapshot starts.** An instance on an older version ignores the leaf recorded
+  on a chunk and runs the leaf's range against the root, which delivers duplicate rows. Do not roll out this
+  version while a snapshot of a partitioned table is in progress.
+- **Query conditions** may reference columns unqualified or qualified with the configured table name
+  (`events.status = 'active'`); schema-qualified references (`public.events.status`) are not supported.
+- **A leaf dropped during the snapshot** (for example by a retention job) is skipped: its remaining chunks
+  complete with zero rows and a warning is logged. A leaf that is *renamed* during the snapshot is
+  indistinguishable from a dropped one and is skipped the same way.
+- The `cdc_snapshot_chunks` table gains `physical_table_schema` / `physical_table_name`. They are added
+  automatically; if the connector role does not own the table, startup fails with an error asking the owner
+  to run the `ADD COLUMN` statements.
+
 ### Snapshot Modes
 
 #### `initial` Mode

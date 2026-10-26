@@ -38,22 +38,33 @@ type RelationColumn struct {
 }
 
 func NewData(data []byte, tupleDataType uint8, skipByteLength int) (*Data, error) {
+	if skipByteLength >= len(data) {
+		return nil, errors.Newf("tuple data length must be at least %d byte, but got %d", skipByteLength+1, len(data))
+	}
 	if data[skipByteLength] != tupleDataType {
 		return nil, errors.New("invalid tuple data type: " + string(data[skipByteLength]))
 	}
 	skipByteLength++
 
 	d := &Data{}
-	d.Decode(data, skipByteLength)
+	if err := d.Decode(data, skipByteLength); err != nil {
+		return nil, err
+	}
 
 	return d, nil
 }
 
-func (d *Data) Decode(data []byte, skipByteLength int) {
+func (d *Data) Decode(data []byte, skipByteLength int) error {
+	if len(data) < skipByteLength+2 {
+		return errors.Newf("tuple data length must be at least %d byte, but got %d", skipByteLength+2, len(data))
+	}
 	d.ColumnNumber = binary.BigEndian.Uint16(data[skipByteLength:])
 	skipByteLength += 2
 
 	for range d.ColumnNumber {
+		if skipByteLength >= len(data) {
+			return errors.Newf("tuple data length must be at least %d byte, but got %d", skipByteLength+1, len(data))
+		}
 		col := new(DataColumn)
 		col.DataType = data[skipByteLength]
 		skipByteLength++
@@ -61,9 +72,15 @@ func (d *Data) Decode(data []byte, skipByteLength int) {
 		switch col.DataType {
 		case DataTypeNull, DataTypeToast:
 		case DataTypeText, DataTypeBinary:
+			if len(data) < skipByteLength+4 {
+				return errors.Newf("tuple data length must be at least %d byte, but got %d", skipByteLength+4, len(data))
+			}
 			col.Length = binary.BigEndian.Uint32(data[skipByteLength:])
 			skipByteLength += 4
 
+			if len(data) < skipByteLength+int(col.Length) {
+				return errors.Newf("tuple data length must be at least %d byte, but got %d", skipByteLength+int(col.Length), len(data))
+			}
 			col.Data = make([]byte, int(col.Length))
 			copy(col.Data, data[skipByteLength:])
 
@@ -73,6 +90,7 @@ func (d *Data) Decode(data []byte, skipByteLength int) {
 		d.Columns = append(d.Columns, col)
 	}
 	d.SkipByte = skipByteLength
+	return nil
 }
 
 func (d *Data) DecodeWithColumn(columns []RelationColumn) (map[string]any, error) {

@@ -39,18 +39,42 @@ type Chunk struct {
 	BlockStart *int64
 	BlockEnd   *int64 // nil for last chunk (no upper bound to catch new rows)
 
-	Status            ChunkStatus
-	PartitionStrategy PartitionStrategy
-	TableName         string
-	ClaimedBy         string
-	TableSchema       string
-	SlotName          string
-	TableColumns      []string
-	ID                int64
-	ChunkIndex        int
-	ChunkStart        int64
-	ChunkSize         int64
-	IsLastChunk       bool // True for the last chunk of a table (no upper bound for CTID)
+	Status              ChunkStatus
+	PartitionStrategy   PartitionStrategy
+	TableName           string
+	PhysicalTableName   string
+	ClaimedBy           string
+	TableSchema         string
+	PhysicalTableSchema string
+	SlotName            string
+	TableColumns        []string
+	ID                  int64
+	ChunkIndex          int
+	ChunkStart          int64
+	ChunkSize           int64
+	IsLastChunk         bool // True for the last chunk of a table (no upper bound for CTID)
+}
+
+func (c *Chunk) queryTable() (string, string) {
+	if c.PhysicalTableSchema != "" && c.PhysicalTableName != "" {
+		return c.PhysicalTableSchema, c.PhysicalTableName
+	}
+	return c.TableSchema, c.TableName
+}
+
+// from returns the FROM target of the chunk query.
+func (c *Chunk) from() string {
+	schema, name := c.queryTable()
+	return fromClause(schema, name, c.TableName)
+}
+
+// fromClause aliases a leaf partition to its configured root name, so query conditions
+// qualified with that name (e.g. "events.tenant_id = 5") still resolve against the leaf.
+func fromClause(schema, name, root string) string {
+	if name == root {
+		return schema + "." + name
+	}
+	return fmt.Sprintf("%s.%s AS %s", schema, name, root)
 }
 
 func (c *Chunk) hasRangeBounds() bool {

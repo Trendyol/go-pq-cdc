@@ -14,17 +14,18 @@ import (
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/logger"
+	"github.com/Trendyol/go-pq-cdc/pq/message"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/require"
 )
 
 type statusWriteConn struct {
-	fe       *pgproto3.Frontend
-	mu       sync.Mutex
-	writes   [][]byte
-	writeErr error
-	lastDL   time.Time
+	fe        *pgproto3.Frontend
+	mu        sync.Mutex
+	writes    [][]byte
+	writeErr  error
+	deadlines []time.Time
 }
 
 func (c *statusWriteConn) Connect(context.Context) error                          { return nil }
@@ -34,13 +35,17 @@ func (c *statusWriteConn) Exec(context.Context, string) *pgconn.MultiResultReade
 func (c *statusWriteConn) Frontend() *pgproto3.Frontend                           { return c.fe }
 
 func (c *statusWriteConn) ReceiveMessage(context.Context) (pgproto3.BackendMessage, error) {
-	return nil, errors.New("not used")
+	// A keepalive without ReplyRequested keeps the sink looping without making
+	// it write; every write the fake sees comes from the status-update path.
+	keepalive := make([]byte, 18)
+	keepalive[0] = message.PrimaryKeepaliveMessageByteID
+	return &pgproto3.CopyData{Data: keepalive}, nil
 }
 
 func (c *statusWriteConn) SetWriteDeadline(t time.Time) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.lastDL = t
+	c.deadlines = append(c.deadlines, t)
 	return nil
 }
 
@@ -54,7 +59,17 @@ func (c *statusWriteConn) setWriteErr(err error) {
 func (c *statusWriteConn) snapshot() ([][]byte, time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return slices.Clone(c.writes), c.lastDL
+	var last time.Time
+	if len(c.deadlines) > 0 {
+		last = c.deadlines[len(c.deadlines)-1]
+	}
+	return slices.Clone(c.writes), last
+}
+
+func (c *statusWriteConn) deadlineSnapshot() []time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.deadlines)
 }
 
 func (c *statusWriteConn) writeCount() int {
@@ -149,7 +164,7 @@ func TestStatusUpdateLoopDisabledWhenIntervalIsZero(t *testing.T) {
 	require.Zero(t, c.writeCount())
 }
 
-func TestStatusUpdateLoopCancelsStreamOnWriteFailure(t *testing.T) {
+func TestStatusUpdateWriteFailureTearsDownSink(t *testing.T) {
 	logger.InitLogger(logger.NewSlog(slog.LevelError))
 
 	s, c := newStatusStream(10 * time.Millisecond)
@@ -158,10 +173,38 @@ func TestStatusUpdateLoopCancelsStreamOnWriteFailure(t *testing.T) {
 	s.cancel = cancel
 	s.startStatusUpdateLoop(ctx)
 
-	waitStatusUpdateEnd(t, s)
+	panicked := make(chan any, 1)
+	go func() {
+		defer func() { panicked <- recover() }()
+		s.sink(ctx)
+	}()
 
-	require.True(t, s.statusUpdateFailed.Load(), "a failed write must surface as a stream failure")
-	require.Error(t, ctx.Err(), "a failed write must cancel the stream")
+	select {
+	case recovered := <-panicked:
+		require.Equal(t, "corrupted connection", recovered)
+	case <-time.After(2 * time.Second):
+		t.Fatal("sink did not tear down after the periodic write failed")
+	}
+
+	require.True(t, s.statusUpdateFailed.Load())
+	require.True(t, s.closed.Load())
+	require.Error(t, ctx.Err())
+}
+
+func TestWriteDeadlineIsBoundedByContext(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	s, c := newStatusStream(time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	require.NoError(t, s.sendStandbyStatusUpdate(ctx))
+
+	deadlines := c.deadlineSnapshot()
+	require.Len(t, deadlines, 2, "one deadline to write and one to clear it")
+	require.False(t, deadlines[0].IsZero())
+	require.WithinDuration(t, time.Now().Add(time.Second), deadlines[0], 250*time.Millisecond)
+	require.True(t, deadlines[1].IsZero())
 }
 
 func TestCloseJoinsStatusUpdateLoop(t *testing.T) {

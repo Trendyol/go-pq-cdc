@@ -429,12 +429,6 @@ func (s *stream) sink(ctx context.Context) {
 	buf.ctx = ctx
 	streamBuf := &streamTxBuffer{ctx: ctx}
 	corrupted := s.sinkLoop(ctx, buf, streamBuf)
-	if s.statusUpdateFailed.Load() {
-		// The periodic write failed and cancelled this context. The sink may
-		// have stopped without seeing a read error, but an unanswered or
-		// partial standby status write leaves the protocol position unusable.
-		corrupted = true
-	}
 	s.messageCloseOnce.Do(func() {
 		close(s.messageCH)
 	})
@@ -460,6 +454,12 @@ func (s *stream) sink(ctx context.Context) {
 // connection is in a corrupted state and the caller should panic.
 func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer) (corrupted bool) {
 	for {
+		// A failed periodic status write cancels the stream, but the read below
+		// deliberately ignores ctx. Without this check the sink would keep
+		// reading and discard every event against a dead protocol position.
+		if s.statusUpdateFailed.Load() {
+			return true
+		}
 		msgCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), time.Now().Add(300*time.Millisecond))
 		// Hold connMu only for the read itself. ReceiveMessage's deferred Unwatch
 		// (which clears the socket deadline) has run by the time it returns, so the
@@ -1095,7 +1095,11 @@ func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
 // The caller must hold connMu.
 func (s *stream) writeStandbyStatusUpdate(ctx context.Context) error {
 	if d, ok := s.conn.(writeDeadliner); ok {
-		if err := d.SetWriteDeadline(time.Now().Add(standbyStatusWriteTimeout)); err != nil {
+		deadline := time.Now().Add(standbyStatusWriteTimeout)
+		if ctxDeadline, hasDeadline := ctx.Deadline(); hasDeadline && ctxDeadline.Before(deadline) {
+			deadline = ctxDeadline
+		}
+		if err := d.SetWriteDeadline(deadline); err != nil {
 			return errors.Wrap(err, "set standby status write deadline")
 		}
 		defer func() {

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,10 +25,36 @@ func TestNewDecodesLogicalDecodingMessage(t *testing.T) {
 
 	require.NoError(t, err)
 	logical, ok := msg.(*format.LogicalDecodingMessage)
-	require.True(t, ok)
+	require.True(t, ok, "expected *format.LogicalDecodingMessage, got %T", msg)
 	assert.Equal(t, now, logical.MessageTime)
+	assert.Equal(t, uint8(1), logical.Flags)
+	assert.Equal(t, pq.LSN(9), logical.LSN)
 	assert.Equal(t, "p", logical.Prefix)
 	assert.Equal(t, []byte("z"), logical.Content)
+}
+
+// TestNewDecodesNonTransactionalLogicalDecodingMessage pins the regression that
+// made non-transactional messages vanish: the LSN was read only when the
+// transactional flag was set, which misparsed every real frame, so New errored
+// and the sink dropped the message silently.
+func TestNewDecodesNonTransactionalLogicalDecodingMessage(t *testing.T) {
+	now := time.Now()
+	data := []byte{
+		'M',
+		0,
+		0, 0, 0, 0, 0, 0, 0, 9,
+		'p', 0,
+		0, 0, 0, 1,
+		'z',
+	}
+
+	msg, err := New(data, false, now, map[uint32]*format.Relation{})
+
+	require.NoError(t, err)
+	logical, ok := msg.(*format.LogicalDecodingMessage)
+	require.True(t, ok, "expected *format.LogicalDecodingMessage, got %T", msg)
+	assert.Zero(t, logical.Flags&1)
+	assert.Equal(t, pq.LSN(9), logical.LSN)
 }
 
 func TestNewDecodesTruncate(t *testing.T) {

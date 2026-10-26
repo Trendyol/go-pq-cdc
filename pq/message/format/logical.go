@@ -10,11 +10,12 @@ import (
 )
 
 // LogicalDecodingMessage is a pgoutput logical decoding message (type 'M'),
-// produced by pg_logical_emit_message. Wire layout, from logicalmsg_read:
+// produced by pg_logical_emit_message. Wire layout, from
+// logicalrep_write_message (src/backend/replication/logical/proto.c):
 //
 //	Byte1('M')   message type
 //	Int8         flags (bit 0 = transactional)
-//	Int64        LSN, only when the message is transactional
+//	Int64        LSN
 //	String       prefix, null terminated
 //	Int32        content length
 //	Bytes        content
@@ -25,8 +26,7 @@ import (
 type LogicalDecodingMessage struct {
 	MessageTime time.Time
 	Flags       uint8
-	// LSN is the WAL position pgoutput reports for a transactional message.
-	// Zero for a non-transactional message, which has no LSN on the wire.
+
 	LSN     pq.LSN
 	Prefix  string
 	Content []byte
@@ -60,13 +60,11 @@ func (m *LogicalDecodingMessage) decode(data []byte, streamedTransaction bool) e
 	m.Flags = data[skipByte]
 	skipByte++
 
-	if m.Flags&1 != 0 {
-		if len(data) < skipByte+8 {
-			return errors.Newf("transactional logical decoding message is missing its LSN, got %d bytes", len(data))
-		}
-		m.LSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
-		skipByte += 8
+	if len(data) < skipByte+8 {
+		return errors.Newf("logical decoding message is missing its LSN, got %d bytes", len(data))
 	}
+	m.LSN = pq.LSN(binary.BigEndian.Uint64(data[skipByte:]))
+	skipByte += 8
 
 	relIdx := bytes.IndexByte(data[skipByte:], 0)
 	if relIdx < 0 {
@@ -88,7 +86,7 @@ func (m *LogicalDecodingMessage) decode(data []byte, streamedTransaction bool) e
 		return errors.Newf("logical decoding message content length out of bounds, content %d, remaining %d", contentLength, len(data)-skipByte)
 	}
 
-	m.Content = data[skipByte : skipByte+contentLength]
+	m.Content = bytes.Clone(data[skipByte : skipByte+contentLength])
 
 	return nil
 }

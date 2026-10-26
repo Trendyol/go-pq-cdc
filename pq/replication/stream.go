@@ -68,6 +68,20 @@ type Message struct {
 	commitLSN pq.LSN
 }
 
+// transactionScoped reports whether the message belongs to a transaction whose
+// visibility and replication the gate must certify before delivery.
+//
+// A non-transactional logical decoding message does not belong to one:
+// dispatchMessage delivers it with xid 0 and commitLSN 0 because
+// pg_logical_emit_message was called outside a transaction, and gate() rejects
+// that pair as "decoded without its BEGIN". The check is type-based rather than
+// field-based on purpose — a DML message that arrives with a zero xid is exactly
+// the case gate() must reject, so it stays transaction-scoped.
+func (m *Message) transactionScoped() bool {
+	logical, ok := m.message.(*format.LogicalDecodingMessage)
+	return !ok || logical.Flags&1 != 0
+}
+
 type Streamer interface {
 	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
@@ -560,7 +574,7 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 		return
 	}
 
-	// add LSN to insert/update/delete messages
+	// add LSN to insert/update/delete messages.
 	switch m := decodedMsg.(type) {
 	case *format.Insert:
 		m.LSN = xld.WALStart
@@ -568,12 +582,6 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 		m.LSN = xld.WALStart
 	case *format.Delete:
 		m.LSN = xld.WALStart
-	case *format.LogicalDecodingMessage:
-		// A non-transactional message has no LSN on the wire. Use the WAL
-		// record position so the consumer still has a location for it.
-		if m.LSN == 0 {
-			m.LSN = xld.WALStart
-		}
 	}
 
 	s.dispatchMessage(decodedMsg, xld, buf, streamBuf)
@@ -592,6 +600,17 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 // (whole transaction or, for a sub-transaction abort, only its own changes).
 // This prevents uncommitted data from being delivered.
 func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffer, streamBuf *streamTxBuffer) {
+	// A non-transactional logical decoding message belongs to no transaction.
+	// Deliver it straight to the consumer instead of the one-message
+	// look-ahead, which would only release it on the next record and drop it
+	// outright when a BEGIN follows. xid and commitLSN stay zero so the
+	// consumer does not inherit the identity of a transaction this message is
+	// not part of; processLoop skips the visibility gate for those.
+	if m, ok := decodedMsg.(*format.LogicalDecodingMessage); ok && m.Flags&1 == 0 && !streamBuf.streaming {
+		buf.send(&Message{message: m, walStart: int64(xld.WALStart)})
+		return
+	}
+
 	switch msg := decodedMsg.(type) {
 	case *format.Begin:
 		buf.discard()
@@ -728,7 +747,7 @@ func (s *stream) processLoop(ctx context.Context) error {
 			}
 
 			// Gate once per transaction, on its first message.
-			if s.guard != nil && (!lastGated.gated || msg.xid != lastGated.xid || msg.commitLSN != lastGated.commitLSN) {
+			if s.guard != nil && msg.transactionScoped() && (!lastGated.gated || msg.xid != lastGated.xid || msg.commitLSN != lastGated.commitLSN) {
 				if err := s.gate(ctx, msg.xid, msg.commitLSN); err != nil {
 					if ctx.Err() != nil {
 						// Shutting down mid-wait: never dispatch an uncertified message.
@@ -992,8 +1011,8 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			defer conn.Close(ctx)
 
 			query := fmt.Sprintf(`
-				SELECT snapshot_lsn, completed 
-				FROM cdc_snapshot_job 
+				SELECT snapshot_lsn, completed
+				FROM cdc_snapshot_job
 				WHERE slot_name = '%s'
 			`, s.config.Slot.Name)
 

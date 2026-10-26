@@ -483,7 +483,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 			}
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
-					if err = s.sendStandbyStatusUpdate(ctx); err != nil {
+					if err = s.sendRunStandbyStatusUpdate(ctx); err != nil {
 						if !handleReplicationConnectionTermination(err) {
 							logger.Error("send stand by status update", "error", err)
 						}
@@ -549,7 +549,7 @@ func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
 	}
 
 	if pkm.ReplyRequested {
-		if err = s.sendStandbyStatusUpdate(ctx); err != nil {
+		if err = s.sendRunStandbyStatusUpdate(ctx); err != nil {
 			logger.Error("standby status update", "error", err)
 			return err
 		}
@@ -1089,6 +1089,15 @@ func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
 	return s.writeStandbyStatusUpdate(ctx)
+}
+
+// sendRunStandbyStatusUpdate acknowledges on behalf of the stream's run
+// context. That context's deadline bounds the stream's lifetime, not a single
+// 34-byte write: applying it here would turn an expiring run context into an
+// i/o timeout that the sink reports as a corrupted connection. Only the
+// shutdown update, which runs under Close's context, is bounded by the caller.
+func (s *stream) sendRunStandbyStatusUpdate(ctx context.Context) error {
+	return s.sendStandbyStatusUpdate(context.WithoutCancel(ctx))
 }
 
 // writeStandbyStatusUpdate performs the write with a bounded socket deadline.

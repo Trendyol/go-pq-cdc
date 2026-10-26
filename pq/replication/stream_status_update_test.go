@@ -5,9 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,11 +23,13 @@ import (
 )
 
 type statusWriteConn struct {
-	fe        *pgproto3.Frontend
-	mu        sync.Mutex
-	writes    [][]byte
-	writeErr  error
-	deadlines []time.Time
+	fe             *pgproto3.Frontend
+	mu             sync.Mutex
+	writes         [][]byte
+	writeErr       error
+	deadlines      []time.Time
+	replyRequested bool
+	stop           atomic.Bool
 }
 
 func (c *statusWriteConn) Connect(context.Context) error                          { return nil }
@@ -35,10 +39,14 @@ func (c *statusWriteConn) Exec(context.Context, string) *pgconn.MultiResultReade
 func (c *statusWriteConn) Frontend() *pgproto3.Frontend                           { return c.fe }
 
 func (c *statusWriteConn) ReceiveMessage(context.Context) (pgproto3.BackendMessage, error) {
-	// A keepalive without ReplyRequested keeps the sink looping without making
-	// it write; every write the fake sees comes from the status-update path.
+	if c.stop.Load() {
+		return nil, errors.New("stopped")
+	}
 	keepalive := make([]byte, 18)
 	keepalive[0] = message.PrimaryKeepaliveMessageByteID
+	if c.replyRequested {
+		keepalive[17] = 1
+	}
 	return &pgproto3.CopyData{Data: keepalive}, nil
 }
 
@@ -86,6 +94,12 @@ func (w statusWriteRecorder) Write(p []byte) (int, error) {
 	defer w.c.mu.Unlock()
 	if w.c.writeErr != nil {
 		return 0, w.c.writeErr
+	}
+	// Mirror the kernel: a write after its deadline fails.
+	if n := len(w.c.deadlines); n > 0 {
+		if deadline := w.c.deadlines[n-1]; !deadline.IsZero() && !time.Now().Before(deadline) {
+			return 0, os.ErrDeadlineExceeded
+		}
 	}
 	w.c.writes = append(w.c.writes, slices.Clone(p))
 	return len(p), nil
@@ -200,11 +214,38 @@ func TestWriteDeadlineIsBoundedByContext(t *testing.T) {
 
 	require.NoError(t, s.sendStandbyStatusUpdate(ctx))
 
+	ctxDeadline, ok := ctx.Deadline()
+	require.True(t, ok)
+
 	deadlines := c.deadlineSnapshot()
 	require.Len(t, deadlines, 2, "one deadline to write and one to clear it")
-	require.False(t, deadlines[0].IsZero())
-	require.WithinDuration(t, time.Now().Add(time.Second), deadlines[0], 250*time.Millisecond)
+	require.Equal(t, ctxDeadline, deadlines[0])
 	require.True(t, deadlines[1].IsZero())
+}
+
+// The run context's deadline bounds the stream, not an individual status
+// write. Applying it to the write would make an expiring run context look like
+// a corrupted connection while Close has not run yet.
+func TestExpiredRunContextDoesNotCorruptSink(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	s, c := newStatusStream(time.Second)
+	c.replyRequested = true
+
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- s.sinkLoop(ctx, &messageBuffer{outCh: make(chan *Message, 1)}, &streamTxBuffer{})
+	}()
+
+	require.Eventually(t, func() bool { return c.writeCount() > 0 }, time.Second, time.Millisecond,
+		"an expired run context must not fail the reply-requested status write")
+
+	s.closed.Store(true)
+	c.stop.Store(true)
+	require.False(t, <-done, "the sink must not report corruption for an expired run context")
 }
 
 func TestCloseJoinsStatusUpdateLoop(t *testing.T) {

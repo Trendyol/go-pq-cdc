@@ -108,6 +108,43 @@ func TestDispatchTransactionalMessageStillWaitsForCommit(t *testing.T) {
 	assert.Equal(t, int64(950), got.walStart, "the last message carries the transaction-end LSN")
 }
 
+func TestDispatchNonTransactionalMessageDefersAckDuringStreamedTransaction(t *testing.T) {
+	s := &stream{}
+	buf, outCh := newDispatchBuffer()
+	streamBuf := &streamTxBuffer{}
+
+	// A large transaction starts streaming: its rows are held until the
+	// commit, at positions below the record that follows them.
+	s.dispatchMessage(&format.StreamStart{Xid: 5}, XLogData{WALStart: 200}, buf, streamBuf)
+	s.dispatchMessage(&format.Insert{XID: 5, TableName: "books"}, XLogData{WALStart: 220}, buf, streamBuf)
+	// The chunk closes; the rows stay held, and the next record is free to be a
+	// message. This is the slot where a message lands in practice.
+	s.dispatchMessage(&format.StreamStop{}, XLogData{WALStart: 240}, buf, streamBuf)
+	require.Empty(t, outCh, "streamed rows are held until STREAM COMMIT")
+	require.False(t, streamBuf.streaming, "the message below arrives between chunks, not inside one")
+
+	msg := nonTxLogicalMessage(260)
+	s.dispatchMessage(msg, XLogData{WALStart: 260}, buf, streamBuf)
+
+	require.Len(t, outCh, 1, "the message is still delivered immediately")
+	got := <-outCh
+	assert.Zero(t, got.walStart,
+		"a message must not confirm past rows still held for the streamed transaction")
+	assert.Equal(t, pq.LSN(260), msg.LSN, "the deferred ack must leave the decoded wire LSN intact")
+
+	// The transaction's own end-of-transaction ack covers the message, and a
+	// later message confirms normally again once nothing is held.
+	s.dispatchMessage(&format.StreamCommit{Xid: 5, CommitLSN: 400, TransactionEndLSN: 420}, XLogData{WALStart: 420}, buf, streamBuf)
+	require.Len(t, outCh, 1)
+	assert.Equal(t, int64(420), (<-outCh).walStart,
+		"the transaction's end-of-transaction ack covers the deferred message")
+
+	s.dispatchMessage(nonTxLogicalMessage(500), XLogData{WALStart: 500}, buf, streamBuf)
+	require.Len(t, outCh, 1)
+	assert.Equal(t, int64(500), (<-outCh).walStart,
+		"with nothing held the message confirms its own position again")
+}
+
 func TestProcessLoopSkipsGateForNonTransactionalMessage(t *testing.T) {
 	logger.InitLogger(logger.NewSlog(slog.LevelError))
 

@@ -610,7 +610,17 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 	// consumer does not inherit the identity of a transaction this message is
 	// not part of; processLoop skips the visibility gate for those.
 	if m, ok := decodedMsg.(*format.LogicalDecodingMessage); ok && m.Flags&1 == 0 && !streamBuf.streaming {
-		buf.send(&Message{message: m, walStart: int64(xld.WALStart)})
+		// Deliver now, but confirm nothing while a streamed transaction still
+		// holds rows at positions below this record: a confirmation promises the
+		// server that everything below it has been handled, and those rows exist
+		// only in this process. 0 is a no-op for the confirmed position, which
+		// only moves forward, and the transaction's own end-of-transaction ack
+		// covers this message once it resolves.
+		walStart := int64(0)
+		if len(streamBuf.txns) == 0 {
+			walStart = int64(xld.WALStart)
+		}
+		buf.send(&Message{message: m, walStart: walStart})
 		return
 	}
 

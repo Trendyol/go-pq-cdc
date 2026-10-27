@@ -106,7 +106,7 @@ func newVisibilityGuard(ctx context.Context, conn pq.Connection, query func(cont
 	}
 	if walSenderTimeout := time.Duration(ms) * time.Millisecond; ms > 0 && cfg.Timeout >= walSenderTimeout/2 {
 		return nil, fmt.Errorf("visibilityGuard.timeout (%s) must be less than half of wal_sender_timeout (%s): "+
-			"keepalive replies stop while the gate blocks", cfg.Timeout, walSenderTimeout)
+			"with statusUpdateInterval disabled, keepalive replies stop while the gate blocks", cfg.Timeout, walSenderTimeout)
 	}
 
 	if _, err = g.poll(ctx); err != nil {

@@ -163,6 +163,29 @@ func TestStatusUpdateLoopSendsLSNsOnItsOwnCadence(t *testing.T) {
 	require.True(t, deadline.IsZero(), "the write deadline must be cleared after the send")
 }
 
+// The run context's deadline bounds the stream, not an individual status
+// write. Clamping a periodic write to it makes an expiring stream look like a
+// corrupted connection, or sends a partial frame the sink then reads as
+// protocol data.
+func TestStatusUpdateLoopDeadlineIgnoresRunContext(t *testing.T) {
+	logger.InitLogger(logger.NewSlog(slog.LevelError))
+
+	s, c := newStatusStream(10 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	s.cancel = cancel
+	s.startStatusUpdateLoop(ctx)
+
+	require.Eventually(t, func() bool { return c.writeCount() > 0 }, time.Second, time.Millisecond)
+	cancel()
+	waitStatusUpdateEnd(t, s)
+
+	deadlines := c.deadlineSnapshot()
+	require.NotEmpty(t, deadlines)
+	require.WithinDuration(t, time.Now().Add(standbyStatusWriteTimeout), deadlines[0], 2*time.Second)
+	require.True(t, deadlines[0].After(time.Now().Add(3*time.Second)),
+		"periodic write deadline must not be clamped to the run context deadline")
+}
+
 func TestStatusUpdateLoopDisabledWhenIntervalIsZero(t *testing.T) {
 	logger.InitLogger(logger.NewSlog(slog.LevelError))
 

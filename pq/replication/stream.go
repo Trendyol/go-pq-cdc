@@ -1152,7 +1152,7 @@ func (s *stream) statusUpdateLoop(ctx context.Context) {
 			if s.closed.Load() || s.LoadXLogPos() == 0 {
 				continue
 			}
-			if err := s.sendStandbyStatusUpdate(ctx); err != nil {
+			if err := s.sendRunStandbyStatusUpdate(ctx); err != nil {
 				if s.closed.Load() || ctx.Err() != nil {
 					return
 				}

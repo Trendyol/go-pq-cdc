@@ -13,9 +13,10 @@ import (
 	libpq "github.com/lib/pq"
 )
 
-// logicalMessagesMinServerVersion is the first server_version_num that accepts
-// the pgoutput messages option. PostgreSQL 10–13 reject it as unrecognized.
-const logicalMessagesMinServerVersion = 140000
+// logicalMessagesMinMajorVersion is the first server major version that
+// accepts the pgoutput messages option. PostgreSQL 10-13 reject it as
+// unrecognized.
+const logicalMessagesMinMajorVersion = 14
 
 type Replication struct {
 	conn pq.Connection
@@ -26,16 +27,12 @@ func New(conn pq.Connection) *Replication {
 }
 
 func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
-	return r.start(context.Background(), publicationName, slotName, startLSN, protoVersion)
-}
-
-func (r *Replication) start(ctx context.Context, publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
-	serverVersionNum, err := r.serverVersionNum(ctx)
+	serverMajorVersion, err := r.serverMajorVersion()
 	if err != nil {
 		return err
 	}
 
-	pluginArguments := replicationPluginArguments(protoVersion, serverVersionNum)
+	pluginArguments := replicationPluginArguments(protoVersion, serverMajorVersion)
 	pluginArguments = append(pluginArguments, "publication_names '"+publicationName+"'")
 
 	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", libpq.QuoteIdentifier(slotName), startLSN, strings.Join(pluginArguments, ","))
@@ -47,40 +44,61 @@ func (r *Replication) start(ctx context.Context, publicationName, slotName strin
 	return nil
 }
 
-// serverVersionNum reads SHOW server_version_num. Startup fails when the
-// version cannot be read: without it we cannot tell whether messages is safe
-// to request.
-func (r *Replication) serverVersionNum(ctx context.Context) (int, error) {
-	reader := r.conn.Exec(ctx, "SHOW server_version_num")
-	results, err := reader.ReadAll()
-	closeErr := reader.Close()
-	if err != nil {
-		return 0, errors.Wrap(err, "server version")
-	}
-	if closeErr != nil {
-		return 0, errors.Wrap(closeErr, "server version")
-	}
-	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
-		return 0, errors.New("server version: no rows")
+// serverVersionReporter is satisfied by connections that expose the startup
+// packet's parameters. pq's own connection embeds *pgconn.PgConn, which does.
+type serverVersionReporter interface {
+	ParameterStatus(name string) string
+}
+
+// serverMajorVersion reports the server's major version from the startup
+// packet. Startup still fails when the value is missing: without it we cannot
+// tell whether messages is safe to request.
+func (r *Replication) serverMajorVersion() (int, error) {
+	reporter, ok := r.conn.(serverVersionReporter)
+	if !ok {
+		return 0, errors.New("server version: connection does not expose startup parameters")
 	}
 
-	raw := string(results[0].Rows[0][0])
-	version, err := strconv.Atoi(raw)
+	raw := reporter.ParameterStatus("server_version")
+	if raw == "" {
+		return 0, errors.New("server version: server did not report server_version")
+	}
+
+	return parseServerMajorVersion(raw)
+}
+
+// parseServerMajorVersion takes the leading major version from the startup
+// packet's server_version, the same way pgx reads it (serverVersion in
+// pgx/v5/derived_types.go). A major version is all the gate below needs, and it
+// sidesteps the two-part/three-part numbering switch in PostgreSQL 10 along
+// with vendor suffixes and prerelease markers such as "18beta1".
+func parseServerMajorVersion(raw string) (int, error) {
+	end := 0
+	for end < len(raw) && raw[end] >= '0' && raw[end] <= '9' {
+		end++
+	}
+
+	if end == 0 {
+		return 0, errors.Newf("server version %q: no leading major version", raw)
+	}
+
+	major, err := strconv.Atoi(raw[:end])
 	if err != nil {
 		return 0, errors.Wrapf(err, "server version %q", raw)
 	}
-	return version, nil
+
+	return major, nil
 }
 
 // replicationPluginArguments builds the pgoutput options for START_REPLICATION.
 // Logical decoding messages (pg_logical_emit_message) are sent only when
 // messages is requested. That option is independent of streaming and exists
 // on proto version 1, but PostgreSQL 13 and older reject it.
-func replicationPluginArguments(protoVersion, serverVersionNum int) []string {
+func replicationPluginArguments(protoVersion, serverMajorVersion int) []string {
 	args := []string{
 		fmt.Sprintf("proto_version '%d'", protoVersion),
 	}
-	if serverVersionNum >= logicalMessagesMinServerVersion {
+	if serverMajorVersion >= logicalMessagesMinMajorVersion {
 		args = append(args, "messages 'true'")
 	}
 	if protoVersion >= 2 {

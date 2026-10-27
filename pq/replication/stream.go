@@ -775,6 +775,8 @@ func (s *stream) processLoop(ctx context.Context) error {
 				s.metric.DeleteOpIncrement(1)
 			case *format.Update:
 				s.metric.UpdateOpIncrement(1)
+			case *format.LogicalDecodingMessage:
+				s.metric.LogicalMessageIncrement(1)
 			}
 
 			start := time.Now().UTC()

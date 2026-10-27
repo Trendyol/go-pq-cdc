@@ -30,7 +30,7 @@ Replication startup now uses `slot.protoVersion` and the server version:
 
 - Always sends `proto_version '<N>'`
 - Sends `streaming 'true'` only when `protoVersion >= 2`
-- Sends `messages 'true'` when `server_version_num` is 140000 or newer (PostgreSQL 14+), on either protocol version. Older servers reject that option, so it is omitted and startup still proceeds
+- Sends `messages 'true'` on PostgreSQL 14 and newer, on either protocol version, unless `slot.logicalMessages` is `off`. Older servers reject that option, so it is omitted and startup still proceeds
 
 This keeps startup compatible with older PostgreSQL versions while preserving advanced behavior on newer versions.
 
@@ -94,10 +94,12 @@ Slot: slot.Config{
 
 ## Compatibility Matrix
 
-| slot.protoVersion | Minimum PostgreSQL | Streaming protocol messages | Logical decoding messages   |
-|-------------------|--------------------|-----------------------------|-----------------------------|
-| 1                 | 10                 | No                          | Requested on PostgreSQL 14+ |
-| 2                 | 14                 | Yes                         | Requested                   |
+| slot.protoVersion | Minimum PostgreSQL | Streaming protocol messages | Logical decoding messages             |
+|-------------------|--------------------|-----------------------------|---------------------------------------|
+| 1                 | 10                 | No                          | Requested on PostgreSQL 14+ (default) |
+| 2                 | 14                 | Yes                         | Requested on PostgreSQL 14+ (default) |
+
+`slot.logicalMessages: off` stops requesting logical decoding messages on either protocol version; `on` requires them, so PostgreSQL 10–13 fails startup instead of omitting the option silently. The default `auto` requests them exactly where the table says.
 
 ## Test Coverage Added
 

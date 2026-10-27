@@ -216,7 +216,10 @@ func (s *stream) setup(ctx context.Context) error {
 		replicationStartLsn = snapshotLSN
 	}
 
-	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn, s.config.Slot.ProtoVersion); err != nil {
+	if err := replication.StartWithOptions(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn, StartOptions{
+		ProtoVersion:    s.config.Slot.ProtoVersion,
+		LogicalMessages: s.config.Slot.LogicalMessages,
+	}); err != nil {
 		return err
 	}
 

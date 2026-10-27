@@ -11,6 +11,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,15 +60,7 @@ func TestLogicalDecodingMessage(t *testing.T) {
 			t.FailNow()
 		}
 
-		// Start from a clean slot: a leftover slot from an earlier run (same
-		// container, -count>1) replays its unacked WAL, and this test asserts on
-		// the first message it receives.
-		dropSlot := func(name string) {
-			_ = pgExec(ctx, postgresConn, fmt.Sprintf(
-				"SELECT pg_drop_replication_slot('%s') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '%s')",
-				name, name))
-		}
-		dropSlot(cdcCfg.Slot.Name)
+		dropSlot(ctx, postgresConn, cdcCfg.Slot.Name)
 
 		deliveredCh := make(chan delivered, 500)
 		handlerFunc := func(ctx *replication.ListenerContext) {
@@ -152,6 +145,80 @@ func TestLogicalDecodingMessage(t *testing.T) {
 	})
 }
 
+// TestLogicalDecodingMessageDisabled verifies that slot.logicalMessages: off
+// keeps the messages option off START_REPLICATION: the same traffic the enabled
+// test decodes must produce row changes only.
+//
+// go test -race -p=1 -v -run=TestLogicalDecodingMessageDisabled
+func TestLogicalDecodingMessageDisabled(t *testing.T) {
+	ctx := context.Background()
+
+	cdcCfg := Config
+	cdcCfg.Slot.Name = "slot_test_logical_decoding_message_disabled"
+	cdcCfg.Slot.ProtoVersion = 2 // the default; messages depend on the server version, not this one
+	cdcCfg.Slot.LogicalMessages = slot.LogicalMessagesOff
+
+	postgresConn, err := newPostgresConn()
+	require.NoError(t, err)
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
+	dropSlot(ctx, postgresConn, cdcCfg.Slot.Name)
+
+	deliveredCh := make(chan delivered, 10)
+	handlerFunc := func(ctx *replication.ListenerContext) {
+		deliveredCh <- delivered{message: ctx.Message, commitLSN: ctx.CommitLSN}
+		_ = ctx.Ack()
+	}
+
+	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
+	require.NoError(t, err)
+
+	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
+	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		connector.Close()
+		pool.Close()
+		assert.NoError(t, RestoreDB(ctx))
+		assert.NoError(t, postgresConn.Close(ctx))
+	})
+
+	go connector.Start(ctx)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
+
+	// The same traffic as the enabled test: a standalone message, then a
+	// transaction carrying a row change and a message.
+	emitMessage(t, ctx, pool, logicalMessagePrefix, logicalMessageNonTxContent)
+	emitMessageInTransaction(t, ctx, pool, logicalMessagePrefix, logicalMessageTxContent)
+
+	// The row change proves the stream processed that traffic. Nothing else may
+	// arrive: not the standalone message that precedes it, and not the message
+	// inside the transaction.
+	var inserts int
+	for inserts == 0 {
+		switch m := receiveMessage(t, deliveredCh).message.(type) {
+		case *format.Insert:
+			inserts++
+		case *format.Relation:
+		default:
+			require.FailNowf(t, "only row changes may arrive", "got %T", m)
+		}
+	}
+
+	drain := time.After(time.Second)
+	for {
+		select {
+		case d := <-deliveredCh:
+			require.FailNowf(t, "slot.logicalMessages is off, so no logical message may be delivered", "got %T", d.message)
+		case <-drain:
+			return
+		}
+	}
+}
+
 // emitMessage emits a logical decoding message outside of any transaction and
 // returns the LSN PostgreSQL assigned to it.
 func emitMessage(t *testing.T, ctx context.Context, pool *pgxpool.Pool, prefix, content string) pq.LSN {
@@ -190,4 +257,13 @@ func receiveMessage(t *testing.T, ch <-chan delivered) delivered {
 		t.Fatal("timed out waiting for replication message")
 		return delivered{}
 	}
+}
+
+// dropSlot removes a leftover slot so a test starts from a known position: an
+// earlier run (same container, -count>1) replays its unacked WAL, and these
+// tests assert on the first message they receive.
+func dropSlot(ctx context.Context, conn pq.Connection, name string) {
+	_ = pgExec(ctx, conn, fmt.Sprintf(
+		"SELECT pg_drop_replication_slot('%s') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '%s')",
+		name, name))
 }

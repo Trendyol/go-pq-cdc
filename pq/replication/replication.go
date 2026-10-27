@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -26,13 +27,33 @@ func New(conn pq.Connection) *Replication {
 	return &Replication{conn: conn}
 }
 
+// StartOptions carries the pgoutput options that shape START_REPLICATION.
+type StartOptions struct {
+	// ProtoVersion selects the pgoutput protocol version.
+	ProtoVersion int
+	// LogicalMessages selects the logical decoding message policy; its zero
+	// value (auto) requests the option whenever the server supports it.
+	LogicalMessages slot.LogicalMessagesMode
+}
+
+// Start begins replication with the default pgoutput options for protoVersion.
+// Callers that need to override an option use StartWithOptions; this signature
+// is kept unchanged for compatibility.
 func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, protoVersion int) error {
+	return r.StartWithOptions(publicationName, slotName, startLSN, StartOptions{ProtoVersion: protoVersion})
+}
+
+// StartWithOptions begins replication with explicit pgoutput options.
+func (r *Replication) StartWithOptions(publicationName, slotName string, startLSN pq.LSN, opts StartOptions) error {
 	serverMajorVersion, err := r.serverMajorVersion()
 	if err != nil {
 		return err
 	}
 
-	pluginArguments := replicationPluginArguments(protoVersion, serverMajorVersion)
+	pluginArguments, err := replicationPluginArguments(opts, serverMajorVersion)
+	if err != nil {
+		return err
+	}
 	pluginArguments = append(pluginArguments, "publication_names '"+publicationName+"'")
 
 	sql := fmt.Sprintf("START_REPLICATION SLOT %s LOGICAL %s (%s)", libpq.QuoteIdentifier(slotName), startLSN, strings.Join(pluginArguments, ","))
@@ -92,19 +113,46 @@ func parseServerMajorVersion(raw string) (int, error) {
 
 // replicationPluginArguments builds the pgoutput options for START_REPLICATION.
 // Logical decoding messages (pg_logical_emit_message) are sent only when
-// messages is requested. That option is independent of streaming and exists
-// on proto version 1, but PostgreSQL 13 and older reject it.
-func replicationPluginArguments(protoVersion, serverMajorVersion int) []string {
-	args := []string{
-		fmt.Sprintf("proto_version '%d'", protoVersion),
+// messages is requested. That option is independent of streaming and exists on
+// proto version 1, but PostgreSQL 13 and older reject it.
+func replicationPluginArguments(opts StartOptions, serverMajorVersion int) ([]string, error) {
+	requestMessages, err := opts.requestLogicalMessages(serverMajorVersion)
+	if err != nil {
+		return nil, err
 	}
-	if serverMajorVersion >= logicalMessagesMinMajorVersion {
+
+	args := []string{
+		fmt.Sprintf("proto_version '%d'", opts.ProtoVersion),
+	}
+	if requestMessages {
 		args = append(args, "messages 'true'")
 	}
-	if protoVersion >= 2 {
+	if opts.ProtoVersion >= 2 {
 		args = append(args, "streaming 'true'")
 	}
-	return args
+	return args, nil
+}
+
+// requestLogicalMessages resolves the logical message policy against the
+// server. An explicit request the server cannot honour fails startup rather
+// than being dropped silently, which would look like the feature is broken.
+func (o StartOptions) requestLogicalMessages(serverMajorVersion int) (bool, error) {
+	supported := serverMajorVersion >= logicalMessagesMinMajorVersion
+
+	switch o.LogicalMessages {
+	case slot.LogicalMessagesOff:
+		return false, nil
+	case slot.LogicalMessagesOn:
+		if !supported {
+			return false, errors.Newf(
+				"logical messages require PostgreSQL %d or newer, but the server is %d",
+				logicalMessagesMinMajorVersion, serverMajorVersion,
+			)
+		}
+		return true, nil
+	default: // LogicalMessagesAuto
+		return supported, nil
+	}
 }
 
 func (r *Replication) Test(ctx context.Context) error {

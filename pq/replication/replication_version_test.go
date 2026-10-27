@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -71,11 +72,25 @@ func TestServerMajorVersionFailsWithoutStartupParameters(t *testing.T) {
 	assert.Zero(t, got)
 }
 
+// TestStartKeepsLegacySignature verifies the original Start still builds the
+// default statement, so the options variant is purely additive.
+func TestStartKeepsLegacySignature(t *testing.T) {
+	var wire bytes.Buffer
+	conn := &versionConn{serverVersion: "16.15", frontend: pgproto3.NewFrontend(&wire, &wire)}
+
+	require.NoError(t, New(conn).Start("publication", "slot", 0, 2))
+
+	assert.Contains(t, wire.String(), "proto_version '2'")
+	assert.Contains(t, wire.String(), "messages 'true'", "Start must still request logical messages, as it did before options existed")
+	assert.Contains(t, wire.String(), "streaming 'true'")
+}
+
 // versionConn exposes only the startup parameters and counts queries, so a
 // version read that still went to the server shows up as a non-zero execCalls.
 type versionConn struct {
 	serverVersion string
 	execCalls     int
+	frontend      *pgproto3.Frontend
 }
 
 func (c *versionConn) Connect(context.Context) error { return nil }
@@ -88,7 +103,7 @@ func (c *versionConn) ReceiveMessage(context.Context) (pgproto3.BackendMessage, 
 	return nil, nil
 }
 
-func (c *versionConn) Frontend() *pgproto3.Frontend { return nil }
+func (c *versionConn) Frontend() *pgproto3.Frontend { return c.frontend }
 
 func (c *versionConn) Exec(context.Context, string) *pgconn.MultiResultReader {
 	c.execCalls++

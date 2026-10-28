@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -693,4 +695,57 @@ func TestVisibilityGuardReplicasConfig(t *testing.T) {
 		assert.Equal(t, "postgres://u:p%40ss@standby1:5432/d", cfg.ReplicaDSN("standby1:5432"))
 		assert.Equal(t, "postgres://u:p%40ss@[::1]:5433/d", cfg.ReplicaDSN("[::1]:5433"))
 	})
+}
+
+func TestSetDefaultStatusUpdateInterval(t *testing.T) {
+	t.Run("unset takes the default", func(t *testing.T) {
+		cfg := Config{}
+		// Raw NewStream callers skip SetDefault; the accessor still defaults.
+		require.Equal(t, DefaultStatusUpdateInterval, cfg.StatusUpdateEvery())
+		cfg.SetDefault()
+		require.NotNil(t, cfg.StatusUpdateInterval)
+		require.Equal(t, DefaultStatusUpdateInterval, cfg.StatusUpdateEvery())
+	})
+
+	t.Run("explicit value is preserved", func(t *testing.T) {
+		interval := 3 * time.Second
+		cfg := Config{StatusUpdateInterval: &interval}
+		cfg.SetDefault()
+		require.Equal(t, 3*time.Second, cfg.StatusUpdateEvery())
+	})
+
+	t.Run("explicit zero stays disabled through SetDefault", func(t *testing.T) {
+		// NewConnector only rewrites the config through SetDefault, so this is
+		// the public path: zero survives and StatusUpdateEvery reports disabled.
+		disabled := time.Duration(0)
+		cfg := Config{StatusUpdateInterval: &disabled}
+		cfg.SetDefault()
+		require.Zero(t, cfg.StatusUpdateEvery())
+	})
+}
+
+func TestValidateRejectsNegativeStatusUpdateInterval(t *testing.T) {
+	negative := -time.Second
+	cfg := Config{StatusUpdateInterval: &negative}
+	cfg.SetDefault()
+	require.ErrorContains(t, cfg.Validate(), "statusUpdateInterval")
+}
+
+func TestReadConfigYAMLStatusUpdateInterval(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	read := func(value string) Config {
+		t.Helper()
+		require.NoError(t, os.WriteFile(path, []byte("statusUpdateInterval: "+value+"\n"), 0o600))
+		cfg, err := ReadConfigYAML(path)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	cfg := read("3s")
+	require.NotNil(t, cfg.StatusUpdateInterval)
+	require.Equal(t, 3*time.Second, *cfg.StatusUpdateInterval)
+
+	cfg = read("0s")
+	require.NotNil(t, cfg.StatusUpdateInterval)
+	require.Zero(t, *cfg.StatusUpdateInterval)
 }

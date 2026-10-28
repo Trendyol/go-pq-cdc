@@ -32,6 +32,10 @@ var (
 const (
 	StandbyStatusUpdateByteID = 'r'
 	streamShutdownTimeout     = 30 * time.Second
+	// standbyStatusWriteTimeout bounds a single 34-byte status write. A peer
+	// that stops reading must not pin connMu (and with it Close) past the
+	// shutdown budget.
+	standbyStatusWriteTimeout = 5 * time.Second
 	postgresAdminShutdown     = "57P01"
 	postgresCrashShutdown     = "57P02"
 )
@@ -89,6 +93,7 @@ type stream struct {
 	listenerFunc        ListenerFunc
 	sinkEnd             chan struct{}
 	processEnd          chan struct{}
+	statusUpdateEnd     chan struct{}
 	mu                  *sync.RWMutex
 	config              config.Config
 	lastXLogPos         pq.LSN
@@ -99,6 +104,8 @@ type stream struct {
 	closed              atomic.Bool
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
+	statusUpdateStarted atomic.Bool
+	statusUpdateFailed  atomic.Bool
 	openFromSnapshotLSN bool
 }
 
@@ -116,7 +123,9 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		lastXLogPos: 0,
 		sinkEnd:     make(chan struct{}, 1),
 		processEnd:  make(chan struct{}, 1),
-		mu:          &sync.RWMutex{},
+
+		statusUpdateEnd: make(chan struct{}),
+		mu:              &sync.RWMutex{},
 	}
 }
 
@@ -184,6 +193,15 @@ func (s *stream) Open(ctx context.Context) error {
 
 	go s.sink(runCtx)
 	go s.process(runCtx)
+
+	// Postgres asks for a reply about every wal_sender_timeout/2 while it is
+	// still streaming, but the request travels behind the WAL already sent and
+	// only counts once the sink reads and answers it. A backlog that keeps the
+	// socket from draining can miss the deadline, so acknowledge on our own
+	// cadence instead of waiting for a read.
+	if s.config.StatusUpdateEvery() > 0 {
+		s.startStatusUpdateLoop(runCtx)
+	}
 
 	logger.Info("cdc stream started")
 
@@ -436,6 +454,12 @@ func (s *stream) sink(ctx context.Context) {
 // connection is in a corrupted state and the caller should panic.
 func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer) (corrupted bool) {
 	for {
+		// A failed periodic status write cancels the stream, but the read below
+		// deliberately ignores ctx. Without this check the sink would keep
+		// reading and discard every event against a dead protocol position.
+		if s.statusUpdateFailed.Load() {
+			return true
+		}
 		msgCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), time.Now().Add(300*time.Millisecond))
 		// Hold connMu only for the read itself. ReceiveMessage's deferred Unwatch
 		// (which clears the socket deadline) has run by the time it returns, so the
@@ -459,7 +483,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 			}
 			if pgconn.Timeout(err) {
 				if s.LoadXLogPos() > 0 {
-					if err = s.sendStandbyStatusUpdate(ctx); err != nil {
+					if err = s.sendRunStandbyStatusUpdate(ctx); err != nil {
 						if !handleReplicationConnectionTermination(err) {
 							logger.Error("send stand by status update", "error", err)
 						}
@@ -525,7 +549,7 @@ func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
 	}
 
 	if pkm.ReplyRequested {
-		if err = s.sendStandbyStatusUpdate(ctx); err != nil {
+		if err = s.sendRunStandbyStatusUpdate(ctx); err != nil {
 			logger.Error("standby status update", "error", err)
 			return err
 		}
@@ -702,11 +726,10 @@ func (s *stream) processLoop(ctx context.Context) error {
 
 			// Ack only advances the confirmed position in memory; the standby
 			// status update is flushed to Postgres by the sink loop (idle-timeout
-			// and keepalive-reply paths). Sending it here per message serializes
-			// every ack behind the sink's connMu-held read, collapsing throughput
-			// to a few messages/sec while a buffered transaction is drained.
-			// ponytail: coalesced via sink idle/keepalive flush; add a periodic
-			// in-sink flush if retention lag under sustained no-gap load matters.
+			// and keepalive-reply paths) and by the periodic statusUpdateLoop.
+			// Sending it per message would serialize every ack behind the
+			// connMu-held read, collapsing throughput while a buffered
+			// transaction is drained.
 			ackFunc := func() error {
 				s.UpdateConfirmedXLogPos(pq.LSN(msg.walStart))
 				return nil
@@ -829,7 +852,8 @@ func (s *stream) Close(ctx context.Context) error {
 	// Close the PostgreSQL socket before waiting on the goroutines. A listener
 	// callback is synchronous and may be blocked outside this package; waiting
 	// for it before closing the socket can leave the walsender connection open
-	// for the whole shutdown timeout.
+	// for the whole shutdown timeout. Every writer bounds its write with
+	// standbyStatusWriteTimeout, so this lock cannot outlive the shutdown budget.
 	s.connMu.Lock()
 	if !s.conn.IsClosed() {
 		s.flushFinalStandbyStatusUpdateLocked(ctx)
@@ -857,6 +881,16 @@ func (s *stream) Close(ctx context.Context) error {
 		case <-ctx.Done():
 			logger.Warn("timed out waiting for postgres message process", "error", ctx.Err())
 			errs = append(errs, errors.Wrap(ctx.Err(), "wait for postgres message process"))
+		}
+	}
+
+	if s.statusUpdateStarted.Load() {
+		select {
+		case <-s.statusUpdateEnd:
+			logger.Info("postgres standby status update loop stopped")
+		case <-ctx.Done():
+			logger.Warn("timed out waiting for standby status update loop", "error", ctx.Err())
+			errs = append(errs, errors.Wrap(ctx.Err(), "wait for standby status update loop"))
 		}
 	}
 
@@ -984,8 +1018,8 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 			defer conn.Close(ctx)
 
 			query := fmt.Sprintf(`
-				SELECT snapshot_lsn, completed 
-				FROM cdc_snapshot_job 
+				SELECT snapshot_lsn, completed
+				FROM cdc_snapshot_job
 				WHERE slot_name = '%s'
 			`, s.config.Slot.Name)
 
@@ -1040,15 +1074,98 @@ func (s *stream) fetchSnapshotLSN(ctx context.Context) (pq.LSN, error) {
 	return snapshotLSN, nil
 }
 
+// writeDeadliner is implemented by pq.connection, which exposes its socket.
+// Fakes used in tests may omit it; the write then stays unbounded.
+type writeDeadliner interface {
+	SetWriteDeadline(t time.Time) error
+}
+
 // sendStandbyStatusUpdate writes a standby status update under connMu so it can
 // never overlap the sink loop's ReceiveMessage, which toggles the connection's
 // socket deadline. Every status-update write — idle keepalive, reply-on-request,
-// and consumer Ack — must go through here rather than calling
-// SendStandbyStatusUpdate directly. See the connMu field comment.
+// periodic timer, and final shutdown update — must go through here rather than
+// calling SendStandbyStatusUpdate directly. See the connMu field comment.
 func (s *stream) sendStandbyStatusUpdate(ctx context.Context) error {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
+	return s.writeStandbyStatusUpdate(ctx)
+}
+
+// sendRunStandbyStatusUpdate acknowledges on behalf of the stream's run
+// context. That context's deadline bounds the stream's lifetime, not a single
+// 34-byte write: applying it here would turn an expiring run context into an
+// i/o timeout that the sink reports as a corrupted connection. Only the
+// shutdown update, which runs under Close's context, is bounded by the caller.
+func (s *stream) sendRunStandbyStatusUpdate(ctx context.Context) error {
+	return s.sendStandbyStatusUpdate(context.WithoutCancel(ctx))
+}
+
+// writeStandbyStatusUpdate performs the write with a bounded socket deadline.
+// The caller must hold connMu.
+func (s *stream) writeStandbyStatusUpdate(ctx context.Context) error {
+	if d, ok := s.conn.(writeDeadliner); ok {
+		deadline := time.Now().Add(standbyStatusWriteTimeout)
+		if ctxDeadline, hasDeadline := ctx.Deadline(); hasDeadline && ctxDeadline.Before(deadline) {
+			deadline = ctxDeadline
+		}
+		if err := d.SetWriteDeadline(deadline); err != nil {
+			return errors.Wrap(err, "set standby status write deadline")
+		}
+		defer func() {
+			_ = d.SetWriteDeadline(time.Time{})
+		}()
+	}
 	return SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos()))
+}
+
+// startStatusUpdateLoop runs the periodic acknowledger and closes
+// statusUpdateEnd when it returns, so Close can join it.
+func (s *stream) startStatusUpdateLoop(ctx context.Context) {
+	s.statusUpdateStarted.Store(true)
+	go func() {
+		defer close(s.statusUpdateEnd)
+		s.statusUpdateLoop(ctx)
+	}()
+}
+
+// statusUpdateLoop acknowledges the primary on a fixed cadence without waiting
+// for a read. The sink-loop reply paths only run when the sink reaches the
+// socket, and a reply-requested keepalive sits behind the WAL already sent, so
+// a backlog that keeps the socket from draining can miss wal_sender_timeout
+// (the request arrives around wal_sender_timeout/2). A write failure cancels
+// the stream: a timed-out or partial write leaves the protocol position
+// unusable, and the sink turns statusUpdateFailed into a restart.
+func (s *stream) statusUpdateLoop(ctx context.Context) {
+	interval := s.config.StatusUpdateEvery()
+	if interval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Nothing received yet: the update would carry a zero position.
+			if s.closed.Load() || s.LoadXLogPos() == 0 {
+				continue
+			}
+			if err := s.sendRunStandbyStatusUpdate(ctx); err != nil {
+				if s.closed.Load() || ctx.Err() != nil {
+					return
+				}
+				logger.Error("periodic standby status update failed, restarting the stream", "error", err)
+				s.statusUpdateFailed.Store(true)
+				if s.cancel != nil {
+					s.cancel()
+				}
+				return
+			}
+			logger.Debug("periodic standby status update sent")
+		}
+	}
 }
 
 // flushFinalStandbyStatusUpdateLocked sends the final confirmed position.
@@ -1057,7 +1174,7 @@ func (s *stream) flushFinalStandbyStatusUpdateLocked(ctx context.Context) {
 	if s.LoadConfirmedXLogPos() == 0 {
 		return
 	}
-	if err := SendStandbyStatusUpdate(ctx, s.conn, uint64(s.LoadXLogPos()), uint64(s.LoadConfirmedXLogPos())); err != nil {
+	if err := s.writeStandbyStatusUpdate(ctx); err != nil {
 		logger.Warn("final standby status update failed, updates may duplicate on restart", "error", err)
 		return
 	}

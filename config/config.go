@@ -17,21 +17,33 @@ import (
 
 const defaultSchema = "public"
 
+// DefaultStatusUpdateInterval matches wal_receiver_status_interval, the cadence
+// a real standby uses to acknowledge the primary. It sits well below
+// wal_sender_timeout (60s by default).
+const DefaultStatusUpdateInterval = 10 * time.Second
+
 type Config struct {
-	Logger           LoggerConfig          `json:"logger" yaml:"logger"`
-	Host             string                `json:"host" yaml:"host"`
-	Username         string                `json:"username" yaml:"username"`
-	Password         string                `json:"password" yaml:"password"`
-	Database         string                `json:"database" yaml:"database"`
-	Publication      publication.Config    `json:"publication" yaml:"publication"`
-	Heartbeat        HeartbeatConfig       `json:"heartbeat" yaml:"heartbeat"`
-	Slot             slot.Config           `json:"slot" yaml:"slot"`
-	VisibilityGuard  VisibilityGuardConfig `json:"visibilityGuard" yaml:"visibilityGuard"`
-	Snapshot         SnapshotConfig        `json:"snapshot" yaml:"snapshot"`
-	Port             int                   `json:"port" yaml:"port"`
-	Metric           MetricConfig          `json:"metric" yaml:"metric"`
-	DebugMode        bool                  `json:"debugMode" yaml:"debugMode"`
-	ExtensionSupport ExtensionSupport      `json:"extensionSupport" yaml:"extensionSupport"`
+	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
+	Host        string             `json:"host" yaml:"host"`
+	Username    string             `json:"username" yaml:"username"`
+	Password    string             `json:"password" yaml:"password"`
+	Database    string             `json:"database" yaml:"database"`
+	Publication publication.Config `json:"publication" yaml:"publication"`
+	Heartbeat   HeartbeatConfig    `json:"heartbeat" yaml:"heartbeat"`
+	Slot        slot.Config        `json:"slot" yaml:"slot"`
+	// StatusUpdateInterval is how often the standby acknowledges the primary
+	// while WAL is flowing back-to-back, without waiting for a read. Postgres
+	// requests a reply about every wal_sender_timeout/2, but the request
+	// travels behind the WAL already sent and only counts once the sink reads
+	// and answers it. Nil takes DefaultStatusUpdateInterval; zero disables the
+	// periodic update; negative is rejected by Validate.
+	StatusUpdateInterval *time.Duration        `json:"statusUpdateInterval" yaml:"statusUpdateInterval"`
+	VisibilityGuard      VisibilityGuardConfig `json:"visibilityGuard" yaml:"visibilityGuard"`
+	Snapshot             SnapshotConfig        `json:"snapshot" yaml:"snapshot"`
+	Port                 int                   `json:"port" yaml:"port"`
+	Metric               MetricConfig          `json:"metric" yaml:"metric"`
+	DebugMode            bool                  `json:"debugMode" yaml:"debugMode"`
+	ExtensionSupport     ExtensionSupport      `json:"extensionSupport" yaml:"extensionSupport"`
 }
 
 // VisibilityGuardConfig holds the first message of every transaction until the
@@ -154,6 +166,14 @@ func (c *Config) SetDefault() {
 		c.Slot.ProtoVersion = 2
 	}
 
+	// Postgres kills a standby that has not replied within wal_sender_timeout
+	// (60s by default). An explicit zero disables the periodic update, so only
+	// an unset value takes the default.
+	if c.StatusUpdateInterval == nil {
+		interval := DefaultStatusUpdateInterval
+		c.StatusUpdateInterval = &interval
+	}
+
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
 	}
@@ -199,6 +219,15 @@ func (c *Config) SetDefault() {
 			}
 		}
 	}
+}
+
+// StatusUpdateEvery returns the effective periodic standby status-update
+// cadence. Zero means the periodic update is disabled.
+func (c *Config) StatusUpdateEvery() time.Duration {
+	if c.StatusUpdateInterval == nil {
+		return DefaultStatusUpdateInterval
+	}
+	return *c.StatusUpdateInterval
 }
 
 // IsSnapshotOnlyMode returns true if snapshot is enabled and mode is snapshot_only
@@ -316,6 +345,10 @@ func (c *Config) Validate() error {
 
 	if isEmpty(c.Database) {
 		err = errors.Join(err, errors.New("database cannot be empty"))
+	}
+
+	if c.StatusUpdateInterval != nil && *c.StatusUpdateInterval < 0 {
+		err = errors.Join(err, errors.New("statusUpdateInterval must be greater than or equal to 0"))
 	}
 
 	// Skip CDC-related validation for snapshot_only mode

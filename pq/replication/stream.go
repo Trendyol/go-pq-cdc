@@ -72,6 +72,20 @@ type Message struct {
 	commitLSN pq.LSN
 }
 
+// transactionScoped reports whether the message belongs to a transaction whose
+// visibility and replication the gate must certify before delivery.
+//
+// A non-transactional logical decoding message does not belong to one:
+// dispatchMessage delivers it with xid 0 and commitLSN 0 because
+// pg_logical_emit_message was called outside a transaction, and gate() rejects
+// that pair as "decoded without its BEGIN". The check is type-based rather than
+// field-based on purpose — a DML message that arrives with a zero xid is exactly
+// the case gate() must reject, so it stays transaction-scoped.
+func (m *Message) transactionScoped() bool {
+	logical, ok := m.message.(*format.LogicalDecodingMessage)
+	return !ok || logical.Flags&1 != 0
+}
+
 type Streamer interface {
 	Connect(ctx context.Context) error
 	Open(ctx context.Context) error
@@ -220,7 +234,10 @@ func (s *stream) setup(ctx context.Context) error {
 		replicationStartLsn = snapshotLSN
 	}
 
-	if err := replication.Start(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn, s.config.Slot.ProtoVersion); err != nil {
+	if err := replication.StartWithOptions(s.config.Publication.Name, s.config.Slot.Name, replicationStartLsn, StartOptions{
+		ProtoVersion:    s.config.Slot.ProtoVersion,
+		LogicalMessages: s.config.Slot.LogicalMessages,
+	}); err != nil {
 		return err
 	}
 
@@ -584,7 +601,7 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 		return
 	}
 
-	// add LSN to insert/update/delete messages
+	// add LSN to insert/update/delete messages.
 	switch m := decodedMsg.(type) {
 	case *format.Insert:
 		m.LSN = xld.WALStart
@@ -610,6 +627,27 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 // (whole transaction or, for a sub-transaction abort, only its own changes).
 // This prevents uncommitted data from being delivered.
 func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffer, streamBuf *streamTxBuffer) {
+	// A non-transactional logical decoding message belongs to no transaction.
+	// Deliver it straight to the consumer instead of the one-message
+	// look-ahead, which would only release it on the next record and drop it
+	// outright when a BEGIN follows. xid and commitLSN stay zero so the
+	// consumer does not inherit the identity of a transaction this message is
+	// not part of; processLoop skips the visibility gate for those.
+	if m, ok := decodedMsg.(*format.LogicalDecodingMessage); ok && m.Flags&1 == 0 && !streamBuf.streaming {
+		// Deliver now, but confirm nothing while a streamed transaction still
+		// holds rows at positions below this record: a confirmation promises the
+		// server that everything below it has been handled, and those rows exist
+		// only in this process. 0 is a no-op for the confirmed position, which
+		// only moves forward, and the transaction's own end-of-transaction ack
+		// covers this message once it resolves.
+		walStart := int64(0)
+		if len(streamBuf.txns) == 0 {
+			walStart = int64(xld.WALStart)
+		}
+		buf.send(&Message{message: m, walStart: walStart})
+		return
+	}
+
 	switch msg := decodedMsg.(type) {
 	case *format.Begin:
 		buf.discard()
@@ -667,6 +705,8 @@ func messageXid(msg any) uint32 {
 	case *format.Truncate:
 		return m.XID
 	case *format.Relation:
+		return m.XID
+	case *format.LogicalDecodingMessage:
 		return m.XID
 	}
 	return 0
@@ -743,7 +783,7 @@ func (s *stream) processLoop(ctx context.Context) error {
 			}
 
 			// Gate once per transaction, on its first message.
-			if s.guard != nil && (!lastGated.gated || msg.xid != lastGated.xid || msg.commitLSN != lastGated.commitLSN) {
+			if s.guard != nil && msg.transactionScoped() && (!lastGated.gated || msg.xid != lastGated.xid || msg.commitLSN != lastGated.commitLSN) {
 				if err := s.gate(ctx, msg.xid, msg.commitLSN); err != nil {
 					if ctx.Err() != nil {
 						// Shutting down mid-wait: never dispatch an uncertified message.
@@ -771,6 +811,8 @@ func (s *stream) processLoop(ctx context.Context) error {
 				s.metric.DeleteOpIncrement(1)
 			case *format.Update:
 				s.metric.UpdateOpIncrement(1)
+			case *format.LogicalDecodingMessage:
+				s.metric.LogicalMessageIncrement(1)
 			}
 
 			start := time.Now().UTC()

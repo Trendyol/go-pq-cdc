@@ -1,0 +1,118 @@
+package replication
+
+import (
+	"bytes"
+	"context"
+	"testing"
+
+	"github.com/Trendyol/go-pq-cdc/pq"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParseServerMajorVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    int
+		wantErr bool
+	}{
+		{name: "major and minor", raw: "16.15", want: 16},
+		{name: "pre 10 three part", raw: "9.6.24", want: 9},
+		{name: "major only", raw: "17", want: 17},
+		{name: "vendor suffix", raw: "14.9 (Debian 14.9-1.pgdg110+1)", want: 14},
+		{name: "prerelease marker", raw: "18beta1", want: 18},
+		{name: "trailing dot", raw: "16.", want: 16},
+		{name: "empty", raw: "", wantErr: true},
+		{name: "not numeric", raw: "unknown", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseServerMajorVersion(tt.raw)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestServerMajorVersionReadsStartupParameterWithoutQuery(t *testing.T) {
+	conn := &versionConn{serverVersion: "16.15"}
+
+	got, known := New(conn).serverMajorVersion()
+
+	assert.True(t, known)
+	assert.Equal(t, 16, got)
+	assert.Zero(t, conn.execCalls, "server version must come from the startup packet, not a query")
+}
+
+func TestServerMajorVersionUnknownWhenServerReportsNoVersion(t *testing.T) {
+	conn := &versionConn{}
+
+	got, known := New(conn).serverMajorVersion()
+
+	assert.False(t, known, "a missing server_version must be unknown, not a startup failure")
+	assert.Zero(t, got, "an unknown version must not report a usable major version")
+	assert.Zero(t, conn.execCalls, "a missing version must not trigger a query either")
+}
+
+func TestServerMajorVersionUnknownWithoutStartupParameters(t *testing.T) {
+	conn := struct{ pq.Connection }{}
+
+	got, known := New(conn).serverMajorVersion()
+
+	assert.False(t, known, "a connection that hides the startup packet must report the version as unknown, not query")
+	assert.Zero(t, got)
+}
+
+// TestStartKeepsLegacySignature verifies the original Start still builds the
+// default statement, so the options variant is purely additive.
+func TestStartKeepsLegacySignature(t *testing.T) {
+	var wire bytes.Buffer
+	conn := &versionConn{serverVersion: "16.15", frontend: pgproto3.NewFrontend(&wire, &wire)}
+
+	require.NoError(t, New(conn).Start("publication", "slot", 0, 2))
+
+	assert.Contains(t, wire.String(), "proto_version '2'")
+	assert.Contains(t, wire.String(), "messages 'true'", "Start must still request logical messages, as it did before options existed")
+	assert.Contains(t, wire.String(), "streaming 'true'")
+}
+
+// versionConn exposes only the startup parameters and counts queries, so a
+// version read that still went to the server shows up as a non-zero execCalls.
+type versionConn struct {
+	serverVersion string
+	execCalls     int
+	frontend      *pgproto3.Frontend
+}
+
+func (c *versionConn) Connect(context.Context) error { return nil }
+
+func (c *versionConn) IsClosed() bool { return false }
+
+func (c *versionConn) Close(context.Context) error { return nil }
+
+func (c *versionConn) ReceiveMessage(context.Context) (pgproto3.BackendMessage, error) {
+	return nil, nil
+}
+
+func (c *versionConn) Frontend() *pgproto3.Frontend { return c.frontend }
+
+func (c *versionConn) Exec(context.Context, string) *pgconn.MultiResultReader {
+	c.execCalls++
+	return nil
+}
+
+func (c *versionConn) ParameterStatus(name string) string {
+	if name == "server_version" {
+		return c.serverVersion
+	}
+	return ""
+}

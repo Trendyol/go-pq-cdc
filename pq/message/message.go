@@ -54,6 +54,8 @@ func New(data []byte, streamedTransaction bool, serverTime time.Time, relation m
 		return format.NewUpdate(data, streamedTransaction, relation, serverTime)
 	case DeleteByte:
 		return format.NewDelete(data, streamedTransaction, relation, serverTime)
+	case LogicalByte:
+		return format.NewLogicalDecodingMessage(data, streamedTransaction, serverTime)
 	case TruncateByte:
 		return format.NewTruncate(data, streamedTransaction, relation, serverTime)
 	case StreamStartByte:

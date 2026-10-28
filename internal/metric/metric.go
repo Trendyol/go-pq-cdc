@@ -17,6 +17,7 @@ type Metric interface {
 	InsertOpIncrement(count int64)
 	UpdateOpIncrement(count int64)
 	DeleteOpIncrement(count int64)
+	LogicalMessageIncrement(count int64)
 	SetCDCLatency(latency int64)
 	SetProcessLatency(latency int64)
 	SetSlotActivity(active bool)
@@ -50,6 +51,8 @@ type metric struct {
 	totalInsert prometheus.Counter
 	totalUpdate prometheus.Counter
 	totalDelete prometheus.Counter
+
+	totalLogicalMessage prometheus.Counter
 
 	cdcLatency                 prometheus.Gauge
 	cdcLatencyMilliseconds     prometheus.Gauge
@@ -110,6 +113,16 @@ func NewMetric(slotName string) Metric {
 			Subsystem: "delete",
 			Name:      "total",
 			Help:      "total number of delete operation message in cdc",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		totalLogicalMessage: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "logical_message",
+			Name:      "total",
+			Help:      "total number of logical decoding messages in cdc",
 			ConstLabels: prometheus.Labels{
 				"slot_name": slotName,
 				"host":      hostname,
@@ -344,6 +357,7 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.totalInsert,
 		m.totalUpdate,
 		m.totalDelete,
+		m.totalLogicalMessage,
 		m.cdcLatency,
 		m.cdcLatencyMilliseconds,
 		m.processLatency,
@@ -379,6 +393,10 @@ func (m *metric) UpdateOpIncrement(count int64) {
 
 func (m *metric) DeleteOpIncrement(count int64) {
 	m.totalDelete.Add(float64(count))
+}
+
+func (m *metric) LogicalMessageIncrement(count int64) {
+	m.totalLogicalMessage.Add(float64(count))
 }
 
 func (m *metric) SetCDCLatency(latency int64) {

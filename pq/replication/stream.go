@@ -596,8 +596,11 @@ func (s *stream) handleXLogData(data []byte, buf *messageBuffer, streamBuf *stre
 	s.metric.SetCDCLatency(time.Now().UTC().Sub(xld.ServerTime).Nanoseconds())
 
 	decodedMsg, err := message.New(xld.WALData, streamBuf.streaming, xld.ServerTime, s.relation)
-	if err != nil || decodedMsg == nil {
-		logger.Debug("wal data message parsing error", "error", err)
+	if err != nil {
+		logger.Warn("wal data message parsing error, message dropped", "error", err, "walStart", xld.WALStart)
+		return
+	}
+	if decodedMsg == nil {
 		return
 	}
 

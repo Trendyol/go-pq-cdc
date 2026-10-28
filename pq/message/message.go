@@ -72,6 +72,11 @@ func New(data []byte, streamedTransaction bool, serverTime time.Time, relation m
 			relation[msg.OID] = msg
 		}
 		return msg, err
+	case OriginByte, TypeByte:
+		// Known pgoutput messages we intentionally skip: Origin is only
+		// emitted for rows replicated from another node, Type only for
+		// non-builtin column types; neither carries row data.
+		return nil, nil
 	default:
 		return nil, errors.Wrap(ErrorByteNotSupported, string(data[0]))
 	}

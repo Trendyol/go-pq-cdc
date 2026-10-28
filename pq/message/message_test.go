@@ -115,3 +115,14 @@ func TestNewRejectsEmptyData(t *testing.T) {
 	_, err := New([]byte{}, false, time.Now(), map[uint32]*format.Relation{})
 	require.Error(t, err)
 }
+
+func TestNewSkipsOriginAndTypeButRejectsUnknown(t *testing.T) {
+	for _, b := range []byte{'O', 'Y'} {
+		msg, err := New([]byte{b, 0, 0, 0, 0}, false, time.Now(), map[uint32]*format.Relation{})
+		require.NoError(t, err, "byte %c", b)
+		assert.Nil(t, msg, "byte %c", b)
+	}
+
+	_, err := New([]byte{'Z'}, false, time.Now(), map[uint32]*format.Relation{})
+	require.ErrorContains(t, err, "message byte not supported")
+}

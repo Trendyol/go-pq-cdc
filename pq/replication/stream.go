@@ -113,6 +113,7 @@ type stream struct {
 	lastXLogPos         pq.LSN
 	snapshotLSN         pq.LSN
 	confirmedXLogPos    pq.LSN
+	acked               atomic.Uint64 // messages acked at least once; in flight = messageBuffer.sent - acked
 	messageCloseOnce    sync.Once
 	connMu              sync.Mutex
 	closed              atomic.Bool
@@ -264,7 +265,9 @@ type messageBuffer struct {
 	pending   *Message
 	outCh     chan<- *Message
 	ctx       context.Context
+	sent      uint64 // messages handed to outCh; the sink goroutine owns it
 	xid       uint32 // current transaction, from Begin
+	inTx      bool   // between Begin and Commit; Begin itself is never delivered
 	commitLSN pq.LSN // current transaction's commit record, from Begin.FinalLSN
 }
 
@@ -275,6 +278,7 @@ func (b *messageBuffer) send(msg *Message) bool {
 	}
 	select {
 	case b.outCh <- msg:
+		b.sent++
 		return true
 	case <-ctx.Done():
 		return false
@@ -330,7 +334,6 @@ func (b *messageBuffer) buffer(msg *Message) {
 // how PostgreSQL's own logical replication worker handles streaming: it writes
 // to temporary storage and only applies on commit.
 type streamTxBuffer struct {
-	ctx  context.Context
 	txns map[uint32][]*Message
 	// subXacts records, per top-level XID, every sub-transaction XID in the
 	// order it first appeared together with the txns index of its first
@@ -346,11 +349,16 @@ type subXact struct {
 	index int
 }
 
-// startTx marks the beginning of a streaming chunk for the given XID.
+// startTx marks the beginning of a streaming chunk for the given XID. The XID
+// stays in txns until STREAM COMMIT or ABORT, rows or not, so the transaction
+// counts as open between its chunks.
 func (s *streamTxBuffer) startTx(xid uint32) {
 	if s.txns == nil {
 		s.txns = make(map[uint32][]*Message)
 		s.subXacts = make(map[uint32][]subXact)
+	}
+	if _, ok := s.txns[xid]; !ok {
+		s.txns[xid] = nil
 	}
 	s.activeXid = xid
 	s.streaming = true
@@ -385,10 +393,10 @@ func (s *streamTxBuffer) stopTx() {
 	s.streaming = false
 }
 
-// flushTx emits every accumulated message for the given XID through outCh.
+// flushTx emits every accumulated message for the given XID through send.
 // Every message is stamped with the commit LSN (known only at STREAM COMMIT);
 // the last message's WAL position is rewritten to the transaction-end LSN.
-func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, commitLSN, endLSN pq.LSN) {
+func (s *streamTxBuffer) flushTx(xid uint32, send func(*Message) bool, commitLSN, endLSN pq.LSN) {
 	s.streaming = false
 	msgs := s.txns[xid]
 	n := len(msgs)
@@ -403,13 +411,7 @@ func (s *streamTxBuffer) flushTx(xid uint32, outCh chan<- *Message, commitLSN, e
 				commitLSN: commitLSN,
 			}
 		}
-		ctx := s.ctx
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		select {
-		case outCh <- out:
-		case <-ctx.Done():
+		if !send(out) {
 			return
 		}
 	}
@@ -444,7 +446,7 @@ func (s *stream) sink(ctx context.Context) {
 
 	buf := &messageBuffer{outCh: s.messageCH}
 	buf.ctx = ctx
-	streamBuf := &streamTxBuffer{ctx: ctx}
+	streamBuf := &streamTxBuffer{}
 	corrupted := s.sinkLoop(ctx, buf, streamBuf)
 	s.messageCloseOnce.Do(func() {
 		close(s.messageCH)
@@ -521,7 +523,7 @@ func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *st
 
 		switch copyData.Data[0] {
 		case message.PrimaryKeepaliveMessageByteID:
-			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
+			if err := s.handleKeepalive(ctx, copyData.Data[1:], buf, streamBuf); err != nil {
 				handleReplicationConnectionTermination(err)
 				return true
 			}
@@ -553,7 +555,7 @@ func (s *stream) extractCopyData(rawMsg pgproto3.BackendMessage) (*pgproto3.Copy
 // handleKeepalive processes a primary keepalive message, updating the WAL
 // position and responding with a standby status update when requested.
 // A non-nil return signals a corrupted connection.
-func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
+func (s *stream) handleKeepalive(ctx context.Context, data []byte, buf *messageBuffer, streamBuf *streamTxBuffer) error {
 	pkm, err := format.NewPrimaryKeepaliveMessage(data)
 	if err != nil {
 		logger.Error("decode primary keepalive message", "error", err)
@@ -563,6 +565,19 @@ func (s *stream) handleKeepalive(ctx context.Context, data []byte) error {
 	if pkm.ServerWALEnd > 0 {
 		s.UpdateXLogPos(pkm.ServerWALEnd)
 		logger.Debug("updated xlog position from keepalive", "serverWALEnd", pkm.ServerWALEnd.String())
+
+		// The walsender decodes in WAL order: every transaction that committed
+		// below ServerWALEnd has already been sent. Confirm it, as PostgreSQL's
+		// apply worker does, only when none of that is still held here: no open
+		// regular or streamed transaction, an empty look-ahead, and every
+		// message sent to messageCH acked (counted at the send, so queued ones
+		// count too). Only this goroutine sends, so the check cannot go stale.
+		// ctx is the context the buffers send on: once it is cancelled a send
+		// can fail and lose its message without a trace, so stop confirming.
+		if ctx.Err() == nil && !buf.inTx && buf.pending == nil &&
+			len(streamBuf.txns) == 0 && buf.sent == s.acked.Load() {
+			s.UpdateConfirmedXLogPos(pkm.ServerWALEnd)
+		}
 	}
 
 	if pkm.ReplyRequested {
@@ -641,8 +656,8 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		// holds rows at positions below this record: a confirmation promises the
 		// server that everything below it has been handled, and those rows exist
 		// only in this process. 0 is a no-op for the confirmed position, which
-		// only moves forward, and the transaction's own end-of-transaction ack
-		// covers this message once it resolves.
+		// only moves forward; the transaction's end-of-transaction ack, or the
+		// next idle keepalive if it ends without one, covers this message.
 		walStart := int64(0)
 		if len(streamBuf.txns) == 0 {
 			walStart = int64(xld.WALStart)
@@ -656,9 +671,11 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 		buf.discard()
 		buf.xid = msg.Xid
 		buf.commitLSN = msg.FinalLSN
+		buf.inTx = true
 
 	case *format.Commit:
 		buf.flushWithLSN(msg.TransactionEndLSN)
+		buf.inTx = false
 
 	case *format.StreamStart:
 		// Beginning of a streaming chunk – DML events that follow belong
@@ -671,7 +688,7 @@ func (s *stream) dispatchMessage(decodedMsg any, xld XLogData, buf *messageBuffe
 
 	case *format.StreamCommit:
 		// Final commit of a streamed transaction – emit all messages for this XID.
-		streamBuf.flushTx(msg.Xid, buf.outCh, msg.CommitLSN, msg.TransactionEndLSN)
+		streamBuf.flushTx(msg.Xid, buf.send, msg.CommitLSN, msg.TransactionEndLSN)
 
 	case *format.StreamAbort:
 		// Whole transaction (SubXid == Xid) or a single sub-transaction
@@ -773,8 +790,13 @@ func (s *stream) processLoop(ctx context.Context) error {
 			// Sending it per message would serialize every ack behind the
 			// connMu-held read, collapsing throughput while a buffered
 			// transaction is drained.
+			var done atomic.Bool
 			ackFunc := func() error {
 				s.UpdateConfirmedXLogPos(pq.LSN(msg.walStart))
+				// First Ack only: a repeat must not make a later message look acked.
+				if done.CompareAndSwap(false, true) {
+					s.acked.Add(1)
+				}
 				return nil
 			}
 

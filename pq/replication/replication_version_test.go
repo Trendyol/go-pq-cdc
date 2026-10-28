@@ -46,29 +46,29 @@ func TestParseServerMajorVersion(t *testing.T) {
 func TestServerMajorVersionReadsStartupParameterWithoutQuery(t *testing.T) {
 	conn := &versionConn{serverVersion: "16.15"}
 
-	got, err := New(conn).serverMajorVersion()
+	got, known := New(conn).serverMajorVersion()
 
-	require.NoError(t, err)
+	assert.True(t, known)
 	assert.Equal(t, 16, got)
 	assert.Zero(t, conn.execCalls, "server version must come from the startup packet, not a query")
 }
 
-func TestServerMajorVersionFailsWhenServerReportsNoVersion(t *testing.T) {
+func TestServerMajorVersionUnknownWhenServerReportsNoVersion(t *testing.T) {
 	conn := &versionConn{}
 
-	got, err := New(conn).serverMajorVersion()
+	got, known := New(conn).serverMajorVersion()
 
-	require.Error(t, err)
-	assert.Zero(t, got, "a failed version read must not report a usable version")
+	assert.False(t, known, "a missing server_version must be unknown, not a startup failure")
+	assert.Zero(t, got, "an unknown version must not report a usable major version")
 	assert.Zero(t, conn.execCalls, "a missing version must not trigger a query either")
 }
 
-func TestServerMajorVersionFailsWithoutStartupParameters(t *testing.T) {
+func TestServerMajorVersionUnknownWithoutStartupParameters(t *testing.T) {
 	conn := struct{ pq.Connection }{}
 
-	got, err := New(conn).serverMajorVersion()
+	got, known := New(conn).serverMajorVersion()
 
-	require.Error(t, err, "a connection that hides the startup packet must report it, not query")
+	assert.False(t, known, "a connection that hides the startup packet must report the version as unknown, not query")
 	assert.Zero(t, got)
 }
 

@@ -45,12 +45,9 @@ func (r *Replication) Start(publicationName, slotName string, startLSN pq.LSN, p
 
 // StartWithOptions begins replication with explicit pgoutput options.
 func (r *Replication) StartWithOptions(publicationName, slotName string, startLSN pq.LSN, opts StartOptions) error {
-	serverMajorVersion, err := r.serverMajorVersion()
-	if err != nil {
-		return err
-	}
+	serverMajorVersion, versionKnown := r.serverMajorVersion()
 
-	pluginArguments, err := replicationPluginArguments(opts, serverMajorVersion)
+	pluginArguments, err := replicationPluginArguments(opts, serverMajorVersion, versionKnown)
 	if err != nil {
 		return err
 	}
@@ -72,20 +69,26 @@ type serverVersionReporter interface {
 }
 
 // serverMajorVersion reports the server's major version from the startup
-// packet. Startup still fails when the value is missing: without it we cannot
-// tell whether messages is safe to request.
-func (r *Replication) serverMajorVersion() (int, error) {
+// packet. A missing or unreadable value is unknown rather than an error:
+// only an explicit logical-message request needs the version, and that policy
+// decides what an unknown version means.
+func (r *Replication) serverMajorVersion() (int, bool) {
 	reporter, ok := r.conn.(serverVersionReporter)
 	if !ok {
-		return 0, errors.New("server version: connection does not expose startup parameters")
+		return 0, false
 	}
 
 	raw := reporter.ParameterStatus("server_version")
 	if raw == "" {
-		return 0, errors.New("server version: server did not report server_version")
+		return 0, false
 	}
 
-	return parseServerMajorVersion(raw)
+	major, err := parseServerMajorVersion(raw)
+	if err != nil {
+		return 0, false
+	}
+
+	return major, true
 }
 
 // parseServerMajorVersion takes the leading major version from the startup
@@ -115,8 +118,8 @@ func parseServerMajorVersion(raw string) (int, error) {
 // Logical decoding messages (pg_logical_emit_message) are sent only when
 // messages is requested. That option is independent of streaming and exists on
 // proto version 1, but PostgreSQL 13 and older reject it.
-func replicationPluginArguments(opts StartOptions, serverMajorVersion int) ([]string, error) {
-	requestMessages, err := opts.requestLogicalMessages(serverMajorVersion)
+func replicationPluginArguments(opts StartOptions, serverMajorVersion int, versionKnown bool) ([]string, error) {
+	requestMessages, err := opts.requestLogicalMessages(serverMajorVersion, versionKnown)
 	if err != nil {
 		return nil, err
 	}
@@ -136,13 +139,18 @@ func replicationPluginArguments(opts StartOptions, serverMajorVersion int) ([]st
 // requestLogicalMessages resolves the logical message policy against the
 // server. An explicit request the server cannot honour fails startup rather
 // than being dropped silently, which would look like the feature is broken.
-func (o StartOptions) requestLogicalMessages(serverMajorVersion int) (bool, error) {
-	supported := serverMajorVersion >= logicalMessagesMinMajorVersion
+// Auto falls back to the protocol version when the server version is unknown,
+// so a proxy or custom connection does not break a caller that never opted in.
+func (o StartOptions) requestLogicalMessages(serverMajorVersion int, versionKnown bool) (bool, error) {
+	supported := versionKnown && serverMajorVersion >= logicalMessagesMinMajorVersion
 
 	switch o.LogicalMessages {
 	case slot.LogicalMessagesOff:
 		return false, nil
 	case slot.LogicalMessagesOn:
+		if !versionKnown {
+			return false, errors.New("logical messages require a known server version")
+		}
 		if !supported {
 			return false, errors.Newf(
 				"logical messages require PostgreSQL %d or newer, but the server is %d",
@@ -151,6 +159,9 @@ func (o StartOptions) requestLogicalMessages(serverMajorVersion int) (bool, erro
 		}
 		return true, nil
 	default: // LogicalMessagesAuto
+		if !versionKnown {
+			return o.ProtoVersion >= 2, nil
+		}
 		return supported, nil
 	}
 }

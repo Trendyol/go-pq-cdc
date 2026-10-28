@@ -20,6 +20,9 @@ const (
 	LogicalMessagesOn LogicalMessagesMode = "on"
 	// LogicalMessagesOff never requests the option, so no message is delivered.
 	LogicalMessagesOff LogicalMessagesMode = "off"
+	// logicalMessagesAutoLiteral is the spelling config files use for the default,
+	// which LogicalMessagesAuto represents as the empty string.
+	logicalMessagesAutoLiteral LogicalMessagesMode = "auto"
 )
 
 type Config struct {
@@ -56,7 +59,7 @@ func (c Config) Validate() error {
 	}
 
 	switch c.LogicalMessages {
-	case LogicalMessagesAuto, LogicalMessagesOn, LogicalMessagesOff:
+	case LogicalMessagesAuto, logicalMessagesAutoLiteral, LogicalMessagesOn, LogicalMessagesOff:
 	default:
 		err = errors.Join(err, errors.New("slot logicalMessages must be one of: auto, on, off"))
 	}

@@ -25,6 +25,16 @@ func TestReplicationSlotCommandsQuoteTheName(t *testing.T) {
 	}
 }
 
+// TestConfigValidateAcceptsAutoLiteral keeps the documented default usable: a
+// config file may spell the default as "auto" instead of leaving it empty.
+func TestConfigValidateAcceptsAutoLiteral(t *testing.T) {
+	cfg := Config{Name: "cdc_slot", SlotActivityCheckerInterval: 3000, ProtoVersion: 2, LogicalMessages: "auto"}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("auto must be accepted as the documented default: %v", err)
+	}
+}
+
 // fakeSlotConn is a pq.Connection whose Exec always fails: Exec on a
 // zero-value pgconn is rejected by its status check and yields a closed,
 // error-carrying MultiResultReader without panicking. The tests assert on the

@@ -446,7 +446,7 @@ Streaming behavior for `proto_version: 2`:
 | `Content` | the payload bytes, unmodified |
 | `LSN` | the WAL position of the message itself, not a commit LSN |
 
-A message emitted **inside a transaction** arrives before that transaction commits, with `ctx.Xid` and `ctx.CommitLSN` set as they are for row changes. A message emitted **outside** a transaction arrives immediately and belongs to no transaction: `ctx.Xid` and `ctx.CommitLSN` are both `0`.
+A message emitted **inside a transaction** arrives with that transaction at COMMIT, in row order, with `ctx.Xid` and `ctx.CommitLSN` set as they are for row changes. A message emitted **outside** a transaction arrives immediately and belongs to no transaction: `ctx.Xid` and `ctx.CommitLSN` are both `0`.
 
 A message that arrives while a streamed transaction is in flight is delivered immediately but cannot be acknowledged until that transaction resolves. Confirming the message's own position would promise the server that the transaction's earlier rows — still held in memory, not yet delivered — had been handled, and the server acts on that promise by refusing to resend them. The transaction's own end-of-transaction acknowledgement covers the message instead, so a message may be delivered twice if the process stops in the meantime. It is never skipped.
 

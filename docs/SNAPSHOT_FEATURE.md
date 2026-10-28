@@ -48,7 +48,7 @@ Without snapshot support, CDC only captures changes that occur *after* the repli
 ✅ **Snapshot-Consistent Chunk Creation**: All size queries (`pg_relation_size`) run within snapshot transaction for consistency  
 ✅ **Multi-Instance Support**: Multiple instances can collaborate to process chunks in parallel  
 ✅ **Crash Recovery**: Automatically resumes from where it left off after failures  
-✅ **Zero Data Loss**: Ensures no data is missed between snapshot and CDC phases  
+✅ **Consistent Snapshot**: Point-in-time snapshot via `pg_export_snapshot()`; snapshot-to-CDC handoff is at-least-once (see [Phase 5](#phase-5-cdc-continuation) caveat)  
 ✅ **Observability**: Built-in metrics and progress tracking  
 
 ---
@@ -82,7 +82,7 @@ Timeline:
   T3: Snapshot completes, CDC starts from LSN=X
       - CDC captures the 10 new rows
   
-Result: You get all 1M + 10 rows, with no duplicates!
+Result: You get all 1M + 10 rows. A row changed during setup can arrive twice (at-least-once, see [Phase 5](#phase-5-cdc-continuation)).
 ```
 
 ### Use Cases
@@ -345,7 +345,7 @@ Phase 5: CDC Continuation
    • All chunks completed
    • Snapshot transaction closed
    • CDC starts from snapshot LSN
-   • No duplicate data!
+   • At-least-once: rows changed during setup may arrive twice (see below)
 ```
 
 ---
@@ -1151,6 +1151,7 @@ for {
 2. **Chunk Isolation**: Each chunk has its own transaction
 3. **Stale Chunk Reclaim**: Chunks with old heartbeats are reclaimed
 4. **Ordered Processing**: `ORDER BY chunk_index` for predictable order
+5. **Synchronous Listener Writes**: Snapshot events have no `Ack()`. A chunk is marked `completed` once the handler returns for its last row, so the handler must finish its write before returning. Queuing rows asynchronously means a crash can lose them without a recopy.
 
 **Heartbeat Mechanism:**
 
@@ -1211,7 +1212,7 @@ if allDone {
 - Snapshot finalization always stops the keepalive loop before closing the export transaction.
 - This guarantees there is no background `SELECT 1` running on a finalized connection.
 
-**No Duplicate Data:**
+**Snapshot-to-CDC handoff is at-least-once:**
 
 ```
 Timeline:
@@ -1226,8 +1227,14 @@ Timeline:
          │   (goes to handler)│  (goes to handler) │
          │                    │                    │
          │◄───────────────────┤                    │
-         No overlap!    CDC starts from snapshot LSN
+         Overlap possible!    CDC starts from snapshot LSN
 ```
+
+Rows changed while the snapshot is being set up may be delivered both as a snapshot row and as a CDC event. Snapshot plus CDC is at-least-once, not exactly-once: consumers must be idempotent (upsert by key).
+
+**Caveat:** the start LSN and the exported snapshot are taken in separate steps. A transaction whose commit record was written before the start LSN but is not yet visible at snapshot time (it is waiting on fsync or on a synchronous standby) is missing from the snapshot and skipped by the CDC stream. The window is normally milliseconds but can be long while a synchronous standby lags. Do not start a snapshot while a synchronous standby is lagging (backends waiting on `SyncRep` in `pg_stat_activity`).
+
+The same at-least-once rule applies when a client pre-creates the replication slot and starts the snapshot later.
 
 ### Partitioning Strategies
 
@@ -1761,7 +1768,8 @@ LIMIT 20;
 - Same rows appear in both snapshot and CDC events
 
 **Cause:**
-- LSN not properly set for CDC continuation
+- Expected for rows changed while the snapshot was being set up (at-least-once, see [Phase 5](#phase-5-cdc-continuation)). Make the consumer idempotent (upsert by key).
+- Duplicates for rows not changed during setup: LSN not properly set for CDC continuation
 
 **Debug:**
 ```sql
@@ -2057,7 +2065,7 @@ publication:
 
 The Snapshot Feature provides a robust, scalable solution for initial data capture in PostgreSQL CDC pipelines:
 
-✅ **Zero Data Loss**: Consistent snapshot + CDC continuation  
+✅ **Consistent Snapshot**: Point-in-time snapshot via `pg_export_snapshot()`; snapshot-to-CDC handoff is at-least-once (see [Phase 5](#phase-5-cdc-continuation) caveat)  
 ✅ **Smart Partitioning**: Auto-selects optimal strategy (Integer Range, CTID Block, Offset)  
 ✅ **Snapshot-Consistent**: Size queries run within snapshot transaction
 ✅ **Scalable**: Chunk-based, multi-instance processing  

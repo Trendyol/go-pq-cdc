@@ -12,12 +12,12 @@ ensuring low resource consumption and high performance.
 **Capture existing data before starting CDC!** The new snapshot feature enables initial data synchronization, ensuring downstream systems receive both historical and real-time data.
 
 ✨ **Key Highlights:**
-- **Zero Data Loss**: Consistent point-in-time snapshot using PostgreSQL's `pg_export_snapshot()`
+- **Consistent Snapshot**: Point-in-time snapshot via `pg_export_snapshot()`; snapshot-to-CDC handoff is at-least-once (see [Phase 5](docs/SNAPSHOT_FEATURE.md#phase-5-cdc-continuation) caveat)
 - **Chunk-Based Processing**: Memory-efficient processing of large tables
 - **Smart Partitioning**: Auto-selects optimal strategy (Integer Range, CTID Block, or Offset)
 - **Multi-Instance Support**: Parallel processing across multiple instances
 - **Crash Recovery**: Automatic resume from failures
-- **No Duplicates**: Seamless transition from snapshot to CDC
+- **At-Least-Once Handoff**: Snapshot-to-CDC is at-least-once; a row changed during setup can arrive twice, so make consumers idempotent. See the [Phase 5](docs/SNAPSHOT_FEATURE.md#phase-5-cdc-continuation) caveat.
 - **Snapshot Only Mode**: One-time data export without CDC (no replication slot required)
 - **Protocol Flexibility**: `pgoutput` `proto_version` `1` and `2` support
 - **Safe Streaming TX Handling**: Streamed rollback transactions are discarded correctly

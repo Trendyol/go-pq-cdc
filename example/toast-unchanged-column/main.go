@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -14,7 +15,8 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/slot"
 )
 
-// Reproduces: unchanged TOASTed column reported as NULL on a primary-key-changing UPDATE.
+// Demonstrates: an unchanged TOASTed column is never reported as NULL. It is either carried
+// through (REPLICA IDENTITY FULL) or listed in UnchangedToastColumns and absent from NewDecoded.
 // See README.md in this directory.
 
 func main() {
@@ -88,15 +90,17 @@ func printUpdate(msg *format.Update) {
 	fmt.Printf("  OldTupleType:        %c\n", rune(msg.OldTupleType))
 	fmt.Printf("  NewDecoded[payload]: %s\n", describe(newVal, newOK))
 	fmt.Printf("  OldDecoded[payload]: %s\n", describe(oldVal, oldOK))
+	fmt.Printf("  UnchangedToastColumns: %v\n", msg.UnchangedToastColumns)
 
 	s, isString := newVal.(string)
+	unchanged := slices.Contains(msg.UnchangedToastColumns, "payload")
 	switch {
-	case newOK && newVal == nil && msg.OldTupleType == 'K':
-		fmt.Println("  BUG: payload reported as NULL although the UPDATE never touched it (unchanged TOAST copied from 'K' tuple)")
 	case newOK && newVal == nil:
 		fmt.Println("  REAL NULL: the UPDATE itself set payload = NULL")
-	case !newOK:
-		fmt.Println("  NOTE: payload silently absent from NewDecoded (unchanged TOAST, no old tuple)")
+	case unchanged && msg.OldTupleType == 'N':
+		fmt.Println("  NOTE: payload marked unchanged, no old tuple sent so its value is not in this message")
+	case unchanged:
+		fmt.Println("  OK: payload marked unchanged")
 	case isString && len(s) == 5000:
 		fmt.Println("  OK: payload carried through")
 	default:

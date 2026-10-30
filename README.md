@@ -254,6 +254,15 @@ In low-traffic databases, this can cause **WAL bloat** when other databases on t
 traffic while the CDC database itself remains mostly idle. In this situation the replication slot's `restart_lsn` and
 `confirmed_flush_lsn` may lag far behind `pg_current_wal_lsn()`, preventing WAL segments from being recycled.
 
+Even without heartbeat, an idle slot advances: when nothing is in flight (no open transaction, nothing buffered, and
+every message delivered to the listener acked), go-pq-cdc confirms the WAL end position carried by the walsender's
+keepalive messages, the way PostgreSQL's own subscriber does. The integration suite covers this on PostgreSQL 15, 16
+and 17. It only works if the listener acks every message it is given, including `Relation`, `Truncate` and logical
+decoding messages, not just inserts, updates and deletes: a listener that skips any of them, or acks only the last
+message of a batch, keeps the stream busy and the slot never advances this way. Heartbeat is still recommended for
+end-to-end liveness, and it is still the way to keep WAL bounded for such listeners and on server versions where this
+has not been verified.
+
 go-pq-cdc provides a **table-based heartbeat mechanism** for this scenario.
 When `heartbeat.table.name` is configured, the connector:
 

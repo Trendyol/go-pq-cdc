@@ -225,18 +225,27 @@ This setup ensures continuous data synchronization and minimal downtime in captu
 PostgreSQL does not send TOASTed column values during an update unless the TOASTed column itself is modified.
 For example, if only a small field changes, large columns such as TEXT, JSONB, or BYTEA are sent as TOAST placeholders instead of real values.
 
-To guarantee that UPDATE messages include full, correct data, go-pq-cdc automatically merges old and new tuples, restoring any missing TOASTed fields:
+Unchanged TOASTed columns are restored from the old tuple only when it actually carries their values (see the paragraph below the snippet):
 
 ```go
-if m.OldTupleData != nil {
-    for i, col := range m.NewTupleData.Columns {
-        // Toasted columns are not sent unless the column itself changed
-        if col.DataType == tuple.DataTypeToast {
-            m.NewTupleData.Columns[i] = m.OldTupleData.Columns[i]
-        }
+// Unchanged TOAST columns ('u') are filled from the old tuple only when it carries real values
+// for them: 'O' (REPLICA IDENTITY FULL) or a key column. A 'K' tuple's non-key columns are 'n'
+// placeholders, which must not be copied. Anything still 'u' is listed in UnchangedToastColumns.
+for i, col := range msg.NewTupleData.Columns {
+    if col.DataType != tuple.DataTypeToast || i >= len(rel.Columns) {
+        continue
+    }
+    if msg.OldTupleData != nil && i < len(msg.OldTupleData.Columns) &&
+        (msg.OldTupleType == format.UpdateTupleTypeOld || rel.Columns[i].Flags&1 == 1) {
+        msg.NewTupleData.Columns[i] = msg.OldTupleData.Columns[i]
+    }
+    if msg.NewTupleData.Columns[i].DataType == tuple.DataTypeToast {
+        msg.UnchangedToastColumns = append(msg.UnchangedToastColumns, rel.Columns[i].Name)
     }
 }
 ```
+
+Unchanged TOAST columns are restored from the old tuple only when it carries real values for them: a full old tuple (`O`, `REPLICA IDENTITY FULL`) or a key column. With `REPLICA IDENTITY DEFAULT`, a `K` old tuple holds `n` placeholders for non-key columns, which are never copied. Any unchanged TOAST column that cannot be restored is omitted from `NewDecoded` and listed by name in `Update.UnchangedToastColumns`, so a consumer can tell "not sent" apart from "set to NULL".
 
 ### Heartbeat-based WAL Protection
 

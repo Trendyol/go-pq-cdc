@@ -93,3 +93,89 @@ func TestUpdate_New(t *testing.T) {
 
 	assert.Equal(t, expected, msg)
 }
+
+// unchangedToastRelation mirrors the table in example/toast-unchanged-column: id is the key.
+func unchangedToastRelation() map[uint32]*Relation {
+	return map[uint32]*Relation{
+		0x4001: {
+			OID:           0x4001,
+			Namespace:     "public",
+			Name:          "docs",
+			ColumnNumbers: 3,
+			Columns: []tuple.RelationColumn{
+				{Flags: 1, Name: "id", DataType: 23, TypeModifier: 4294967295},
+				{Flags: 0, Name: "title", DataType: 25, TypeModifier: 4294967295},
+				{Flags: 0, Name: "payload", DataType: 25, TypeModifier: 4294967295},
+			},
+		},
+	}
+}
+
+func TestUpdate_UnchangedToast_KeyOldTupleDoesNotFillNonKeyColumn(t *testing.T) {
+	// 'K' old tuple (non-key columns are 'n'), new tuple has unchanged TOAST 'u' payload.
+	data := []byte{
+		0x55, 0x00, 0x00, 0x40, 0x01, 0x4b, 0x00, 0x03, 0x74, 0x00, 0x00, 0x00, 0x01, 0x33, 0x6e, 0x6e,
+		0x4e, 0x00, 0x03, 0x74, 0x00, 0x00, 0x00, 0x01, 0x34, 0x74, 0x00, 0x00, 0x00, 0x01, 0x62, 0x75,
+	}
+
+	msg, err := NewUpdate(data, false, unchangedToastRelation(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, map[string]any{"id": int32(4), "title": "b"}, msg.NewDecoded)
+	assert.Equal(t, map[string]any{"id": int32(3), "title": nil, "payload": nil}, msg.OldDecoded)
+	assert.Equal(t, []string{"payload"}, msg.UnchangedToastColumns)
+}
+
+func TestUpdate_UnchangedToast_FullOldTupleFillsColumn(t *testing.T) {
+	// Same layout as above but 'O' old tuple (REPLICA IDENTITY FULL) with a real payload value.
+	data := []byte{
+		0x55, 0x00, 0x00, 0x40, 0x01, 0x4f, 0x00, 0x03, 0x74, 0x00, 0x00, 0x00, 0x01, 0x33, 0x74, 0x00,
+		0x00, 0x00, 0x01, 0x61, 0x74, 0x00, 0x00, 0x00, 0x03, 0x6f, 0x6c, 0x64,
+		0x4e, 0x00, 0x03, 0x74, 0x00, 0x00, 0x00, 0x01, 0x34, 0x74, 0x00, 0x00, 0x00, 0x01, 0x62, 0x75,
+	}
+
+	msg, err := NewUpdate(data, false, unchangedToastRelation(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, map[string]any{"id": int32(4), "title": "b", "payload": "old"}, msg.NewDecoded)
+	assert.Equal(t, map[string]any{"id": int32(3), "title": "a", "payload": "old"}, msg.OldDecoded)
+	assert.Nil(t, msg.UnchangedToastColumns)
+}
+
+func TestUpdate_UnchangedToast_NoOldTupleListsColumn(t *testing.T) {
+	// 'N' only: no old tuple, so the unchanged TOAST payload cannot be filled.
+	data := []byte{
+		0x55, 0x00, 0x00, 0x40, 0x01, 0x4e, 0x00, 0x03, 0x74, 0x00, 0x00, 0x00, 0x01, 0x34, 0x74, 0x00,
+		0x00, 0x00, 0x01, 0x62, 0x75,
+	}
+
+	msg, err := NewUpdate(data, false, unchangedToastRelation(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, map[string]any{"id": int32(4), "title": "b"}, msg.NewDecoded)
+	assert.Nil(t, msg.OldDecoded)
+	assert.Equal(t, []string{"payload"}, msg.UnchangedToastColumns)
+}
+
+func TestUpdate_UnchangedToast_KeyColumnFilledFromKeyOldTuple(t *testing.T) {
+	// 'K' old tuple carries the key id='3'. New tuple sends the key column as unchanged TOAST 'u'
+	// (not realistic for an int key, but it exercises the key-column branch): id must be copied from the K tuple.
+	data := []byte{
+		0x55, 0x00, 0x00, 0x40, 0x01, 0x4b, 0x00, 0x03, 0x74, 0x00, 0x00, 0x00, 0x01, 0x33, 0x6e, 0x6e,
+		0x4e, 0x00, 0x03, 0x75, 0x74, 0x00, 0x00, 0x00, 0x01, 0x62, 0x6e,
+	}
+
+	msg, err := NewUpdate(data, false, unchangedToastRelation(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, map[string]any{"id": int32(3), "title": "b", "payload": nil}, msg.NewDecoded)
+	assert.Nil(t, msg.UnchangedToastColumns)
+}

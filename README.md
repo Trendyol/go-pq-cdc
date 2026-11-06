@@ -497,6 +497,16 @@ func Handler(ctx *replication.ListenerContext) {
 | `Include(cols...)` | Keeps only these columns in the old and new row |
 | `Exclude(cols...)` | Removes these columns from the old and new row |
 | `Rename(map)` | Renames columns in the old and new row |
+| `Mask(cols...)` | Replaces the values of these columns with `***`; NULL stays NULL |
+| `InsertField(col, value)` | Sets a column to a fixed value in the old and new row |
+| `When(predicate, steps...)` | Runs the steps only on changes that match; other changes pass through |
+
+Predicates for `Where` and `When` are `func(*change.Change) bool`. `IsOp(ops...)`, `IsTable(names...)` and `Not(predicate)` cover the common cases:
+
+```go
+// remove the email only from deletes; inserts and updates keep it
+change.When(change.IsOp(change.Delete), change.Exclude("email"))
+```
 
 A step is a `func(*change.Change) bool` that edits the change in place and returns `false` to drop it, so any function with that signature can be used as a step. Steps edit the row maps they receive: run them on `Clone()` to keep the original message intact.
 

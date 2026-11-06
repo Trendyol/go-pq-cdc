@@ -41,6 +41,7 @@ ensuring low resource consumption and high performance.
 		- [Configuration](#configuration)
 		- [Protocol Version \& Streaming Transactions](#protocol-version--streaming-transactions)
 		- [API](#api)
+		- [Change and transform steps](#change-and-transform-steps)
 		- [Visibility Guard](#visibility-guard)
 		- [Commit LSN and reading from a standby](#commit-lsn-and-reading-from-a-standby)
 		- [Failover slots (PostgreSQL 17+)](#failover-slots-postgresql-17)
@@ -466,6 +467,38 @@ Streaming behavior for `proto_version: 2`:
 | `LSN` | the WAL position of the message itself, not a commit LSN |
 
 A message emitted **inside a transaction** arrives with that transaction at COMMIT, in row order, with `ctx.Xid` and `ctx.CommitLSN` set as they are for row changes. A message emitted **outside** a transaction arrives immediately and belongs to no transaction: `ctx.Xid` and `ctx.CommitLSN` are both `0`.
+
+### Change and transform steps
+
+The `change` package gives sinks one view of a row change, whatever the operation, and target-independent steps that run on it. Sinks such as [go-pq-cdc-kafka](https://github.com/Trendyol/go-pq-cdc-kafka) build their mappers on it, so the same filters and column rules work everywhere.
+
+`change.FromListener` converts inserts, updates, deletes and snapshot rows into a `*change.Change` (`Op`, `Schema`, `Table`, `Old`, `New`, `LSN`, `Xid`, `EventTime`). It returns `false` for every other message, such as truncates and logical decoding messages.
+
+```go
+func Handler(ctx *replication.ListenerContext) {
+	if c, ok := change.FromListener(ctx); ok {
+		c = c.Clone()
+		if change.Run(c,
+			change.OnlyOps(change.Insert, change.Update),
+			change.Exclude("password"),
+		) {
+			slog.Info("change", "table", c.FullName(), "row", c.Row())
+		}
+	}
+	_ = ctx.Ack()
+}
+```
+
+| Step | What it does |
+| --- | --- |
+| `OnlyOps(ops...)` | Keeps changes with one of the operations |
+| `OnlyTables(names...)` | Keeps changes on the tables; a name without a schema means `public` |
+| `Where(func)` | Keeps changes the function returns `true` for |
+| `Include(cols...)` | Keeps only these columns in the old and new row |
+| `Exclude(cols...)` | Removes these columns from the old and new row |
+| `Rename(map)` | Renames columns in the old and new row |
+
+A step is a `func(*change.Change) bool` that edits the change in place and returns `false` to drop it, so any function with that signature can be used as a step. Steps edit the row maps they receive: run them on `Clone()` to keep the original message intact.
 
 A message that arrives while a streamed transaction is in flight is delivered immediately but cannot be acknowledged until that transaction resolves. Confirming the message's own position would promise the server that the transaction's earlier rows — still held in memory, not yet delivered — had been handled, and the server acts on that promise by refusing to resend them. The transaction's own end-of-transaction acknowledgement covers the message instead, so a message may be delivered twice if the process stops in the meantime. It is never skipped.
 

@@ -26,6 +26,36 @@ func Exclude(cols ...string) Step {
 	}
 }
 
+// MaskValue is what Mask writes in place of a column's value.
+const MaskValue = "***"
+
+// Mask replaces the values of the given columns with MaskValue in both rows,
+// so consumers see that the column exists without seeing its value. NULL values stay NULL.
+func Mask(cols ...string) Step {
+	return func(c *Change) bool {
+		for _, row := range []map[string]any{c.Old, c.New} {
+			for _, col := range cols {
+				if v, ok := row[col]; ok && v != nil {
+					row[col] = MaskValue
+				}
+			}
+		}
+		return true
+	}
+}
+
+// InsertField sets col to value in every row the change carries, overwriting an existing column.
+func InsertField(col string, value any) Step {
+	return func(c *Change) bool {
+		for _, row := range []map[string]any{c.Old, c.New} {
+			if row != nil {
+				row[col] = value
+			}
+		}
+		return true
+	}
+}
+
 // Rename renames columns in both rows, from the key of names to its value.
 func Rename(names map[string]string) Step {
 	return func(c *Change) bool {

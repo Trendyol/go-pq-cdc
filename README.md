@@ -360,13 +360,14 @@ You can run [Replica Identity Using Index](./example/replica-identity-using-inde
 
 You can run [Replica Identity Nothing](./example/replica-identity-nothing) for an insert-only `NOTHING` example.
 
-### Online initial snapshot: supported PG16 profile
+### Online initial snapshot: capability-based admission
 
 `snapshot.strategy` selects `consistent` (the default) or `online`.
 Online mode requires `NewOnlineConnector` and a synchronous durable handler.
 It captures CDC between bounded snapshot windows rather than deferring all CDC until the snapshot ends.
 
-The supported online profile is PostgreSQL 16 on one primary, protocol 1, and immutable single integer-family primary keys.
+The online path requires a PostgreSQL primary with the required capabilities, protocol 1, and immutable single integer-family primary keys.
+There is no major-version allowlist. CI profiles cover PostgreSQL 15, 16 and 17; untested releases are not automatically qualified.
 It requires `REPLICA IDENTITY FULL`, a frozen schema, and an explicit business-table publication with the watermark table.
 Unsupported keys, types, publication features and failover conditions fail closed.
 Delivery is at least once. The sink must reject stale orders and retain identity records and delete tombstones.
@@ -675,7 +676,7 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 |-------------------|-------------------|-----------------------------------|-------|
 | 0.0.2 or higher   | 1                 | 10                                | No streaming transaction protocol messages |
 | 0.0.2 or higher   | 2                 | 14                                | Supports streamed in-progress transactions |
-| Online opt-in profile | 1 | 16 primary | Immutable integer PK, frozen supported schema, FULL identity. No failover or protocol downgrade. |
+| Online opt-in profile | 1 | Capability-checked primary | Immutable integer PK, frozen supported schema, FULL identity. CI profiles: PG15/16/17. No failover or protocol downgrade. |
 
 ### Breaking Changes
 

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="850" viewBox="0 0 1280 850" role="img" aria-labelledby="title desc">
+  <title id="title">CDC COMMIT can precede standby ACK and primary SQL visibility</title>
+  <desc id="desc">Four-lane sequence diagram. The primary durably commits locally, then waits for synchronous standby acknowledgement. During the wait, CDC receives a logical COMMIT while a READ COMMITTED SELECT on that same primary can read the old row. The standby then acknowledges; primary commit processing finishes, SQL visibility advances, and the writer receives success. Missing acknowledgement does not roll back the local commit.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#334155"/></marker>
+    <marker id="redArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#b45309"/></marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #172033; }
+      .heading { font-size: 27px; font-weight: 700; }
+      .sub { font-size: 16px; fill: #475569; }
+      .lane { font-size: 18px; font-weight: 700; }
+      .label { font-size: 16px; }
+      .small { font-size: 14px; fill: #475569; }
+      .bold { font-weight: 700; }
+      .line { stroke: #334155; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1280" height="850" fill="#f8fafc"/>
+  <text x="40" y="45" class="heading">One commit, different observable boundaries</text>
+  <text x="40" y="74" class="sub">Synchronous replication edge case · SQL reads and CDC both use the same primary</text>
+  <rect x="45" y="105" width="265" height="55" rx="8" fill="#dbeafe"/>
+  <rect x="350" y="105" width="250" height="55" rx="8" fill="#e0e7ff"/>
+  <rect x="655" y="105" width="255" height="55" rx="8" fill="#e2e8f0"/>
+  <rect x="960" y="105" width="275" height="55" rx="8" fill="#dcfce7"/>
+  <text x="177" y="139" text-anchor="middle" class="lane">Primary writer</text>
+  <text x="475" y="139" text-anchor="middle" class="lane">Logical CDC</text>
+  <text x="782" y="128" text-anchor="middle" class="lane">SQL reader</text>
+  <text x="782" y="149" text-anchor="middle" class="small">same primary · READ COMMITTED</text>
+  <text x="1097" y="139" text-anchor="middle" class="lane">Synchronous standby</text>
+  <g stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 6">
+    <path d="M177 170V640"/><path d="M475 170V640"/><path d="M782 170V640"/><path d="M1097 170V640"/>
+  </g>
+  <text x="45" y="193" class="small">Time ↓</text>
+  <rect x="68" y="210" width="218" height="65" rx="7" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="177" y="235" text-anchor="middle" class="label bold">Local COMMIT durable</text>
+  <text x="177" y="257" text-anchor="middle" class="small">WAL flushed; status committed</text>
+  <path d="M286 242H1097" class="line"/>
+  <text x="687" y="230" text-anchor="middle" class="small">WAL sent to standby · remote_apply requires replay ACK</text>
+  <rect x="52" y="290" width="1180" height="207" rx="10" fill="#fffbeb" stroke="#f59e0b"/>
+  <text x="70" y="315" class="label bold">Critical interval: locally committed, but commit finalization is waiting</text>
+  <rect x="166" y="329" width="22" height="149" fill="#fde68a" stroke="#b45309"/>
+  <text x="78" y="354" class="small">XID still active</text>
+  <text x="78" y="374" class="small">Locks still held</text>
+  <path d="M188 350H475" class="line"/>
+  <text x="330" y="339" text-anchor="middle" class="small">Logical COMMIT available</text>
+  <rect x="369" y="370" width="214" height="62" rx="7" fill="#e0e7ff"/>
+  <text x="476" y="394" text-anchor="middle" class="label bold">CDC receives COMMIT</text>
+  <text x="476" y="416" text-anchor="middle" class="small">Not a tentative commit</text>
+  <rect x="658" y="370" width="249" height="89" rx="7" fill="#fff7ed" stroke="#b45309"/>
+  <text x="782" y="394" text-anchor="middle" class="label bold">SELECT takes a snapshot</text>
+  <text x="782" y="417" text-anchor="middle" class="small">Writer XID is still in progress</text>
+  <text x="782" y="442" text-anchor="middle" class="label bold" style="fill:#b45309">Can read the OLD row</text>
+  <text x="1097" y="389" text-anchor="middle" class="label">Replay / ACK delayed</text>
+  <text x="1097" y="415" text-anchor="middle" class="small">Writer has no success yet</text>
+  <path d="M1097 519H177" class="line"/>
+  <text x="638" y="511" text-anchor="middle" class="label">Required standby ACK arrives</text>
+  <rect x="62" y="545" width="230" height="73" rx="7" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="177" y="570" text-anchor="middle" class="label bold">Finish primary commit</text>
+  <text x="177" y="591" text-anchor="middle" class="small">Remove XID from active array</text>
+  <text x="177" y="610" text-anchor="middle" class="small">Return success to writer client</text>
+  <path d="M292 578H782" class="line"/>
+  <text x="525" y="566" text-anchor="middle" class="small">New SQL snapshots can now see the change</text>
+  <text x="782" y="610" text-anchor="middle" class="label bold" style="fill:#15803d">Later SELECT sees NEW row</text>
+  <rect x="45" y="666" width="1190" height="74" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="65" y="692" class="label bold">Online snapshot implication — conditional schedule</text>
+  <text x="65" y="716" class="label">X COMMIT → independently completed LOW → SELECT old X → HIGH: stale READ may escape conflict suppression.</text>
+  <rect x="45" y="754" width="1190" height="62" rx="8" fill="#dcfce7"/>
+  <text x="65" y="780" class="label bold">Missing ACK does NOT roll back a durable local commit.</text>
+  <text x="65" y="802" class="small">Canceling the wait leaves it committed. Failover to an unacknowledged standby can lose it; that is not primary rollback.</text>
+  <text x="45" y="837" class="small">Possible interleaving, not every commit. This diagram includes a standby; it is not a single-node reproduction. See possible-issue.md.</text>
+</svg>

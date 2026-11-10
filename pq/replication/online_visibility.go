@@ -48,9 +48,9 @@ func (g *onlineVisibilityGate) poll(ctx context.Context) (pgSnapshot, error) {
 	if row[0] != "f" || row[1] != g.source.Database || row[2] != g.source.SystemID || err != nil || int32(timeline) != g.source.Timeline {
 		return pgSnapshot{}, fmt.Errorf("%w: online primary/source identity changed", ErrVisibilityGuard)
 	}
-	version, err := strconv.Atoi(row[5])
-	if err != nil || version/10000 != 16 {
-		return pgSnapshot{}, fmt.Errorf("%w: online POC requires PostgreSQL 16", ErrVisibilityGuard)
+	_, err = strconv.Atoi(row[5])
+	if err != nil {
+		return pgSnapshot{}, fmt.Errorf("%w: malformed server_version_num: %w", ErrVisibilityGuard, err)
 	}
 	snap, err := parseSnapshot(row[4])
 	if err != nil {

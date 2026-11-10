@@ -144,7 +144,7 @@ func checkCatalogAdmissionSlot(ctx context.Context, t *testing.T, conn *pgx.Conn
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer holder.Close(context.Background())
+		defer closeCatalogSlotHolder(t, conn, holder, name)
 		holder.Frontend().Send(&pgproto3.Query{String: `START_REPLICATION SLOT e02_admission_slot LOGICAL 0/0 (proto_version '1', publication_names 'e02_admission')`})
 		if err = holder.Frontend().Flush(); err != nil {
 			t.Fatal(err)
@@ -176,4 +176,27 @@ func checkCatalogAdmissionSlot(ctx context.Context, t *testing.T, conn *pgx.Conn
 		t.Fatalf("existing %s slot recreated/adopted: %v", mode, err)
 	}
 	t.Logf("PG%d slot=%s exists=%t invalid=%t effective_online_protocol=1", major, mode, slot.Exists, slot.Invalid)
+}
+
+func closeCatalogSlotHolder(t *testing.T, conn *pgx.Conn, holder *pgconn.PgConn, name string) {
+	t.Helper()
+	cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := holder.Close(cleanup); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		var inactive bool
+		if err := conn.QueryRow(cleanup, "SELECT NOT active FROM pg_replication_slots WHERE slot_name=$1", name).Scan(&inactive); err != nil {
+			t.Fatal(err)
+		}
+		if inactive {
+			return
+		}
+		select {
+		case <-cleanup.Done():
+			t.Fatal("closed holder still owns slot", name)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 }

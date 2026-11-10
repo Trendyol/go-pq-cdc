@@ -2,7 +2,6 @@ package integration
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -61,21 +60,8 @@ func TestUnexpectedDisconnectRestartsProcess(t *testing.T) {
 		"CDC_TEST_METRIC_PORT="+strconv.Itoa(cdcCfg.Metric.Port),
 	)
 
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	require.NoError(t, cmd.Start())
-
-	t.Cleanup(func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-	})
-
-	require.NoError(t, waitForHelperReady(stdout, 30*time.Second))
+	process := startCapturedTestProcess(t, cmd)
+	require.NoError(t, waitForHelperReady(process.stdout, 30*time.Second))
 
 	var pid int
 	require.Eventually(t, func() bool {
@@ -85,18 +71,20 @@ func TestUnexpectedDisconnectRestartsProcess(t *testing.T) {
 
 	require.NoError(t, pgExec(ctx, postgresConn, fmt.Sprintf("SELECT pg_terminate_backend(%d)", pid)))
 
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-
 	select {
-	case err := <-done:
-		require.Error(t, err, "CDC process should exit after the replication connection is terminated")
-		require.Contains(t, stderr.String(), "panic: corrupted connection",
-			"expected a graceful crash so the process can restart with a fresh connection; stderr:\n%s", stderr.String())
+	case <-process.done:
+		require.Error(t, process.waitResult, "CDC process should exit after the replication connection is terminated")
+		stderr, err := process.stderrText()
+		require.NoError(t, err)
+		require.Contains(t, stderr, "panic: corrupted connection",
+			"expected a graceful crash so the process can restart with a fresh connection; stderr:\n%s", stderr)
 	case <-time.After(35 * time.Second):
-		t.Fatalf("CDC process did not panic after walsender termination; stderr:\n%s", stderr.String())
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, process.stop(cleanup))
+		stderr, err := process.stderrText()
+		require.NoError(t, err)
+		t.Fatalf("CDC process did not panic after walsender termination; stderr:\n%s", stderr)
 	}
 }
 
@@ -107,6 +95,9 @@ func waitForHelperReady(stdout io.Reader, timeout time.Duration) error {
 		for scanner.Scan() {
 			if strings.TrimSpace(scanner.Text()) == replicationDisconnectHelperReady {
 				ready <- nil
+				// Continue draining until owned cleanup closes the pipe. Closing
+				// errors after readiness or process termination are expected.
+				_, _ = io.Copy(io.Discard, stdout)
 				return
 			}
 		}

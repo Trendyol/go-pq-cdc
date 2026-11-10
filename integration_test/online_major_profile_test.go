@@ -87,7 +87,18 @@ func TestOnlineSlotStatesMajors(t *testing.T) {
 			if mode == "active" {
 				holder, err := pgconn.Connect(ctx, source.DSN+"&replication=database")
 				require.NoError(t, err)
-				defer holder.Close(context.Background())
+				defer func() {
+					cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					require.NoError(t, holder.Close(cleanup))
+					// Client close is not a server-side walsender join. Wait for
+					// the catalog to confirm release before the deferred drop.
+					onlineEventually(t, func() bool {
+						var inactive bool
+						err := conn.QueryRow(cleanup, "SELECT NOT active FROM pg_replication_slots WHERE slot_name=$1", name).Scan(&inactive)
+						return err == nil && inactive
+					}, 5*time.Second, 10*time.Millisecond, "closed holder still owns slot %s", name)
+				}()
 				holder.Frontend().Send(&pgproto3.Query{String: "START_REPLICATION SLOT profile_slot LOGICAL 0/0 (proto_version '1', publication_names 'slot_pub')"})
 				require.NoError(t, holder.Frontend().Flush())
 				message, err := holder.ReceiveMessage(ctx)

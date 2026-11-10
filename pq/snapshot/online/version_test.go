@@ -107,68 +107,96 @@ func TestOnlineCatalogAdmissionMajors(t *testing.T) {
 					continue
 				}
 				t.Run(mode, func(t *testing.T) {
-					exec := func(sql string, args ...any) {
-						t.Helper()
-						if _, err := conn.Exec(ctx, sql, args...); err != nil {
-							t.Fatal(err)
-						}
-					}
-					const name = "e02_admission_slot"
-					if slot, err := online.InspectSlot(ctx, conn, name); err != nil || slot.Exists {
-						t.Fatalf("missing slot: %+v %v", slot, err)
-					}
-					switch mode {
-					case "fresh", "active", "lost":
-						if lsn, err := online.CreateFreshSlot(ctx, conn, name, true); err != nil || lsn == 0 {
-							t.Fatalf("fresh slot: %v %v", lsn, err)
-						}
-					case "two_phase":
-						exec(`SELECT pg_create_logical_replication_slot($1,'pgoutput',false,true)`, name)
-					case "failover":
-						exec(`SELECT pg_create_logical_replication_slot($1,'pgoutput',false,false,true)`, name)
-					case "physical":
-						exec(`SELECT pg_create_physical_replication_slot($1)`, name)
-					}
-					defer exec(`SELECT pg_drop_replication_slot($1)`, name)
-					if mode == "active" {
-						holder, err := pgconn.Connect(ctx, dsn+"&replication=database")
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer holder.Close(context.Background())
-						holder.Frontend().Send(&pgproto3.Query{String: `START_REPLICATION SLOT e02_admission_slot LOGICAL 0/0 (proto_version '1', publication_names 'e02_admission')`})
-						if err = holder.Frontend().Flush(); err != nil {
-							t.Fatal(err)
-						}
-						message, err := holder.ReceiveMessage(ctx)
-						if _, ok := message.(*pgproto3.CopyBothResponse); err != nil || !ok {
-							t.Fatalf("protocol-1 slot activation: %T %v", message, err)
-						}
-					}
-					if mode == "lost" {
-						exec(`SELECT pg_switch_wal(); CHECKPOINT; SELECT pg_switch_wal(); CHECKPOINT`)
-						var status string
-						if err := conn.QueryRow(ctx, `SELECT wal_status FROM pg_replication_slots WHERE slot_name=$1`, name).Scan(&status); err != nil || status != "lost" {
-							t.Fatalf("slot-loss negative control not achieved: status=%s err=%v", status, err)
-						}
-						if major >= 17 {
-							var reason string
-							if err := conn.QueryRow(ctx, `SELECT invalidation_reason FROM pg_replication_slots WHERE slot_name=$1`, name).Scan(&reason); err != nil || reason != "wal_removed" {
-								t.Fatalf("slot invalidation reason=%s err=%v", reason, err)
-							}
-							t.Logf("PG%d invalidation_reason=%s", major, reason)
-						}
-					}
-					slot, err := online.InspectSlot(ctx, conn, name)
-					if err != nil || !slot.Exists || slot.Invalid != (mode != "fresh") {
-						t.Fatalf("%s slot admission: %+v %v", mode, slot, err)
-					}
-					if _, err = online.CreateFreshSlot(ctx, conn, name, true); !errors.Is(err, online.ErrBinding) {
-						t.Fatalf("existing %s slot recreated/adopted: %v", mode, err)
-					}
-					t.Logf("PG%d slot=%s exists=%t invalid=%t effective_online_protocol=1", major, mode, slot.Exists, slot.Invalid)
+					checkCatalogAdmissionSlot(ctx, t, conn, dsn, major, mode)
 				})
 			}
 		})
+	}
+}
+
+func checkCatalogAdmissionSlot(ctx context.Context, t *testing.T, conn *pgx.Conn, dsn string, major int, mode string) {
+	t.Helper()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := conn.Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const name = "e02_admission_slot"
+	if slot, err := online.InspectSlot(ctx, conn, name); err != nil || slot.Exists {
+		t.Fatalf("missing slot: %+v %v", slot, err)
+	}
+	switch mode {
+	case "fresh", "active", "lost":
+		if lsn, err := online.CreateFreshSlot(ctx, conn, name, true); err != nil || lsn == 0 {
+			t.Fatalf("fresh slot: %v %v", lsn, err)
+		}
+	case "two_phase":
+		exec(`SELECT pg_create_logical_replication_slot($1,'pgoutput',false,true)`, name)
+	case "failover":
+		exec(`SELECT pg_create_logical_replication_slot($1,'pgoutput',false,false,true)`, name)
+	case "physical":
+		exec(`SELECT pg_create_physical_replication_slot($1)`, name)
+	}
+	defer exec(`SELECT pg_drop_replication_slot($1)`, name)
+	if mode == "active" {
+		holder, err := pgconn.Connect(ctx, dsn+"&replication=database")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer closeCatalogSlotHolder(t, conn, holder, name)
+		holder.Frontend().Send(&pgproto3.Query{String: `START_REPLICATION SLOT e02_admission_slot LOGICAL 0/0 (proto_version '1', publication_names 'e02_admission')`})
+		if err = holder.Frontend().Flush(); err != nil {
+			t.Fatal(err)
+		}
+		message, err := holder.ReceiveMessage(ctx)
+		if _, ok := message.(*pgproto3.CopyBothResponse); err != nil || !ok {
+			t.Fatalf("protocol-1 slot activation: %T %v", message, err)
+		}
+	}
+	if mode == "lost" {
+		exec(`SELECT pg_switch_wal(); CHECKPOINT; SELECT pg_switch_wal(); CHECKPOINT`)
+		var status string
+		if err := conn.QueryRow(ctx, `SELECT wal_status FROM pg_replication_slots WHERE slot_name=$1`, name).Scan(&status); err != nil || status != "lost" {
+			t.Fatalf("slot-loss negative control not achieved: status=%s err=%v", status, err)
+		}
+		if major >= 17 {
+			var reason string
+			if err := conn.QueryRow(ctx, `SELECT invalidation_reason FROM pg_replication_slots WHERE slot_name=$1`, name).Scan(&reason); err != nil || reason != "wal_removed" {
+				t.Fatalf("slot invalidation reason=%s err=%v", reason, err)
+			}
+			t.Logf("PG%d invalidation_reason=%s", major, reason)
+		}
+	}
+	slot, err := online.InspectSlot(ctx, conn, name)
+	if err != nil || !slot.Exists || slot.Invalid != (mode != "fresh") {
+		t.Fatalf("%s slot admission: %+v %v", mode, slot, err)
+	}
+	if _, err = online.CreateFreshSlot(ctx, conn, name, true); !errors.Is(err, online.ErrBinding) {
+		t.Fatalf("existing %s slot recreated/adopted: %v", mode, err)
+	}
+	t.Logf("PG%d slot=%s exists=%t invalid=%t effective_online_protocol=1", major, mode, slot.Exists, slot.Invalid)
+}
+
+func closeCatalogSlotHolder(t *testing.T, conn *pgx.Conn, holder *pgconn.PgConn, name string) {
+	t.Helper()
+	cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := holder.Close(cleanup); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		var inactive bool
+		if err := conn.QueryRow(cleanup, "SELECT NOT active FROM pg_replication_slots WHERE slot_name=$1", name).Scan(&inactive); err != nil {
+			t.Fatal(err)
+		}
+		if inactive {
+			return
+		}
+		select {
+		case <-cleanup.Done():
+			t.Fatal("closed holder still owns slot", name)
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }

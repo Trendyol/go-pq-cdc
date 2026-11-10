@@ -22,7 +22,7 @@ func TestOnlineDurabilityGuardWithoutMajorAllowlist(t *testing.T) {
 	t.Setenv("PGSSLMODE", "disable")
 	for _, version := range []int{140015, 180000, 180006, 190000} {
 		t.Run(strconv.Itoa(version), func(t *testing.T) {
-			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
 			}

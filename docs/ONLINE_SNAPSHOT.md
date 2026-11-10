@@ -22,7 +22,9 @@ Build and run with Go 1.26.10 or a later patched, supported Go release.
 The module declares this minimum, and CI reads the version from `go.mod`.
 Do not qualify a build with Go 1.25.0 or vulnerable dependency versions.
 
-The source is one PostgreSQL 16 primary with direct SQL and replication connections.
+The source is one PostgreSQL primary with direct SQL and replication connections.
+Admission checks required capabilities and slot state, not a PostgreSQL-major allowlist.
+The CI image profiles are PostgreSQL 15, 16 and 17; admission does not qualify untested releases.
 The source identity, timeline, database, publication and slot remain fixed for a job.
 Application DDL and primary keys remain unchanged during capture and recovery.
 

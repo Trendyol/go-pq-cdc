@@ -403,7 +403,7 @@ func (c *OnlineConnector) onlineJob(ctx context.Context, store *online.Store, sq
 func (c *OnlineConnector) createOnlineJob(ctx context.Context, store *online.Store, sql *pgx.Conn, source online.SourceIdentity, schemas []online.TableSchema) (online.Job, error) {
 	var job online.Job
 	var err error
-	var checkpointLSN = job.Checkpoint
+	var checkpointLSN pq.LSN
 	if err = c.query(ctx, func(ctx context.Context) error {
 		var e error
 		checkpointLSN, e = online.CreateFreshSlot(ctx, sql, c.cfg.Slot.Name, c.cfg.Slot.CreateIfNotExists)

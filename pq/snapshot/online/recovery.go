@@ -12,7 +12,7 @@ import (
 )
 
 // IdentifySource uses a dedicated replication connection, never the active
-// CopyBoth connection. SQL identity/PG16/primary checks are repeated by Next.
+// CopyBoth connection. SQL identity/primary checks are repeated by Next.
 func IdentifySource(ctx context.Context, dsn string) (SourceIdentity, error) {
 	conn, err := pgconn.Connect(ctx, dsn)
 	if err != nil {
@@ -33,11 +33,39 @@ func IdentifySource(ctx context.Context, dsn string) (SourceIdentity, error) {
 	}
 	return SourceIdentity{SystemID: string(row[0]), Database: string(row[3]), Timeline: int32(timeline)}, nil
 }
+
+// slotInspectionSQL selects fields by server capability, without a major allowlist.
+// conflicting is available from PG16; invalidation/failover fields from PG17.
+func slotInspectionSQL(version int) string {
+	bad := `slot_type<>'logical' OR plugin IS DISTINCT FROM 'pgoutput' OR database IS DISTINCT FROM current_database() OR temporary OR active`
+	if version >= 130000 {
+		bad += ` OR wal_status='lost'`
+	}
+	if version >= 140000 {
+		bad += ` OR two_phase`
+	}
+	if version >= 160000 {
+		bad += ` OR conflicting`
+	}
+	if version >= 170000 {
+		bad += ` OR invalidation_reason IS NOT NULL OR failover OR synced`
+	}
+	if version >= 180000 {
+		bad += ` OR two_phase_at IS NOT NULL`
+	}
+	return `SELECT confirmed_flush_lsn::text,` + bad + ` FROM pg_replication_slots WHERE slot_name=$1`
+}
+
 func InspectSlot(ctx context.Context, conn *pgx.Conn, name string) (SlotState, error) {
 	s := SlotState{Name: name}
+	version, err := serverVersion(ctx, conn)
+	if err != nil {
+		return s, err
+	}
+	query := slotInspectionSQL(version)
 	var confirmed *string
 	var bad bool
-	err := conn.QueryRow(ctx, `SELECT confirmed_flush_lsn::text,slot_type<>'logical' OR plugin<>'pgoutput' OR database<>current_database() OR temporary OR two_phase OR wal_status='lost' OR active FROM pg_replication_slots WHERE slot_name=$1`, name).Scan(&confirmed, &bad)
+	err = conn.QueryRow(ctx, query, name).Scan(&confirmed, &bad)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return s, nil
 	}

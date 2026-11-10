@@ -96,6 +96,9 @@ func runIntegrationSuite(run func() int) (code int, returned error) {
 		defer cancel()
 		returned = stderrors.Join(returned, conn.Close(cleanup))
 	}()
+	if err = logIntegrationFixture(ctx, conn); err != nil {
+		return 1, err
+	}
 	if err = createCDCUser(ctx, conn, Config); err != nil {
 		return 1, err
 	}
@@ -103,6 +106,22 @@ func runIntegrationSuite(run func() int) (code int, returned error) {
 		return 1, err
 	}
 	return run(), nil
+}
+
+func logIntegrationFixture(ctx context.Context, conn pq.Connection) error {
+	rows, err := conn.Exec(ctx, "SELECT current_setting('server_version_num'),version()").ReadAll()
+	if err != nil {
+		return fmt.Errorf("server version evidence: %w", err)
+	}
+	if len(rows) != 1 || len(rows[0].Rows) != 1 || len(rows[0].Rows[0]) != 2 {
+		return fmt.Errorf("unexpected server version evidence: %v", rows)
+	}
+	imageEvidence, err := postgresImageEvidence(ctx, Container)
+	if err != nil {
+		return fmt.Errorf("image evidence: %w", err)
+	}
+	log.Printf("integration fixture: image=%s %s server_version_num=%s server=%s legacy_protocols=%v online_effective_protocol=1", postgresImage(), imageEvidence, rows[0].Rows[0][0], rows[0].Rows[0][1], protoVersions)
+	return nil
 }
 
 func SetupTestContainer(ctx context.Context, cfg config.Config) (testcontainers.Container, error) {
@@ -115,13 +134,8 @@ func SetupTestContainer(ctx context.Context, cfg config.Config) (testcontainers.
 }
 
 func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest, error) {
-	version := os.Getenv(PostgresVersion)
-	if version == "" {
-		version = defaultVersion
-	}
-
 	req := testcontainers.ContainerRequest{
-		Image: "docker.io/postgres:" + version,
+		Image: postgresImage(),
 		Env: map[string]string{
 			"POSTGRES_USER":     "postgres",
 			"POSTGRES_PASSWORD": "postgres",
@@ -146,6 +160,37 @@ func containerRequest(cfg config.Config) (testcontainers.GenericContainerRequest
 	}
 
 	return genericContainerReq, nil
+}
+
+func postgresImageVersion() string {
+	if version := os.Getenv(PostgresVersion); version != "" {
+		return version
+	}
+	return defaultVersion
+}
+
+func postgresImage() string { return "docker.io/postgres:" + postgresImageVersion() }
+
+// Inspect the image actually used by the container, not the current tag. This
+// works through Docker's API on both Docker and Podman's compatible socket.
+func postgresImageEvidence(ctx context.Context, container testcontainers.Container) (evidence string, returned error) {
+	client, err := testcontainers.NewDockerClientWithOpts(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { returned = stderrors.Join(returned, client.Close()) }()
+	inspect, err := client.ContainerInspect(ctx, container.GetContainerID())
+	if err != nil {
+		return "", err
+	}
+	image, _, err := client.ImageInspectWithRaw(ctx, inspect.Image)
+	if err != nil {
+		return "", err
+	}
+	if len(image.RepoDigests) == 0 {
+		return "", fmt.Errorf("image %s has no repository digest", inspect.Image)
+	}
+	return fmt.Sprintf("image_id=%s repo_digests=%v", inspect.Image, image.RepoDigests), nil
 }
 
 func newPostgresConn() (pq.Connection, error) {

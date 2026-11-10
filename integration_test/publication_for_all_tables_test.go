@@ -60,7 +60,7 @@ func TestPublicationForAllTablesEmptyIncludedTables(t *testing.T) {
 	assert.Contains(t, info.Operations, publication.OperationUpdate, "Should include UPDATE operation")
 	assert.Contains(t, info.Operations, publication.OperationDelete, "Should include DELETE operation")
 	assert.Contains(t, info.Operations, publication.OperationTruncate, "Should include TRUNCATE operation")
-	
+
 	// The fix ensures that even if tables is empty/nil, the query doesn't fail
 	// We just verify that the structure is valid (nil or a slice)
 	if info.Tables != nil {
@@ -135,7 +135,7 @@ func TestPublicationForAllTablesWithTables(t *testing.T) {
 	// Verify the publication info
 	assert.Equal(t, publicationName, info.Name, "Publication name should match")
 	require.NotNil(t, info.Tables, "Tables should not be nil when tables exist")
-	
+
 	// Verify that both tables are included in the publication
 	// Note: FOR ALL TABLES includes all tables in the database, so there might be more
 	// We just verify that our test tables are included
@@ -187,7 +187,7 @@ func TestPublicationForAllTablesEmptyThenAddTables(t *testing.T) {
 	// Step 2: Query info initially - may include existing tables (like 'books' from test setup)
 	info1, err := pub.Info(ctx)
 	require.NoError(t, err, "Info() should succeed")
-	
+
 	// Get initial table count (may include existing tables)
 	info1Len := 0
 	initialTableNames := make(map[string]bool)
@@ -197,7 +197,7 @@ func TestPublicationForAllTablesEmptyThenAddTables(t *testing.T) {
 			initialTableNames[table.Name] = true
 		}
 	}
-	
+
 	// Verify our test table is not in the initial list
 	assert.False(t, initialTableNames[tableName], "Test table should not exist initially")
 
@@ -222,8 +222,7 @@ func TestPublicationForAllTablesEmptyThenAddTables(t *testing.T) {
 		tableNames[table.Name] = true
 	}
 	assert.True(t, tableNames[tableName], "Newly created table should be included in publication")
-	
+
 	// Verify the count increased by at least 1
 	assert.GreaterOrEqual(t, len(info2.Tables), info1Len+1, "Should have at least one more table after creating one")
 }
-

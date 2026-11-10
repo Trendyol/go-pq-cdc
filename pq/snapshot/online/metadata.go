@@ -155,10 +155,13 @@ func ValidateProvisioned(ctx context.Context, conn *pgx.Conn) error {
 	if !fsync {
 		return fmt.Errorf("online source metadata durability requires fsync=on")
 	}
-	for _, table := range []string{"schema_version", "jobs", "table_progress", "windows", "watermarks"} {
+	for _, table := range []string{"schema_version", "jobs", "table_progress", "windows", watermarkTable} {
 		var permanent bool
-		if err := conn.QueryRow(ctx, `SELECT c.relkind='r' AND c.relpersistence='p' FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='cdc_online' AND c.relname=$1`, table).Scan(&permanent); err != nil || !permanent {
-			return fmt.Errorf("online metadata %s must be an ordinary permanent table: %v", table, err)
+		if err := conn.QueryRow(ctx, `SELECT c.relkind='r' AND c.relpersistence='p' FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='cdc_online' AND c.relname=$1`, table).Scan(&permanent); err != nil {
+			return fmt.Errorf("online metadata %s must be an ordinary permanent table: %w", table, err)
+		}
+		if !permanent {
+			return fmt.Errorf("online metadata %s must be an ordinary permanent table", table)
 		}
 	}
 	var version int
@@ -168,7 +171,7 @@ func ValidateProvisioned(ctx context.Context, conn *pgx.Conn) error {
 	if version != 1 {
 		return fmt.Errorf("unsupported cdc_online schema version %d", version)
 	}
-	for _, table := range []string{"jobs", "table_progress", "windows", "watermarks"} {
+	for _, table := range []string{"jobs", "table_progress", "windows", watermarkTable} {
 		var allowed bool
 		err := conn.QueryRow(ctx, `SELECT has_schema_privilege(current_user,'cdc_online','USAGE') AND has_table_privilege(current_user,$1,'SELECT') AND has_table_privilege(current_user,$1,'INSERT') AND has_table_privilege(current_user,$1,'UPDATE') AND has_table_privilege(current_user,$1,'DELETE')`, "cdc_online."+table).Scan(&allowed)
 		if err != nil {
@@ -208,7 +211,7 @@ func EnsureWatermarkPublication(ctx context.Context, conn *pgx.Conn, name string
 			rows.Close()
 			return err
 		}
-		if table != "watermarks" {
+		if table != watermarkTable {
 			rows.Close()
 			return fmt.Errorf("online publication captures forbidden metadata table %s", table)
 		}

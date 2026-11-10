@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// DefaultInfoTimeout bounds a slot status query, including its single reconnect.
+const DefaultInfoTimeout = 5 * time.Second
+
 // LogicalMessagesMode controls the pgoutput messages option, which carries
 // logical decoding messages written by pg_logical_emit_message. The option
 // exists from PostgreSQL 14 on.
@@ -32,6 +35,7 @@ type Config struct {
 	// requests them.
 	LogicalMessages             LogicalMessagesMode `json:"logicalMessages,omitempty" yaml:"logicalMessages,omitempty"`
 	SlotActivityCheckerInterval time.Duration       `json:"slotActivityCheckerInterval" yaml:"slotActivityCheckerInterval"`
+	InfoTimeout                 time.Duration       `json:"infoTimeout" yaml:"infoTimeout"`
 	// ProtoVersion selects the pgoutput logical replication protocol version.
 	//   1 – compatible with PostgreSQL 10+; no streaming transaction support.
 	//   2 – requires PostgreSQL 14+; supports streaming large in-progress transactions (default).
@@ -52,6 +56,10 @@ func (c Config) Validate() error {
 
 	if c.SlotActivityCheckerInterval < 1000 {
 		err = errors.Join(err, errors.New("slot activity checker interval cannot be lower than 1000 ms"))
+	}
+
+	if c.InfoTimeout < 0 {
+		err = errors.Join(err, errors.New("slot infoTimeout cannot be negative"))
 	}
 
 	if c.ProtoVersion != 0 && c.ProtoVersion != 1 && c.ProtoVersion != 2 {

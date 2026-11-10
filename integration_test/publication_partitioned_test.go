@@ -59,8 +59,7 @@ func TestPublicationPartitionedTable(t *testing.T) {
 
 	messageCh := make(chan *format.Insert, 500)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Insert:
+		if msg, ok := ctx.Message.(*format.Insert); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()

@@ -182,95 +182,184 @@ func (c *OnlineConnector) setupPublication(ctx context.Context, conn *pgx.Conn) 
 // The instance is single-run. Restart by constructing a new instance bound to
 // the original durable source metadata and slot.
 func (c *OnlineConnector) Run(ctx context.Context) (result error) {
-	c.mu.Lock()
-	if c.started {
-		c.mu.Unlock()
-		return errors.New("OnlineConnector.Run may be called only once")
+	if err := c.beginOnlineRun(); err != nil {
+		return err
 	}
-	c.started = true
-	c.mu.Unlock()
-	defer func() { c.mu.Lock(); c.terminal = result; close(c.done); c.mu.Unlock() }()
+	defer func() { c.finishOnlineRun(result) }()
 	run, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := run.Err(); err != nil {
 		return err
 	}
-	var sql *pgx.Conn
-	if err := c.query(run, func(ctx context.Context) error {
-		parsed, e := pgx.ParseConfig(c.cfg.DSN())
-		if e != nil {
-			return e
-		}
-		if e = pq.LimitOnlineFrontend(&parsed.Config, c.cfg.Snapshot.Online.ChunkBytes); e != nil {
-			return e
-		}
-		sql, e = pgx.ConnectConfig(ctx, parsed)
-		return e
-	}); err != nil {
+	sql, err := c.openOnlineSQL(run)
+	if err != nil {
 		return err
 	}
-	defer func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		result = errors.Join(result, sql.Close(cleanup))
-	}()
-	// Provisioning is deliberately explicit. Use online.Provision/ProvisionSQL as
-	// an authorized owner before Run; runtime requires only metadata DML grants.
-	if err := c.query(run, func(ctx context.Context) error { return online.ValidateProvisioned(ctx, sql) }); err != nil {
+	defer func() { result = errors.Join(result, closeOnlineComponent(run, sql.Close)) }()
+	store, err := c.openOnlineStore(run, sql)
+	if err != nil {
 		return err
 	}
-	var store *online.Store
-	var openErr error
-	store, openErr = online.OpenStoreWithStartupTimeout(run, c.cfg.DSN(), c.cfg.Slot.Name, c.cfg.Snapshot.Online.QueryTimeout)
-	if openErr != nil {
-		return openErr
-	}
-	defer func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		result = errors.Join(result, store.Close(cleanup))
-	}()
+	defer func() { result = errors.Join(result, closeOnlineComponent(run, store.Close)) }()
 	watchDone := make(chan struct{})
 	defer close(watchDone)
-	go func() {
-		select {
-		case <-store.Done():
-			cancel()
-		case <-watchDone:
-		}
-	}()
-	if err := c.query(run, func(ctx context.Context) error { return c.setupPublication(ctx, sql) }); err != nil {
+	go watchOnlineDone(store.Done(), watchDone, cancel)
+	coordinator, err := c.prepareOnlineCapture(run, sql, store)
+	if err != nil {
 		return err
 	}
+	reader := coordinator.Reader
+	defer func() { result = errors.Join(result, finishOnlineReader(run, reader, store)) }()
+	go watchOnlineDone(reader.Done(), watchDone, cancel)
+	c.mu.Lock()
+	c.reader = reader
+	c.mu.Unlock()
+	if err := c.observeOnlineCapture(run, coordinator.Job); err != nil {
+		return err
+	}
+	close(c.capture)
+	return coordinator.Run(run)
+}
+
+func (c *OnlineConnector) beginOnlineRun() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return errors.New("OnlineConnector.Run may be called only once")
+	}
+	c.started = true
+	return nil
+}
+
+func (c *OnlineConnector) finishOnlineRun(result error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.terminal = result
+	close(c.done)
+}
+
+func closeOnlineComponent(ctx context.Context, closeComponent func(context.Context) error) error {
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	return closeComponent(cleanup)
+}
+
+func finishOnlineReader(ctx context.Context, reader *replication.OnlineReader, store *online.Store) error {
+	result := closeOnlineComponent(ctx, reader.Close)
+	if e := reader.Err(); e != nil && !errors.Is(e, context.Canceled) {
+		result = errors.Join(result, e)
+	}
+	if e := store.Err(); errors.Is(e, online.ErrOwnerLost) {
+		result = errors.Join(result, e)
+	}
+	return result
+}
+
+func watchOnlineDone(done, stop <-chan struct{}, cancel context.CancelFunc) {
+	select {
+	case <-done:
+		cancel()
+	case <-stop:
+	}
+}
+
+func (c *OnlineConnector) openOnlineSQL(ctx context.Context) (*pgx.Conn, error) {
+	var sql *pgx.Conn
+	err := c.query(ctx, func(ctx context.Context) error {
+		parsed, err := pgx.ParseConfig(c.cfg.DSN())
+		if err != nil {
+			return err
+		}
+		if err = pq.LimitOnlineFrontend(&parsed.Config, c.cfg.Snapshot.Online.ChunkBytes); err != nil {
+			return err
+		}
+		sql, err = pgx.ConnectConfig(ctx, parsed)
+		return err
+	})
+	return sql, err
+}
+
+func (c *OnlineConnector) openOnlineStore(ctx context.Context, sql *pgx.Conn) (*online.Store, error) {
+	// Provisioning remains explicit and precedes advisory owner acquisition.
+	if err := c.query(ctx, func(ctx context.Context) error { return online.ValidateProvisioned(ctx, sql) }); err != nil {
+		return nil, err
+	}
+	return online.OpenStoreWithStartupTimeout(ctx, c.cfg.DSN(), c.cfg.Slot.Name, c.cfg.Snapshot.Online.QueryTimeout)
+}
+
+func (c *OnlineConnector) prepareOnlineCapture(ctx context.Context, sql *pgx.Conn, store *online.Store) (*online.Coordinator, error) {
+	if err := c.query(ctx, func(ctx context.Context) error { return c.setupPublication(ctx, sql) }); err != nil {
+		return nil, err
+	}
+	source, schemas, selected, err := c.onlineCatalog(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+	job, err := c.onlineJob(ctx, store, sql, source, schemas)
+	if err != nil {
+		return nil, err
+	}
+	limits := c.cfg.Snapshot.Online
+	reader, err := replication.StartOnlineReaderWithStartupTimeout(ctx, replication.OnlineReaderOptions{ReplicationDSN: c.cfg.ReplicationDSN(), SQLDSN: c.cfg.DSN(), Publication: c.cfg.Publication.Name, Slot: c.cfg.Slot.Name, StartLSN: job.Checkpoint, ProtoVersion: 1, Source: source, Limits: replication.OnlineReaderLimits{TransactionBytes: limits.TransactionBytes, QueueBytes: limits.QueueBytes, FeedbackInterval: time.Second, VisibilityTimeout: limits.QueryTimeout, PollInterval: 5 * time.Millisecond}}, limits.QueryTimeout)
+	if err != nil {
+		return nil, err
+	}
+	coordinator := online.Coordinator{Store: store, SQL: sql, Reader: reader, Job: job, Schemas: schemas, Handler: c.handler, Options: online.CoordinatorOptions{Publication: c.cfg.Publication.Name, Selected: selected, ChunkRows: int(c.cfg.Snapshot.ChunkSize), ChunkBytes: limits.ChunkBytes, QueryTimeout: limits.QueryTimeout, DeliveryTimeout: limits.DeliveryTimeout, CheckpointInterval: limits.CheckpointInterval, MarkerInterval: limits.MarkerInterval, SnapshotComplete: func() { close(c.snapshot) }, Observer: c.observer, Counters: &c.counters}}
+	return &coordinator, nil
+}
+
+func (c *OnlineConnector) observeOnlineCapture(ctx context.Context, job online.Job) error {
+	limits := c.cfg.Snapshot.Online
+	var err error
+	if c.observer != nil {
+		call, stop := context.WithTimeout(ctx, limits.DeliveryTimeout)
+		err = c.observer(call, online.Observation{Phase: online.CaptureStarted, JobID: job.ID, Generation: job.Generation, EndLSN: job.Checkpoint})
+		if err == nil {
+			err = call.Err()
+		}
+		stop()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *OnlineConnector) onlineCatalog(ctx context.Context, sql *pgx.Conn) (online.SourceIdentity, []online.TableSchema, []online.Table, error) {
 	var source online.SourceIdentity
-	if err := c.query(run, func(ctx context.Context) error {
+	if err := c.query(ctx, func(ctx context.Context) error {
 		var e error
 		source, e = online.IdentifySource(ctx, c.cfg.ReplicationDSN())
 		return e
 	}); err != nil {
-		return err
+		return online.SourceIdentity{}, nil, nil, err
 	}
 	// Validate primary/PG16 before creating state or selecting rows.
 	var primary bool
 	var version int
 	var system, database string
 	var timeline int32
-	if err := c.query(run, func(ctx context.Context) error {
+	if err := c.query(ctx, func(ctx context.Context) error {
 		return sql.QueryRow(ctx, `SELECT NOT pg_is_in_recovery(),current_setting('server_version_num')::int,system_identifier::text,current_database(),('x'||substr(pg_walfile_name(pg_current_wal_lsn()),1,8))::bit(32)::int FROM pg_control_system()`).Scan(&primary, &version, &system, &database, &timeline)
 	}); err != nil {
-		return fmt.Errorf("online identity query (GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO <cdc_role>): %w", err)
+		return online.SourceIdentity{}, nil, nil, fmt.Errorf("online identity query (GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO <cdc_role>): %w", err)
 	}
 	if !primary || version/10000 != 16 || source != (online.SourceIdentity{SystemID: system, Database: database, Timeline: timeline}) {
-		return online.ErrBinding
+		return online.SourceIdentity{}, nil, nil, online.ErrBinding
 	}
 	var schemas []online.TableSchema
-	if err := c.query(run, func(ctx context.Context) error {
+	if err := c.query(ctx, func(ctx context.Context) error {
 		var e error
 		schemas, e = online.ValidatePublication(ctx, sql, c.cfg.Publication.Name)
 		return e
 	}); err != nil {
-		return err
+		return online.SourceIdentity{}, nil, nil, err
 	}
+	selected, err := c.onlineSelectedTables(schemas)
+	return source, schemas, selected, err
+}
+
+func (c *OnlineConnector) onlineSelectedTables(schemas []online.TableSchema) ([]online.Table, error) {
 	selected := make([]online.Table, 0, len(schemas))
 	if len(c.cfg.Snapshot.Tables) == 0 {
 		for _, s := range schemas {
@@ -286,103 +375,85 @@ func (c *OnlineConnector) Run(ctx context.Context) (result error) {
 				}
 			}
 			if !found {
-				return fmt.Errorf("online snapshot table is not published: %s.%s", t.Schema, t.Name)
+				return nil, fmt.Errorf("online snapshot table is not published: %s.%s", t.Schema, t.Name)
 			}
 			for _, prior := range selected {
 				if prior == table {
-					return errors.New("online duplicate snapshot table")
+					return nil, errors.New("online duplicate snapshot table")
 				}
 			}
 			selected = append(selected, table)
 		}
 	}
+	return selected, nil
+}
+
+func (c *OnlineConnector) onlineJob(ctx context.Context, store *online.Store, sql *pgx.Conn, source online.SourceIdentity, schemas []online.TableSchema) (online.Job, error) {
 	var job online.Job
-	err := c.query(run, func(ctx context.Context) error { var e error; job, e = store.LoadJob(ctx); return e })
-	if errors.Is(err, pgx.ErrNoRows) {
-		var checkpointLSN = job.Checkpoint
-		if err = c.query(run, func(ctx context.Context) error {
+	err := c.query(ctx, func(ctx context.Context) error { var e error; job, e = store.LoadJob(ctx); return e })
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return c.createOnlineJob(ctx, store, sql, source, schemas)
+	case err != nil:
+		return online.Job{}, err
+	default:
+		return c.resumeOnlineJob(ctx, store, sql, job, source, schemas)
+	}
+}
+
+func (c *OnlineConnector) createOnlineJob(ctx context.Context, store *online.Store, sql *pgx.Conn, source online.SourceIdentity, schemas []online.TableSchema) (online.Job, error) {
+	var job online.Job
+	var err error
+	var checkpointLSN = job.Checkpoint
+	if err = c.query(ctx, func(ctx context.Context) error {
+		var e error
+		checkpointLSN, e = online.CreateFreshSlot(ctx, sql, c.cfg.Slot.Name, c.cfg.Slot.CreateIfNotExists)
+		return e
+	}); err != nil {
+		return online.Job{}, err
+	}
+	id, e := online.NewID()
+	if e != nil {
+		return online.Job{}, e
+	}
+	connector, e := online.NewID()
+	if e != nil {
+		return online.Job{}, e
+	}
+	binding, e := online.NewID()
+	if e != nil {
+		return online.Job{}, e
+	}
+	job = online.Job{ID: id, ConnectorID: connector, Slot: c.cfg.Slot.Name, SlotBinding: binding, Source: source, Generation: 1, ConfigFingerprint: c.fingerprint(schemas), Status: "active", Checkpoint: checkpointLSN}
+	if err = c.query(ctx, func(ctx context.Context) error { return store.CreateJob(ctx, job) }); err != nil {
+		var persisted online.Job
+		lookup := c.query(ctx, func(ctx context.Context) error {
 			var e error
-			checkpointLSN, e = online.CreateFreshSlot(ctx, sql, c.cfg.Slot.Name, c.cfg.Slot.CreateIfNotExists)
+			persisted, e = store.LoadJob(ctx)
 			return e
-		}); err != nil {
-			return err
-		}
-		id, e := online.NewID()
-		if e != nil {
-			return e
-		}
-		connector, e := online.NewID()
-		if e != nil {
-			return e
-		}
-		binding, e := online.NewID()
-		if e != nil {
-			return e
-		}
-		job = online.Job{ID: id, ConnectorID: connector, Slot: c.cfg.Slot.Name, SlotBinding: binding, Source: source, Generation: 1, ConfigFingerprint: c.fingerprint(schemas), Status: "active", Checkpoint: checkpointLSN}
-		if err = c.query(run, func(ctx context.Context) error { return store.CreateJob(ctx, job) }); err != nil {
-			var persisted online.Job
-			lookup := c.query(run, func(ctx context.Context) error { var e error; persisted, e = store.LoadJob(ctx); return e })
-			if lookup != nil || persisted != job {
-				return errors.Join(err, lookup)
-			}
-		}
-	} else if err != nil {
-		return err
-	} else {
-		var slot online.SlotState
-		if err = c.query(run, func(ctx context.Context) error {
-			var e error
-			slot, e = online.InspectSlot(ctx, sql, c.cfg.Slot.Name)
-			return e
-		}); err != nil {
-			return err
-		}
-		if err = online.ValidateResume(job, slot, source, c.fingerprint(schemas)); err != nil {
-			return err
-		}
-		if err = c.query(run, func(ctx context.Context) error { var e error; job, e = store.ResumeJob(ctx, job); return e }); err != nil {
-			return err
+		})
+		if lookup != nil || persisted != job {
+			return online.Job{}, errors.Join(err, lookup)
 		}
 	}
-	limits := c.cfg.Snapshot.Online
-	reader, err := replication.StartOnlineReaderWithStartupTimeout(run, replication.OnlineReaderOptions{ReplicationDSN: c.cfg.ReplicationDSN(), SQLDSN: c.cfg.DSN(), Publication: c.cfg.Publication.Name, Slot: c.cfg.Slot.Name, StartLSN: job.Checkpoint, ProtoVersion: 1, Source: source, Limits: replication.OnlineReaderLimits{TransactionBytes: limits.TransactionBytes, QueueBytes: limits.QueueBytes, FeedbackInterval: time.Second, VisibilityTimeout: limits.QueryTimeout, PollInterval: 5 * time.Millisecond}}, limits.QueryTimeout)
-	if err != nil {
-		return err
+	return job, nil
+}
+
+func (c *OnlineConnector) resumeOnlineJob(ctx context.Context, store *online.Store, sql *pgx.Conn, job online.Job, source online.SourceIdentity, schemas []online.TableSchema) (online.Job, error) {
+	var err error
+	var slot online.SlotState
+	if err = c.query(ctx, func(ctx context.Context) error {
+		var e error
+		slot, e = online.InspectSlot(ctx, sql, c.cfg.Slot.Name)
+		return e
+	}); err != nil {
+		return online.Job{}, err
 	}
-	defer func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		result = errors.Join(result, reader.Close(cleanup))
-		if e := reader.Err(); e != nil && !errors.Is(e, context.Canceled) {
-			result = errors.Join(result, e)
-		}
-		if e := store.Err(); errors.Is(e, online.ErrOwnerLost) {
-			result = errors.Join(result, e)
-		}
-	}()
-	go func() {
-		select {
-		case <-reader.Done():
-			cancel()
-		case <-watchDone:
-		}
-	}()
-	c.mu.Lock()
-	c.reader = reader
-	c.mu.Unlock()
-	coordinator := online.Coordinator{Store: store, SQL: sql, Reader: reader, Job: job, Schemas: schemas, Handler: c.handler, Options: online.CoordinatorOptions{Publication: c.cfg.Publication.Name, Selected: selected, ChunkRows: int(c.cfg.Snapshot.ChunkSize), ChunkBytes: limits.ChunkBytes, QueryTimeout: limits.QueryTimeout, DeliveryTimeout: limits.DeliveryTimeout, CheckpointInterval: limits.CheckpointInterval, MarkerInterval: limits.MarkerInterval, SnapshotComplete: func() { close(c.snapshot) }, Observer: c.observer, Counters: &c.counters}}
-	if c.observer != nil {
-		call, stop := context.WithTimeout(run, limits.DeliveryTimeout)
-		err = c.observer(call, online.Observation{Phase: online.CaptureStarted, JobID: job.ID, Generation: job.Generation, EndLSN: job.Checkpoint})
-		if err == nil {
-			err = call.Err()
-		}
-		stop()
-		if err != nil {
-			return err
-		}
+	if err = online.ValidateResume(job, slot, source, c.fingerprint(schemas)); err != nil {
+		return online.Job{}, err
 	}
-	close(c.capture)
-	return coordinator.Run(run)
+	if err = c.query(ctx, func(ctx context.Context) error { var e error; job, e = store.ResumeJob(ctx, job); return e }); err != nil {
+		return online.Job{}, err
+	}
+	return job, nil
 }

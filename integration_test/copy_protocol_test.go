@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopyProtocol(t *testing.T) {
@@ -23,13 +24,9 @@ func TestCopyProtocol(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		messageCh := make(chan *replication.ListenerContext)
 		totalCounter := atomic.Int64{}
@@ -44,20 +41,14 @@ func TestCopyProtocol(t *testing.T) {
 		cdc2Cfg := cdcCfg
 		cdc2Cfg.Metric.Port = 8085
 		connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		connector2, err := cdc.NewConnector(ctx, cdc2Cfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 		pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			pool.Close()
@@ -69,9 +60,7 @@ func TestCopyProtocol(t *testing.T) {
 		go connector.Start(ctx)
 
 		waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {
-			t.FailNow()
-		}
+		require.NoError(t, connector.WaitUntilReady(waitCtx))
 		cancel()
 
 		go connector2.Start(ctx)
@@ -109,9 +98,7 @@ func TestCopyProtocol(t *testing.T) {
 
 		t.Run("Run CDC again. Then check message count after all messages consumed", func(t *testing.T) {
 			waitCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-			if !assert.NoError(t, connector2.WaitUntilReady(waitCtx)) {
-				t.FailNow()
-			}
+			require.NoError(t, connector2.WaitUntilReady(waitCtx))
 			cancel()
 
 			for {

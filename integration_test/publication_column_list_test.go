@@ -41,8 +41,7 @@ func TestPublicationWithColumnList(t *testing.T) {
 
 	messageCh := make(chan any, 500)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Insert:
+		if msg, ok := ctx.Message.(*format.Insert); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -115,8 +114,7 @@ func TestPublicationWithPartialColumnList(t *testing.T) {
 
 	messageCh := make(chan any, 500)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Insert:
+		if msg, ok := ctx.Message.(*format.Insert); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()

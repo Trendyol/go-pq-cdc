@@ -12,6 +12,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestConcurrentTxOrdering verifies that when two concurrent transactions commit
@@ -25,12 +26,8 @@ func TestConcurrentTxOrdering(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		pgConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
-		if !assert.NoError(t, SetupTestDB(ctx, pgConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
+		require.NoError(t, SetupTestDB(ctx, pgConn, cdcCfg))
 
 		msgCh := make(chan *format.Insert, 5)
 		handler := func(lCtx *replication.ListenerContext) {
@@ -43,7 +40,7 @@ func TestConcurrentTxOrdering(t *testing.T) {
 		connector, _ := cdc.NewConnector(ctx, cdcCfg, handler)
 		go connector.Start(ctx)
 		waitCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
-		assert.NoError(t, connector.WaitUntilReady(waitCtx))
+		require.NoError(t, connector.WaitUntilReady(waitCtx))
 		cancel()
 
 		cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
@@ -84,7 +81,7 @@ func TestConcurrentTxOrdering(t *testing.T) {
 		var restartLSN, confirmedLSN string
 		row := pool.QueryRow(ctx, "SELECT restart_lsn, confirmed_flush_lsn FROM pg_replication_slots WHERE slot_name=$1", cdcCfg.Slot.Name)
 		err = row.Scan(&restartLSN, &confirmedLSN)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotEmpty(t, confirmedLSN)
 		confirmed, _ := pq.ParseLSN(confirmedLSN)
 		restart, _ := pq.ParseLSN(restartLSN)

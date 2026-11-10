@@ -2,6 +2,7 @@ package online
 
 import (
 	"fmt"
+
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 )
@@ -43,16 +44,16 @@ func DecodeControl(change replication.OnlineChange) (Marker, bool, error) {
 		image = m.NewDecoded
 	case *format.Delete:
 		table = Table{m.TableNamespace, m.TableName}
-		if table.Schema == "cdc_online" {
+		if table.Schema == metadataSchema {
 			return Marker{}, true, ErrConditional
 		}
 	default:
 		return Marker{}, false, ErrSchema
 	}
-	if table.Schema != "cdc_online" {
+	if table.Schema != metadataSchema {
 		return Marker{}, false, nil
 	}
-	if table.Name != "watermarks" || len(image) != 6 {
+	if table.Name != watermarkTable || len(image) != 6 {
 		return Marker{}, true, ErrConditional
 	}
 	marker, err := markerFromImage(image)

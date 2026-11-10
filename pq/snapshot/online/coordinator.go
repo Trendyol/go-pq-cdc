@@ -199,57 +199,14 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 	if s.Fingerprint != p.SchemaFingerprint || s.KeyFingerprint != p.KeyFingerprint {
 		return ErrSchema
 	}
-	id, err := NewID()
+	attempt, low, err := c.beginWindow(ctx, p)
 	if err != nil {
 		return err
 	}
-	lowID, err := NewID()
-	if err != nil {
-		return err
-	}
-	highID, err := NewID()
-	if err != nil {
-		return err
-	}
-	attempt := Window{ID: id, JobID: c.Job.ID, Generation: c.Job.Generation, Table: p.Table, PreviousCursor: p.Cursor, LowID: lowID, HighID: highID}
-	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.RegisterAttempt(ctx, attempt) }); err != nil {
-		return err
-	}
+	id, highID := attempt.ID, attempt.HighID
 	var marker Marker
-	if err = c.bounded(ctx, func(ctx context.Context) error {
-		marker, err = c.Store.EmitLOW(ctx, c.SQL, id, c.Job.Generation)
-		return err
-	}); err != nil {
-		return err
-	}
-	low, err := c.through(ctx, marker, nil)
+	w, err := c.readWindow(ctx, p, s, attempt, low)
 	if err != nil {
-		return err
-	}
-	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.RecordLOW(ctx, id, c.Job.Generation, lowID, low) }); err != nil {
-		return err
-	}
-	if err = c.observe(ctx, LOWRecorded, attempt, low, 0, nil); err != nil {
-		return err
-	}
-	if err = c.ack(low); err != nil {
-		return err
-	}
-	// Dispatch is frozen from observed/visible LOW until SELECT and separately
-	// committed HIGH. The source reader still receives and sends safe feedback.
-	if err = c.checkSchema(ctx); err != nil {
-		return err
-	}
-	if err = c.observe(ctx, ReadStarted, attempt, low, 0, nil); err != nil { //nolint:gofmt
-		return err
-	}
-	rows, err := ReadPage(ctx, c.SQL, s, p.Cursor, p.UpperKey, c.Options.ChunkRows, c.Options.ChunkBytes, c.Options.QueryTimeout, c.Options.Counters)
-	if err != nil {
-		abandonErr := c.bounded(ctx, func(ctx context.Context) error { return c.Store.AbandonAttempt(ctx, id, c.Job.Generation) })
-		return errors.Join(err, abandonErr)
-	}
-	w := NewReadWindow(p.Table, rows)
-	if err = c.observe(ctx, ReadResult, attempt, low, len(rows), w.LastKey()); err != nil {
 		return err
 	}
 	if err = c.bounded(ctx, func(ctx context.Context) error {
@@ -270,7 +227,7 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 	if err = c.checkSchema(ctx); err != nil {
 		return err
 	}
-	if err = c.observe(ctx, HIGHRecorded, attempt, high, len(rows), w.LastKey()); err != nil {
+	if err = c.observe(ctx, HIGHRecorded, attempt, high, len(w.rows), w.LastKey()); err != nil {
 		return err
 	}
 	for _, event := range w.Reads(c.Job.ID, id, high) {
@@ -278,26 +235,20 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 			return err
 		}
 	}
-	if err = c.observe(ctx, ReadsDelivered, attempt, high, len(rows), w.LastKey()); err != nil {
+	if err = c.observe(ctx, ReadsDelivered, attempt, high, len(w.rows), w.LastKey()); err != nil {
 		return err
 	}
-	complete := len(rows) < c.Options.ChunkRows || (w.LastKey() != nil && p.UpperKey != nil && *w.LastKey() == *p.UpperKey)
-	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.CompleteAttempt(ctx, id, c.Job.Generation, complete) }); err != nil {
-		// A lost metadata reply is resolved by original identity, never by replaying
-		// an unconditional transition. A broken non-reconnecting store fails closed.
-		var persisted Window
-		lookup := c.bounded(ctx, func(ctx context.Context) error { var e error; persisted, e = c.Store.GetAttempt(ctx, id); return e })
-		if lookup != nil || persisted.Status != "completed" || persisted.Generation != c.Job.Generation || persisted.HighEnd != high {
-			return errors.Join(err, lookup)
-		}
+	complete := len(w.rows) < c.Options.ChunkRows || (w.LastKey() != nil && p.UpperKey != nil && *w.LastKey() == *p.UpperKey)
+	if err = c.completeWindow(ctx, attempt, high, complete); err != nil {
+		return err
 	}
-	if err = c.observe(ctx, CompletionCommitted, attempt, high, len(rows), w.LastKey()); err != nil {
+	if err = c.observe(ctx, CompletionCommitted, attempt, high, len(w.rows), w.LastKey()); err != nil {
 		return err
 	}
 	if err = c.ack(high); err != nil {
 		return err
 	}
-	return c.observe(ctx, ACKAdvanced, attempt, high, len(rows), w.LastKey())
+	return c.observe(ctx, ACKAdvanced, attempt, high, len(w.rows), w.LastKey())
 }
 func (c *Coordinator) Run(ctx context.Context) error {
 	run, cancel := context.WithCancel(ctx)
@@ -327,45 +278,13 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	defer func() { cancel(); <-stopped }()
 	// Capture has started before upper bounds. Init is idempotent only by explicit
 	// durable table existence; resumed jobs must retain the same fingerprints.
-	for _, table := range c.Options.Selected {
-		s, err := c.tableSchema(table)
-		if err != nil {
-			return err
-		}
-		var p TableProgress
-		err = c.bounded(run, func(ctx context.Context) error { var e error; p, e = c.Store.GetTable(ctx, c.Job.ID, table); return e })
-		if errors.Is(err, pgx.ErrNoRows) {
-			var upper *int64
-			if err = c.bounded(run, func(ctx context.Context) error { var e error; upper, e = CaptureUpper(ctx, c.SQL, s); return e }); err != nil {
-				return err
-			}
-			p = TableProgress{JobID: c.Job.ID, Table: table, SchemaFingerprint: s.Fingerprint, KeyFingerprint: s.KeyFingerprint, UpperKey: upper}
-			if err = c.bounded(run, func(ctx context.Context) error { return c.Store.InitTable(ctx, c.Job.ID, c.Job.Generation, p) }); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-		if p.SchemaFingerprint != s.Fingerprint || p.KeyFingerprint != s.KeyFingerprint {
-			return ErrSchema
-		}
-		for !p.Complete {
-			if err = c.window(run, p); err != nil {
-				return err
-			}
-			if err = c.bounded(run, func(ctx context.Context) error { var e error; p, e = c.Store.GetTable(ctx, c.Job.ID, table); return e }); err != nil {
-				return err
-			}
-		}
+	if err := c.deliverSnapshot(run); err != nil {
+		return err
 	}
-	if c.Job.Status != "snapshot_complete" {
-		if err := c.bounded(run, func(ctx context.Context) error { return c.Store.MarkSnapshotComplete(ctx, c.Job.ID, c.Job.Generation) }); err != nil {
-			return err
-		}
-	}
-	if c.Options.SnapshotComplete != nil {
-		c.Options.SnapshotComplete()
-	}
+	return c.runCDC(run)
+}
+
+func (c *Coordinator) runCDC(run context.Context) error {
 	checkpoint := time.NewTicker(c.Options.CheckpointInterval)
 	defer checkpoint.Stop()
 	heartbeat := time.NewTicker(c.Options.MarkerInterval)
@@ -408,4 +327,133 @@ func (c *Coordinator) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *Coordinator) beginWindow(ctx context.Context, p TableProgress) (Window, pq.LSN, error) {
+	id, err := NewID()
+	if err != nil {
+		return Window{}, 0, err
+	}
+	lowID, err := NewID()
+	if err != nil {
+		return Window{}, 0, err
+	}
+	highID, err := NewID()
+	if err != nil {
+		return Window{}, 0, err
+	}
+	attempt := Window{ID: id, JobID: c.Job.ID, Generation: c.Job.Generation, Table: p.Table, PreviousCursor: p.Cursor, LowID: lowID, HighID: highID}
+	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.RegisterAttempt(ctx, attempt) }); err != nil {
+		return Window{}, 0, err
+	}
+	var marker Marker
+	if err = c.bounded(ctx, func(ctx context.Context) error {
+		marker, err = c.Store.EmitLOW(ctx, c.SQL, id, c.Job.Generation)
+		return err
+	}); err != nil {
+		return Window{}, 0, err
+	}
+	low, err := c.through(ctx, marker, nil)
+	if err != nil {
+		return Window{}, 0, err
+	}
+	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.RecordLOW(ctx, id, c.Job.Generation, lowID, low) }); err != nil {
+		return Window{}, 0, err
+	}
+	if err = c.observe(ctx, LOWRecorded, attempt, low, 0, nil); err != nil {
+		return Window{}, 0, err
+	}
+	if err = c.ack(low); err != nil {
+		return Window{}, 0, err
+	}
+	return attempt, low, nil
+}
+
+func (c *Coordinator) deliverSnapshot(run context.Context) error {
+	for _, table := range c.Options.Selected {
+		p, err := c.initializeTable(run, table)
+		if err != nil {
+			return err
+		}
+		for !p.Complete {
+			if err = c.window(run, p); err != nil {
+				return err
+			}
+			if err = c.bounded(run, func(ctx context.Context) error { var e error; p, e = c.Store.GetTable(ctx, c.Job.ID, table); return e }); err != nil {
+				return err
+			}
+		}
+	}
+	if c.Job.Status != "snapshot_complete" {
+		if err := c.bounded(run, func(ctx context.Context) error { return c.Store.MarkSnapshotComplete(ctx, c.Job.ID, c.Job.Generation) }); err != nil {
+			return err
+		}
+	}
+	if c.Options.SnapshotComplete != nil {
+		c.Options.SnapshotComplete()
+	}
+	return nil
+}
+
+func (c *Coordinator) initializeTable(run context.Context, table Table) (TableProgress, error) {
+	s, err := c.tableSchema(table)
+	if err != nil {
+		return TableProgress{}, err
+	}
+	var p TableProgress
+	err = c.bounded(run, func(ctx context.Context) error { var e error; p, e = c.Store.GetTable(ctx, c.Job.ID, table); return e })
+	if errors.Is(err, pgx.ErrNoRows) {
+		var upper *int64
+		if err = c.bounded(run, func(ctx context.Context) error { var e error; upper, e = CaptureUpper(ctx, c.SQL, s); return e }); err != nil {
+			return TableProgress{}, err
+		}
+		p = TableProgress{JobID: c.Job.ID, Table: table, SchemaFingerprint: s.Fingerprint, KeyFingerprint: s.KeyFingerprint, UpperKey: upper}
+		if err = c.bounded(run, func(ctx context.Context) error { return c.Store.InitTable(ctx, c.Job.ID, c.Job.Generation, p) }); err != nil {
+			return TableProgress{}, err
+		}
+	} else if err != nil {
+		return TableProgress{}, err
+	}
+	if p.SchemaFingerprint != s.Fingerprint || p.KeyFingerprint != s.KeyFingerprint {
+		return TableProgress{}, ErrSchema
+	}
+	return p, nil
+}
+
+func (c *Coordinator) completeWindow(ctx context.Context, attempt Window, high pq.LSN, complete bool) error {
+	id := attempt.ID
+	var err error
+	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.CompleteAttempt(ctx, id, c.Job.Generation, complete) }); err != nil {
+		// A lost metadata reply is resolved by original identity, never by replaying
+		// an unconditional transition. A broken non-reconnecting store fails closed.
+		var persisted Window
+		lookup := c.bounded(ctx, func(ctx context.Context) error { var e error; persisted, e = c.Store.GetAttempt(ctx, id); return e })
+		if lookup != nil || persisted.Status != "completed" || persisted.Generation != c.Job.Generation || persisted.HighEnd != high {
+			return errors.Join(err, lookup)
+		}
+	}
+	return nil
+}
+
+func (c *Coordinator) readWindow(ctx context.Context, p TableProgress, s TableSchema, attempt Window, low pq.LSN) (*ReadWindow, error) {
+	id := attempt.ID
+	var err error
+	// Dispatch is frozen from observed/visible LOW until SELECT and separately
+	// committed HIGH. The source reader still receives and sends safe feedback.
+	if err = c.checkSchema(ctx); err != nil {
+		return nil, err
+	}
+	if err = c.observe(ctx, ReadStarted, attempt, low, 0, nil); err != nil {
+		return nil, err
+	}
+	rows, err := ReadPage(ctx, c.SQL, s, p.Cursor, p.UpperKey, c.Options.ChunkRows, c.Options.ChunkBytes, c.Options.QueryTimeout, c.Options.Counters)
+	if err != nil {
+		abandonErr := c.bounded(ctx, func(ctx context.Context) error { return c.Store.AbandonAttempt(ctx, id, c.Job.Generation) })
+		return nil, errors.Join(err, abandonErr)
+	}
+	w := NewReadWindow(p.Table, rows)
+	if err = c.observe(ctx, ReadResult, attempt, low, len(rows), w.LastKey()); err != nil {
+		return nil, err
+	}
+	return w, nil
 }

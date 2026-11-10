@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cdc "github.com/Trendyol/go-pq-cdc"
+	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
@@ -84,7 +85,7 @@ func TestSnapshotConcurrentInsertNoDuplicates(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -131,8 +132,7 @@ func TestSnapshotConcurrentInsertNoDuplicates(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				switch m.EventType {
 				case format.SnapshotEventTypeBegin:
 					snapshotBeginReceived = true
@@ -193,6 +193,10 @@ collectCDC:
 	}
 	t.Logf("✅ Collected %d CDC INSERT events", len(cdcInsertReceived))
 
+	assertSnapshotConcurrentStory(ctx, t, postgresConn, cdcCfg.Slot.Name, snapshotBeginReceived, snapshotEndReceived, snapshotDataReceived, cdcInsertReceived)
+}
+func assertSnapshotConcurrentStory(ctx context.Context, t *testing.T, postgresConn pq.Connection, slot string, snapshotBeginReceived, snapshotEndReceived bool, snapshotDataReceived, cdcInsertReceived []map[string]any) {
+	t.Helper()
 	// === Critical Assertions ===
 
 	t.Run("Verify Snapshot Captured Initial Data Only", func(t *testing.T) {
@@ -305,7 +309,7 @@ collectCDC:
 	})
 
 	t.Run("Verify Snapshot Metadata", func(t *testing.T) {
-		query := fmt.Sprintf("SELECT completed, total_chunks, completed_chunks, snapshot_lsn FROM cdc_snapshot_job WHERE slot_name = '%s'", cdcCfg.Slot.Name)
+		query := fmt.Sprintf("SELECT completed, total_chunks, completed_chunks, snapshot_lsn FROM cdc_snapshot_job WHERE slot_name = '%s'", slot)
 		results, err := execQuery(ctx, postgresConn, query)
 		require.NoError(t, err)
 		require.NotEmpty(t, results)

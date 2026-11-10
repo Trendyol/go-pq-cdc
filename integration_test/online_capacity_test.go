@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -43,7 +44,7 @@ func testOnlineLiveQueue(t *testing.T) {
 	cfg.Snapshot.Online.DeliveryTimeout = 10 * time.Second
 	parked := make(chan struct{})
 	var once sync.Once
-	r := startOnline(t, cfg, func(ctx context.Context, e online.Event) error {
+	r := startOnline(t, cfg, func(ctx context.Context, _ online.Event) error {
 		once.Do(func() { close(parked) })
 		<-ctx.Done()
 		return ctx.Err()
@@ -88,11 +89,6 @@ func runOnlineCapacity(t *testing.T, strategy config.SnapshotStrategy) {
 	benchmarkCtx, stopBenchmark := context.WithCancel(context.Background())
 	defer stopBenchmark()
 	var delivered, targetPeak atomic.Int64
-	var legacyMu sync.Mutex
-	var lastXID uint32
-	var ordinal uint32
-	var legacyChunk, legacyPeak int64
-	var legacyReads int
 	snapshotStarted := make(chan struct{})
 	var snapshotOnce sync.Once
 	sinkErrors := make(chan error, 1)
@@ -100,7 +96,10 @@ func runOnlineCapacity(t *testing.T, strategy config.SnapshotStrategy) {
 		start := time.Now()
 		err := target.Apply(ctx, event, onlineTargetOK)
 		elapsed := time.Since(start).Microseconds()
-		for old := targetPeak.Load(); elapsed > old && !targetPeak.CompareAndSwap(old, elapsed); old = targetPeak.Load() {
+		for old := targetPeak.Load(); elapsed > old; old = targetPeak.Load() {
+			if targetPeak.CompareAndSwap(old, elapsed) {
+				break
+			}
 		}
 		if err == nil {
 			delivered.Add(1)
@@ -110,95 +109,20 @@ func runOnlineCapacity(t *testing.T, strategy config.SnapshotStrategy) {
 	binding := "legacy-capacity-binding"
 	var r onlineRun
 	var legacy cdc.Connector
+	var legacyAdapter *capacityLegacyAdapter
 	if strategy == config.SnapshotStrategyOnline {
 		require.NoError(t, online.EnsureWatermarkPublication(context.Background(), conn, cfg.Publication.Name, true))
 		r = startOnline(t, cfg, apply)
 		waitOnlineCapture(t, r)
 		require.NoError(t, conn.QueryRow(context.Background(), "SELECT slot_binding::text FROM cdc_online.jobs").Scan(&binding))
 	} else {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 		require.NoError(t, err)
 		cfg.Metric.Port = listener.Addr().(*net.TCPAddr).Port
 		listener.Close()
-		legacy, err = cdc.NewConnector(context.Background(), cfg, func(l *replication.ListenerContext) {
-			legacyMu.Lock()
-			defer legacyMu.Unlock()
-			event := online.Event{Table: online.Table{Schema: "public", Name: "workload"}, CommitLSN: l.CommitLSN}
-			var image map[string]any
-			switch m := l.Message.(type) {
-			case *format.Snapshot:
-				if m.EventType != format.SnapshotEventTypeData {
-					return
-				}
-				snapshotOnce.Do(func() { close(snapshotStarted) })
-				event.Operation = online.Read
-				image = m.Data
-				event.CommitLSN = 0
-				event.Order = online.OrderToken{EndLSN: 1, Phase: 1}
-			case *format.Insert:
-				event.Operation = online.Insert
-				image = m.Decoded
-			case *format.Update:
-				event.Operation = online.Update
-				image = m.NewDecoded
-			case *format.Delete:
-				event.Operation = online.Delete
-				image = m.OldDecoded
-			default:
-				if l.Ack != nil {
-					_ = l.Ack()
-				}
-				return
-			}
-			key, err := online.IntegerKey(image, "id")
-			if err != nil {
-				select {
-				case sinkErrors <- err:
-				default:
-				}
-				return
-			}
-			event.Key = key
-			if event.Operation != online.Delete {
-				event.Image = image
-			}
-			if event.Operation == online.Read {
-				event.ID = online.READEventID("legacy-job", "legacy-attempt", event.Table, key)
-				legacyChunk += int64(len(image["payload"].(string)) + len(fmt.Sprint(image["id"])) + len(fmt.Sprint(image["value"])))
-				legacyReads++
-				if legacyReads%100 == 0 {
-					legacyPeak = max(legacyPeak, legacyChunk)
-					legacyChunk = 0
-				}
-			} else {
-				if lastXID != l.Xid {
-					lastXID = l.Xid
-					ordinal = 0
-				}
-				event.Order = online.OrderToken{EndLSN: l.CommitLSN, Ordinal: ordinal}
-				event.ID = online.CDCEventID(binding, l.CommitLSN, ordinal)
-				ordinal++
-			}
-			// Legacy snapshot ListenerContext intentionally has no Context. Use
-			// the fixture's cancellable lifetime, without changing legacy APIs.
-			parent := l.Context
-			if parent == nil {
-				parent = benchmarkCtx
-			}
-			call, cancel := context.WithTimeout(parent, 10*time.Second)
-			err = apply(call, event)
-			cancel()
-			if err != nil {
-				select {
-				case sinkErrors <- err:
-				default:
-				}
-				return
-			}
-			if l.Ack != nil {
-				_ = l.Ack()
-			}
-		})
+		adapter := &capacityLegacyAdapter{ctx: benchmarkCtx, apply: apply, errors: sinkErrors, binding: binding, snapshotStarted: snapshotStarted, snapshotOnce: &snapshotOnce}
+		legacyAdapter = adapter
+		legacy, err = cdc.NewConnector(benchmarkCtx, cfg, adapter.Listen)
 		require.NoError(t, err)
 		defer func() { stopBenchmark(); legacy.Close() }()
 	}
@@ -323,31 +247,134 @@ func runOnlineCapacity(t *testing.T, strategy config.SnapshotStrategy) {
 	var readMS float64
 	var readQueries int64
 	require.NoError(t, conn.QueryRow(context.Background(), `SELECT COALESCE(max(max_exec_time),0),COALESCE(sum(calls),0)::bigint FROM pg_stat_statements WHERE query ILIKE 'SELECT%workload%WHERE%' AND query NOT ILIKE '%to_jsonb%' AND query NOT ILIKE '%count(%' AND query NOT ILIKE '%max(%' AND query NOT ILIKE '%min(%'`).Scan(&readMS, &readQueries))
-	require.Greater(t, readQueries, int64(0))
-	require.Greater(t, readMS, 0.0)
+	require.Positive(t, readQueries)
+	require.Positive(t, readMS)
 	stats := online.Stats{}
 	if strategy == config.SnapshotStrategyOnline {
 		stats = r.Connector.Stats()
-		require.Greater(t, stats.PeakChunkRawBytes, int64(0))
+		require.Positive(t, stats.PeakChunkRawBytes)
 		require.LessOrEqual(t, stats.PeakChunkRawBytes, cfg.Snapshot.Online.ChunkBytes)
-		require.Greater(t, stats.PeakTransactionEncodedBytes, int64(0))
+		require.Positive(t, stats.PeakTransactionEncodedBytes)
 		require.LessOrEqual(t, stats.PeakTransactionEncodedBytes, cfg.Snapshot.Online.TransactionBytes)
-		require.Greater(t, stats.PeakQueueAndAssemblyEncodedBytes, int64(0))
+		require.Positive(t, stats.PeakQueueAndAssemblyEncodedBytes)
 		require.LessOrEqual(t, stats.PeakQueueAndAssemblyEncodedBytes, cfg.Snapshot.Online.QueueBytes)
 		require.Greater(t, stats.ReadQueries, int64(1))
 		require.Greater(t, stats.PeakReadLatency, time.Duration(0))
 	}
-	report := map[string]any{"strategy": strategy, "seed": 20261014, "rows": 10000, "payloadBytes": 1024, "chunkRows": 100, "durationSeconds": duration.Seconds(), "sourceTransactionsPerSecond": rate, "writes": writes.Load(), "deliveries": delivered.Load(), "peakWholeProcessHeapBytes": peakHeap, "peakWholeProcessRSSBytes": peakRSS, "peakMainSlotRetainedWALBytes": peakWAL, "peakConfirmedLagBytes": peakLag, "peakFeedbackAgeSeconds": peakFeedback, "peakTargetMicroseconds": targetPeak.Load(), "maxSourceReadExecutionMS": readMS, "sourceReadQueries": readQueries, "drainSeconds": time.Since(drainStart).Seconds(), "onlineStats": stats, "legacyDurableReadBatchRawBytes": legacyPeak, "sourceContainer": source.Container.GetContainerID(), "targetContainer": dest.Container.GetContainerID()}
+	report := map[string]any{"strategy": strategy, "seed": 20261014, "rows": 10000, "payloadBytes": 1024, "chunkRows": 100, "durationSeconds": duration.Seconds(), "sourceTransactionsPerSecond": rate, "writes": writes.Load(), "deliveries": delivered.Load(), "peakWholeProcessHeapBytes": peakHeap, "peakWholeProcessRSSBytes": peakRSS, "peakMainSlotRetainedWALBytes": peakWAL, "peakConfirmedLagBytes": peakLag, "peakFeedbackAgeSeconds": peakFeedback, "peakTargetMicroseconds": targetPeak.Load(), "maxSourceReadExecutionMS": readMS, "sourceReadQueries": readQueries, "drainSeconds": time.Since(drainStart).Seconds(), "onlineStats": stats, "legacyDurableReadBatchRawBytes": capacityLegacyPeak(legacyAdapter), "sourceContainer": source.Container.GetContainerID(), "targetContainer": dest.Container.GetContainerID()}
 	data, err := json.Marshal(report)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile("../specs/verifications/e01-evidence/capacity-current-"+string(strategy)+".json", append(data, '\n'), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(t.TempDir(), "capacity-current-"+string(strategy)+".json"), append(data, '\n'), 0600))
 	t.Log("CAPACITY " + string(data))
 }
 func processRSS() (int64, error) {
-	output, err := exec.Command("/bin/ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "/bin/ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output()
 	if err != nil {
 		return 0, err
 	}
 	n, err := strconv.ParseInt(strings.TrimSpace(string(output)), 10, 64)
 	return n * 1024, err
+}
+
+type capacityLegacyAdapter struct {
+	mu               sync.Mutex
+	ctx              context.Context
+	apply            func(context.Context, online.Event) error
+	errors           chan error
+	binding          string
+	snapshotStarted  chan struct{}
+	snapshotOnce     *sync.Once
+	lastXID, ordinal uint32
+	chunk, peak      int64
+	reads            int
+}
+
+func (a *capacityLegacyAdapter) Listen(l *replication.ListenerContext) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	event := online.Event{Table: online.Table{Schema: "public", Name: "workload"}, CommitLSN: l.CommitLSN}
+	var image map[string]any
+	switch m := l.Message.(type) {
+	case *format.Snapshot:
+		if m.EventType != format.SnapshotEventTypeData {
+			return
+		}
+		a.snapshotOnce.Do(func() { close(a.snapshotStarted) })
+		event.Operation = online.Read
+		image = m.Data
+		event.CommitLSN = 0
+		event.Order = online.OrderToken{EndLSN: 1, Phase: 1}
+	case *format.Insert:
+		event.Operation = online.Insert
+		image = m.Decoded
+	case *format.Update:
+		event.Operation = online.Update
+		image = m.NewDecoded
+	case *format.Delete:
+		event.Operation = online.Delete
+		image = m.OldDecoded
+	default:
+		if l.Ack != nil {
+			_ = l.Ack()
+		}
+		return
+	}
+	key, err := online.IntegerKey(image, "id")
+	if err != nil {
+		select {
+		case a.errors <- err:
+		default:
+		}
+		return
+	}
+	event.Key = key
+	if event.Operation != online.Delete {
+		event.Image = image
+	}
+	if event.Operation == online.Read {
+		event.ID = online.READEventID("legacy-job", "legacy-attempt", event.Table, key)
+		a.chunk += int64(len(image["payload"].(string)) + len(fmt.Sprint(image["id"])) + len(fmt.Sprint(image["value"])))
+		a.reads++
+		if a.reads%100 == 0 {
+			a.peak = max(a.peak, a.chunk)
+			a.chunk = 0
+		}
+	} else {
+		if a.lastXID != l.Xid {
+			a.lastXID = l.Xid
+			a.ordinal = 0
+		}
+		event.Order = online.OrderToken{EndLSN: l.CommitLSN, Ordinal: a.ordinal}
+		event.ID = online.CDCEventID(a.binding, l.CommitLSN, a.ordinal)
+		a.ordinal++
+	}
+	// Legacy snapshot ListenerContext intentionally has no Context. Use
+	// the fixture's cancellable lifetime, without changing legacy APIs.
+	parent := l.Context
+	if parent == nil {
+		parent = a.ctx
+	}
+	call, cancel := context.WithTimeout(parent, 10*time.Second)
+	err = a.apply(call, event)
+	cancel()
+	if err != nil {
+		select {
+		case a.errors <- err:
+		default:
+		}
+		return
+	}
+	if l.Ack != nil {
+		_ = l.Ack()
+	}
+}
+func capacityLegacyPeak(adapter *capacityLegacyAdapter) int64 {
+	if adapter == nil {
+		return 0
+	}
+	adapter.mu.Lock()
+	defer adapter.mu.Unlock()
+	return adapter.peak
 }

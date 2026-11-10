@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	cdc "github.com/Trendyol/go-pq-cdc"
 	"testing"
 	"time"
 
+	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/pq/snapshot/online"
 	"github.com/stretchr/testify/require"
 )

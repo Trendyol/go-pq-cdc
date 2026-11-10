@@ -18,20 +18,20 @@ import (
 func TestOnlineInitialDemo(t *testing.T) {
 	directory := t.TempDir()
 	binary := filepath.Join(directory, "online-demo")
-	build := exec.Command("go", "build", "-o", binary, "./example/online-initial-poc")
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "./example/online-initial-poc")
 	build.Dir = ".."
 	output, err := build.CombinedOutput()
 	require.NoError(t, err, string(output))
 	source := newOnlinePGFixture(t)
 	dest := newOnlinePGFixture(t)
 	conn := source.Connect(t)
-	print := exec.Command(binary, "-print-source-sql")
-	sql, err := print.Output()
+	printSQL := exec.CommandContext(t.Context(), binary, "-print-source-sql")
+	sql, err := printSQL.Output()
 	require.NoError(t, err)
 	require.Contains(t, string(sql), "CREATE SCHEMA")
 	onlineExec(t, conn, string(sql))
 	onlineExec(t, conn, `CREATE TABLE demo_rows(id bigint PRIMARY KEY,value text,payload jsonb); ALTER TABLE demo_rows REPLICA IDENTITY FULL; INSERT INTO demo_rows VALUES(1,'snapshot','{"n":9007199254740993}'),(2,'delete','null')`)
-	setup := exec.Command(binary, "-setup-target")
+	setup := exec.CommandContext(t.Context(), binary, "-setup-target")
 	setup.Env = append(os.Environ(), "CDC_ONLINE_TARGET_DSN="+dest.DSN)
 	output, err = setup.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -42,16 +42,13 @@ func TestOnlineInitialDemo(t *testing.T) {
 	file := filepath.Join(directory, "private-config.yaml")
 	require.NoError(t, os.WriteFile(file, data, 0600))
 	launch := func() *exec.Cmd {
-		cmd := exec.Command(binary, "-config", file)
+		cmd := exec.CommandContext(t.Context(), binary, "-config", file)
 		cmd.Env = append(os.Environ(), "CDC_ONLINE_TARGET_DSN="+dest.DSN)
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
 		require.NoError(t, cmd.Start())
 		t.Cleanup(func() {
-			if cmd.ProcessState == nil {
-				cmd.Process.Kill()
-				cmd.Wait()
-			}
+			cleanupTestProcess(t, cmd)
 		})
 		return cmd
 	}
@@ -63,7 +60,8 @@ func TestOnlineInitialDemo(t *testing.T) {
 		case err := <-done:
 			require.NoError(t, err)
 		case <-time.After(10 * time.Second):
-			cmd.Process.Kill()
+			killTestProcess(t, cmd)
+			requireTestProcessKilled(t, <-done)
 			t.Fatal("example graceful shutdown deadline")
 		}
 	}

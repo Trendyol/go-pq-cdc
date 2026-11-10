@@ -43,7 +43,6 @@ func TestOnlineSelectFailures(t *testing.T) {
 					}
 					return nil
 				}))
-				held = parked
 				// Acquire after read-start observation, after all schema checks, so this is
 				// SELECT's AccessShareLock wait, not a marker/catalog timeout.
 				defer func() {

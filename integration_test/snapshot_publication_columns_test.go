@@ -80,7 +80,7 @@ func TestSnapshotInitialWithPublicationColumnList(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -206,7 +206,7 @@ func TestSnapshotOnlyWithColumnList(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, tableName)
+		cleanupSnapshotOnlyTest(ctx, t, tableName)
 	})
 
 	go func() {
@@ -337,7 +337,7 @@ func TestSnapshotInitialMultipleTablesWithColumnLists(t *testing.T) {
 		postgresConn.Close(ctx)
 		// Clean up both tables via cleanupSnapshotTest for the slot/publication,
 		// then drop the second table separately.
-		cleanupSnapshotTest(t, ctx, tableA, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableA, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 		conn, cErr := newPostgresConn()
 		if cErr == nil {
 			_ = pgExec(ctx, conn, fmt.Sprintf("DROP TABLE IF EXISTS %s", tableB))

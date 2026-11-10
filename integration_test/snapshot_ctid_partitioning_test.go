@@ -78,7 +78,7 @@ func TestSnapshotCTIDPartitioning(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -95,8 +95,7 @@ func TestSnapshotCTIDPartitioning(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				switch m.EventType {
 				case format.SnapshotEventTypeBegin:
 					snapshotBeginReceived = true
@@ -175,9 +174,12 @@ func TestSnapshotCTIDPartitioning(t *testing.T) {
 
 		row := results[0].Rows[0]
 		var totalChunks, completedChunks, totalRows int
-		fmt.Sscanf(string(row[0]), "%d", &totalChunks)
-		fmt.Sscanf(string(row[1]), "%d", &completedChunks)
-		fmt.Sscanf(string(row[2]), "%d", &totalRows)
+		_, err = fmt.Sscanf(string(row[0]), "%d", &totalChunks)
+		require.NoError(t, err)
+		_, err = fmt.Sscanf(string(row[1]), "%d", &completedChunks)
+		require.NoError(t, err)
+		_, err = fmt.Sscanf(string(row[2]), "%d", &totalRows)
+		require.NoError(t, err)
 
 		assert.Equal(t, totalChunks, completedChunks, "All chunks should be completed")
 		assert.GreaterOrEqual(t, totalRows, 200, "Should process at least 200 rows")
@@ -271,8 +273,7 @@ func TestSnapshotCTIDVsOffset(t *testing.T) {
 
 	messageCh := make(chan any, 200)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -285,7 +286,7 @@ func TestSnapshotCTIDVsOffset(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -381,8 +382,7 @@ func TestSnapshotIntegerPKStillUsesRange(t *testing.T) {
 	snapshotEndReceived := false
 	messageCh := make(chan any, 200)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -394,7 +394,7 @@ func TestSnapshotIntegerPKStillUsesRange(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -506,8 +506,7 @@ func TestSnapshotExplicitCTIDOverride(t *testing.T) {
 	snapshotEndReceived := false
 	messageCh := make(chan any, 200)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -519,7 +518,7 @@ func TestSnapshotExplicitCTIDOverride(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -649,8 +648,7 @@ func TestSnapshotExplicitOffsetStrategy(t *testing.T) {
 	snapshotEndReceived := false
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -662,7 +660,7 @@ func TestSnapshotExplicitOffsetStrategy(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -754,8 +752,7 @@ func TestSnapshotCTIDConsistency(t *testing.T) {
 	messageCh := make(chan any, 1000)
 
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -767,7 +764,7 @@ func TestSnapshotCTIDConsistency(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -798,7 +795,7 @@ func TestSnapshotCTIDConsistency(t *testing.T) {
 	// === Assertions ===
 
 	t.Run("Verify All Rows Captured", func(t *testing.T) {
-		assert.Equal(t, initialRows, len(snapshotDataReceived),
+		assert.Len(t, snapshotDataReceived, initialRows,
 			"Should capture exactly the number of inserted rows")
 		t.Logf("✅ Captured %d/%d rows", len(snapshotDataReceived), initialRows)
 	})
@@ -931,7 +928,8 @@ func TestSnapshotCTIDNoDataLoss(t *testing.T) {
 	countResults, err := execQuery(ctx, postgresConn, countQuery)
 	require.NoError(t, err)
 	var dbRowCount int
-	fmt.Sscanf(string(countResults[0].Rows[0][0]), "%d", &dbRowCount)
+	_, err = fmt.Sscanf(string(countResults[0].Rows[0][0]), "%d", &dbRowCount)
+	require.NoError(t, err)
 	t.Logf("📊 Database row count: %d", dbRowCount)
 
 	// Setup snapshot handler
@@ -940,8 +938,7 @@ func TestSnapshotCTIDNoDataLoss(t *testing.T) {
 	messageCh := make(chan any, 1000)
 
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -953,7 +950,7 @@ func TestSnapshotCTIDNoDataLoss(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -986,7 +983,7 @@ func TestSnapshotCTIDNoDataLoss(t *testing.T) {
 	// === Assertions ===
 
 	t.Run("Verify No Data Loss", func(t *testing.T) {
-		assert.Equal(t, dbRowCount, len(receivedIDs),
+		assert.Len(t, receivedIDs, dbRowCount,
 			"Snapshot should capture exactly %d rows, got %d", dbRowCount, len(receivedIDs))
 
 		// Verify all expected IDs are present
@@ -1015,7 +1012,8 @@ func TestSnapshotCTIDNoDataLoss(t *testing.T) {
 		require.NoError(t, err)
 
 		var chunkCount int
-		fmt.Sscanf(string(results[0].Rows[0][0]), "%d", &chunkCount)
+		_, err = fmt.Sscanf(string(results[0].Rows[0][0]), "%d", &chunkCount)
+		require.NoError(t, err)
 
 		assert.Greater(t, chunkCount, 1, "Should have multiple chunks for proper CTID testing")
 		t.Logf("✅ Used %d chunks", chunkCount)

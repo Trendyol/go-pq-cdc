@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 
+	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -43,55 +43,13 @@ func ValidatePublication(ctx context.Context, conn *pgx.Conn, name string) ([]Ta
 	if all || schemaWide || !insert || !update || !del || !truncate {
 		return nil, fmt.Errorf("%w: require explicit I/U/D/TRUNCATE publication", ErrSchema)
 	}
-	rows, err := conn.Query(ctx, `SELECT n.nspname,c.relname,c.oid,pr.prqual IS NOT NULL,pr.prattrs IS NOT NULL FROM pg_publication_rel pr JOIN pg_publication p ON p.oid=pr.prpubid JOIN pg_class c ON c.oid=pr.prrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE p.pubname=$1 ORDER BY n.nspname,c.relname`, name)
+	tables, err := publishedBusinessTables(ctx, conn, name)
 	if err != nil {
 		return nil, err
 	}
-	type entry struct {
-		table Table
-		oid   uint32
-	}
-	var entries []entry
-	watermark := false
-	for rows.Next() {
-		var e entry
-		var filter, columns bool
-		if err = rows.Scan(&e.table.Schema, &e.table.Name, &e.oid, &filter, &columns); err != nil {
-			break
-		}
-		if filter || columns {
-			err = fmt.Errorf("%w: filtered/column-listed %s", ErrSchema, quoteTable(e.table))
-			break
-		}
-		if e.table.Schema == "cdc_online" {
-			if e.table.Name != "watermarks" {
-				err = fmt.Errorf("%w: progress table published", ErrSchema)
-				break
-			}
-			watermark = true
-			continue
-		}
-		entries = append(entries, e)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	if !watermark {
-		return nil, fmt.Errorf("%w: cdc_online.watermarks publication membership required", ErrSchema)
-	}
-	if err = EnsureWatermarkPublication(ctx, conn, name, false); err != nil {
-		return nil, err
-	}
-	if len(entries) == 0 {
-		return nil, fmt.Errorf("%w: no business tables", ErrSchema)
-	}
-	result := make([]TableSchema, 0, len(entries))
-	for _, e := range entries {
-		s, e2 := InspectTable(ctx, conn, e.table)
+	result := make([]TableSchema, 0, len(tables))
+	for _, table := range tables {
+		s, e2 := InspectTable(ctx, conn, table)
 		if e2 != nil {
 			return nil, e2
 		}
@@ -113,33 +71,9 @@ func InspectTable(ctx context.Context, conn *pgx.Conn, table Table) (TableSchema
 	if kind != "r" || identity != "f" || partition || rls || inherits {
 		return fail("require ordinary FULL table without partitions/inheritance/RLS")
 	}
-	rows, err := conn.Query(ctx, `SELECT attname,atttypid,atttypmod,attnotnull,attgenerated::text,attndims FROM pg_attribute WHERE attrelid=$1 AND attnum>0 AND NOT attisdropped ORDER BY attnum`, s.OID)
+	s.Columns, err = inspectedColumns(ctx, conn, s.OID)
 	if err != nil {
 		return s, err
-	}
-	for rows.Next() {
-		var c Column
-		var generated string
-		var dimensions int16
-		if err = rows.Scan(&c.Name, &c.OID, &c.Modifier, &c.NotNull, &generated, &dimensions); err != nil {
-			break
-		}
-		if generated != "" {
-			err = ErrSchema
-			break
-		}
-		if !tuple.OnlineBusinessOID(c.OID) || dimensions > 1 {
-			err = fmt.Errorf("%w: business column %s OID %d is unqualified; POC allows bool/integer/text/float/JSON scalars and 1D arrays only (UUID is control-only)", ErrSchema, c.Name, c.OID)
-			break
-		}
-		s.Columns = append(s.Columns, c)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		return s, fmt.Errorf("%w: generated or unreadable columns: %w", ErrSchema, err)
 	}
 	var keys []string
 	var valid bool
@@ -197,4 +131,87 @@ func (s TableSchema) ValidateImage(image map[string]any) error {
 		}
 	}
 	return nil
+}
+
+func publishedBusinessTables(ctx context.Context, conn *pgx.Conn, name string) ([]Table, error) {
+	rows, err := conn.Query(ctx, `SELECT n.nspname,c.relname,c.oid,pr.prqual IS NOT NULL,pr.prattrs IS NOT NULL FROM pg_publication_rel pr JOIN pg_publication p ON p.oid=pr.prpubid JOIN pg_class c ON c.oid=pr.prrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE p.pubname=$1 ORDER BY n.nspname,c.relname`, name)
+	if err != nil {
+		return nil, err
+	}
+	type entry struct {
+		table Table
+		oid   uint32
+	}
+	var tables []Table
+	watermark := false
+	for rows.Next() {
+		var e entry
+		var filter, columns bool
+		if err = rows.Scan(&e.table.Schema, &e.table.Name, &e.oid, &filter, &columns); err != nil {
+			break
+		}
+		if filter || columns {
+			err = fmt.Errorf("%w: filtered/column-listed %s", ErrSchema, quoteTable(e.table))
+			break
+		}
+		if e.table.Schema == metadataSchema {
+			if e.table.Name != watermarkTable {
+				err = fmt.Errorf("%w: progress table published", ErrSchema)
+				break
+			}
+			watermark = true
+			continue
+		}
+		tables = append(tables, e.table)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if !watermark {
+		return nil, fmt.Errorf("%w: cdc_online.watermarks publication membership required", ErrSchema)
+	}
+	if err = EnsureWatermarkPublication(ctx, conn, name, false); err != nil {
+		return nil, err
+	}
+	if len(tables) == 0 {
+		return nil, fmt.Errorf("%w: no business tables", ErrSchema)
+	}
+	return tables, nil
+}
+
+func inspectedColumns(ctx context.Context, conn *pgx.Conn, oid uint32) ([]Column, error) {
+	var columns []Column
+	rows, err := conn.Query(ctx, `SELECT attname,atttypid,atttypmod,attnotnull,attgenerated::text,attndims FROM pg_attribute WHERE attrelid=$1 AND attnum>0 AND NOT attisdropped ORDER BY attnum`, oid)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var c Column
+		var generated string
+		var dimensions int16
+		if err = rows.Scan(&c.Name, &c.OID, &c.Modifier, &c.NotNull, &generated, &dimensions); err != nil {
+			break
+		}
+		if generated != "" {
+			err = ErrSchema
+			break
+		}
+		if !tuple.OnlineBusinessOID(c.OID) || dimensions > 1 {
+			err = fmt.Errorf("%w: business column %s OID %d is unqualified; POC allows bool/integer/text/float/JSON scalars and 1D arrays only (UUID is control-only)", ErrSchema, c.Name, c.OID)
+			break
+		}
+		columns = append(columns, c)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return nil, fmt.Errorf("%w: generated or unreadable columns: %w", ErrSchema, err)
+	}
+	return columns, nil
 }

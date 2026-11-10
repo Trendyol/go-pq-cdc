@@ -1,4 +1,8 @@
-# Online initial snapshot: opt-in POC
+# Online initial snapshot: durable sink example
+
+Read the [online snapshot guide](../../docs/ONLINE_SNAPSHOT.md) before deployment.
+Its [validation section](../../docs/ONLINE_SNAPSHOT.md#validation) lists test and security-check commands.
+This example remains a contract demonstration, not a universal production adapter.
 
 This example uses a **separate durable PostgreSQL target cluster**, not a print/enqueue callback. Nil from its handler means identity ledger + full-image versioned projection committed with synchronous_commit=on. DELETE leaves a versioned tombstone. Keep the ledger for the entire job; do not prune it on restart. This is a test-contract demonstration, not a production sink adapter or exactly-once transport.
 
@@ -61,7 +65,7 @@ A new job requires a **fresh connector-created slot**. An existing unbound slot 
 
 READ IDs are job/attempt/table/key and their order is `(HIGH end LSN,1,selected ordinal)`; `CommitLSN` is zero. CDC IDs are stable slot binding/end LSN/ordinal and use phase 0. A restart can repeat older deliveries; the target rejects stale effects and inconsistent ID reuse. Source ACK advances only after synchronous delivery and committed metadata, with unresolved windows held at LOW.
 
-Limits are provisional experimental defaults, not production recommendations. Encoded-byte limits do not bound total heap/RSS. Feedback uses a 1s interval; provision/qualify wal_sender_timeout comfortably above it and the write deadlines. Review `specs/verifications/e01-POC-RESULT.md` for executed evidence and unmet qualification gates. Kafka/Elasticsearch adapters are not enabled.
+Limits are safety defaults, not throughput recommendations. Encoded-byte limits do not bound total heap/RSS. Feedback uses a 1s interval; provision wal_sender_timeout comfortably above it and the write deadlines. Kafka/Elasticsearch adapters are not enabled for this path.
 
 ## Image representation and observation
 
@@ -74,7 +78,7 @@ shape/bounds are checked before READ/envelope delivery. Domains, custom,
 composite, enum, range, numeric, temporal, bytea and business UUID columns are
 rejected at startup. Unknown OIDs never silently fall back to wire strings.
 UUID is supported only for exact internal watermark control fields. This
-explicit POC profile is not full PostgreSQL type or production adapter coverage.
+restricted profile does not cover every PostgreSQL type or production adapter.
 
 `NewOnlineConnector` additionally accepts optional `WithOnlineObserver` for
 immutable metadata observations outside component locks. The observer must
@@ -83,11 +87,12 @@ committed at `COMPLETION_COMMITTED`, or an ACK already advanced at `ACK_ADVANCED
 Source confirmation is a separate server observation. `Stats()` returns actual
 raw chunk/read latency and encoded transaction/queue/cache counters, not total
 heap/RSS or unbounded delivery history. Default nil observer changes nothing.
+`Health()` reports the running lifecycle and capture/snapshot notifications.
+Register `MetricsCollector()` once in the host application's registry to export bounded online statistics.
+The online connector does not start an HTTP listener automatically.
 
 Both source metadata and this target's ledger/projection must be permanent
 relations. Rollback has a finite cleanup deadline; failed cleanup discards the
 connection. Startup/acquisition deadlines are separate from successful reader
-and owner lifetimes. The final root race/vet, full PG16 and explicit matched
-capacity gates now pass for this restricted POC. Earlier timeouts and fixture
-failures remain archived. Human UAT/production readiness and adapter enablement
-remain unconfirmed; consult the current POC result for exact executed evidence.
+and owner lifetimes. Verify the target deployment's storage, sink contract, permissions and recovery
+procedures before rollout. Passing library tests does not certify these conditions.

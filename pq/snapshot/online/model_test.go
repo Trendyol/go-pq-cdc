@@ -2,8 +2,9 @@ package online
 
 import (
 	"errors"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"testing"
+
+	"github.com/Trendyol/go-pq-cdc/pq"
 )
 
 func TestOnlineModel(t *testing.T) {

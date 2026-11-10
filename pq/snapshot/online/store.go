@@ -15,6 +15,12 @@ import (
 // Store owns a non-reconnecting, session-locked metadata connection. Observe
 // Done/Err and cancel the coordinator on loss. Chunk/marker SQL uses a distinct
 // connection; no business query or payload belongs on this connection.
+const (
+	jobStatusActive        = "active"
+	windowStatusRegistered = "registered"
+	windowStatusLow        = "low"
+)
+
 type Store struct {
 	mu       sync.Mutex
 	conn     *pgx.Conn
@@ -52,17 +58,21 @@ func OpenStoreWithStartupTimeout(ctx context.Context, dsn, slot string, timeout 
 	if err != nil {
 		return nil, err
 	}
-	fail := func(err error) (*Store, error) { _ = conn.Close(context.Background()); return nil, err }
+	fail := func(cause error) error {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		return errors.Join(cause, conn.Close(cleanup))
+	}
 	var locked bool
 	err = conn.QueryRow(startup, `SELECT pg_try_advisory_lock(hashtextextended(current_database()||':cdc_online:'||$1,0))`, slot).Scan(&locked)
 	if err != nil {
-		return fail(err)
+		return nil, fail(err)
 	}
 	if !locked {
-		return fail(ErrOwned)
+		return nil, fail(ErrOwned)
 	}
 	if err = ValidateProvisioned(startup, conn); err != nil {
-		return fail(err)
+		return nil, fail(err)
 	}
 	run, cancel := context.WithCancel(ctx)
 	store := &Store{conn: conn, slot: slot, done: make(chan struct{}), stopped: make(chan struct{}), cancel: cancel, pid: conn.PgConn().PID()}
@@ -90,7 +100,11 @@ func (s *Store) watch(ctx context.Context) {
 			if s.terminal == nil {
 				s.failLocked(ctx.Err())
 			}
-			_ = s.conn.Close(context.Background())
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			if err := s.conn.Close(cleanup); err != nil {
+				s.terminal = errors.Join(s.terminal, err)
+			}
+			cancel()
 			s.mu.Unlock()
 			return
 		case <-timer.C:
@@ -203,7 +217,7 @@ func (s *Store) CreateJob(ctx context.Context, j Job) error {
 	if j.Slot != s.slot || j.Generation != 1 || j.Checkpoint == 0 || j.Source.SystemID == "" || j.Source.Database == "" || j.Source.Timeline <= 0 || j.ConfigFingerprint == "" {
 		return ErrBinding
 	}
-	if j.Status != "" && j.Status != "active" {
+	if j.Status != "" && j.Status != jobStatusActive {
 		return ErrBinding
 	}
 	marker, err := NewID()
@@ -257,7 +271,7 @@ func (s *Store) InitTable(ctx context.Context, jobID string, generation int64, p
 	if p.JobID != jobID || p.Table.Schema == "" || p.Table.Name == "" || p.SchemaFingerprint == "" || p.KeyFingerprint == "" || p.Cursor != nil || p.Complete {
 		return ErrConditional
 	}
-	if p.Table.Schema == "cdc_online" {
+	if p.Table.Schema == metadataSchema {
 		return ErrConditional
 	}
 	return s.transaction(ctx, nil, func(tx pgx.Tx) error {
@@ -268,7 +282,7 @@ func (s *Store) InitTable(ctx context.Context, jobID string, generation int64, p
 		if err = currentGeneration(j, jobID, generation); err != nil {
 			return err
 		}
-		if j.Status != "active" {
+		if j.Status != jobStatusActive {
 			return ErrConditional
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO cdc_online.table_progress(job_id,table_schema,table_name,schema_fingerprint,key_fingerprint,upper_key) VALUES($1::uuid,$2,$3,$4,$5,$6)`, jobID, p.Table.Schema, p.Table.Name, p.SchemaFingerprint, p.KeyFingerprint, p.UpperKey)
@@ -342,7 +356,7 @@ func (s *Store) RegisterAttempt(ctx context.Context, w Window) error {
 			return err
 		}
 	}
-	if w.LowID == w.HighID || w.LastKey != nil || w.LowEnd != 0 || w.HighEnd != 0 || w.LowEmitted || w.HighEmitted || (w.Status != "" && w.Status != "registered") {
+	if w.LowID == w.HighID || w.LastKey != nil || w.LowEnd != 0 || w.HighEnd != 0 || w.LowEmitted || w.HighEmitted || (w.Status != "" && w.Status != windowStatusRegistered) {
 		return ErrConditional
 	}
 	return s.transaction(ctx, nil, func(tx pgx.Tx) error {
@@ -353,7 +367,7 @@ func (s *Store) RegisterAttempt(ctx context.Context, w Window) error {
 		if err = currentGeneration(j, w.JobID, w.Generation); err != nil {
 			return err
 		}
-		if j.Status != "active" {
+		if j.Status != jobStatusActive {
 			return ErrConditional
 		}
 		p, err := getTable(ctx, tx, w.JobID, w.Table)
@@ -424,7 +438,7 @@ func (s *Store) RecordLOW(ctx context.Context, id string, generation int64, mark
 		if err != nil {
 			return err
 		}
-		if w.Status != "registered" || !w.LowEmitted || markerID != w.LowID || end == 0 || end <= j.Checkpoint {
+		if w.Status != windowStatusRegistered || !w.LowEmitted || markerID != w.LowID || end == 0 || end <= j.Checkpoint {
 			return ErrConditional
 		}
 		result, err := tx.Exec(ctx, `UPDATE cdc_online.windows SET status='low',low_end=$2::pg_lsn WHERE attempt_id=$1::uuid AND status='registered'`, id, end.String())
@@ -450,7 +464,7 @@ func (s *Store) RecordHIGH(ctx context.Context, id string, generation int64, mar
 		if err != nil {
 			return err
 		}
-		if w.Status != "low" || !w.HighEmitted || markerID != w.HighID || end <= w.LowEnd {
+		if w.Status != windowStatusLow || !w.HighEmitted || markerID != w.HighID || end <= w.LowEnd {
 			return ErrConditional
 		}
 		p, err := getTable(ctx, tx, w.JobID, w.Table)
@@ -519,7 +533,7 @@ func (s *Store) AbandonAttempt(ctx context.Context, id string, generation int64)
 		if err != nil {
 			return err
 		}
-		if w.Status != "registered" && w.Status != "low" && w.Status != "high" {
+		if w.Status != windowStatusRegistered && w.Status != windowStatusLow && w.Status != "high" {
 			return ErrConditional
 		}
 		result, err := tx.Exec(ctx, `UPDATE cdc_online.windows SET status='abandoned' WHERE attempt_id=$1::uuid AND status IN ('registered','low','high')`, id)
@@ -599,13 +613,13 @@ func (s *Store) emitWindow(ctx context.Context, sql *pgx.Conn, id string, genera
 		}
 		var statement, markerID string
 		if phase == Low {
-			if w.Status != "registered" || w.LowEmitted {
+			if w.Status != windowStatusRegistered || w.LowEmitted {
 				return ErrConditional
 			}
 			statement = `UPDATE cdc_online.windows SET low_emitted=true WHERE attempt_id=$1::uuid AND status='registered' AND NOT low_emitted`
 			markerID = w.LowID
 		} else {
-			if w.Status != "low" || w.HighEmitted {
+			if w.Status != windowStatusLow || w.HighEmitted {
 				return ErrConditional
 			}
 			statement = `UPDATE cdc_online.windows SET high_emitted=true WHERE attempt_id=$1::uuid AND status='low' AND NOT high_emitted`

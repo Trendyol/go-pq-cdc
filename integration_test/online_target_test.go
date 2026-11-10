@@ -315,7 +315,7 @@ func TestOnlineMetadataAttempts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, pq.LSN(160), loaded.Checkpoint)
 	require.Equal(t, "snapshot_complete", loaded.Status)
-	require.False(t, strings.Contains(sql, "jsonb"))
+	require.NotContains(t, sql, "jsonb")
 }
 
 func TestOnlineMetadataBoundaries(t *testing.T) {

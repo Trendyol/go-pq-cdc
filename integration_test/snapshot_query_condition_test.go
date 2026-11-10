@@ -92,7 +92,7 @@ func TestSnapshotQueryConditionGlobal(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -109,8 +109,7 @@ func TestSnapshotQueryConditionGlobal(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				snapshotDataReceived = append(snapshotDataReceived, m.Data)
 			}
 		case <-timeout:
@@ -256,11 +255,8 @@ func TestSnapshotQueryConditionPerTable(t *testing.T) {
 
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
-			if msg.EventType == format.SnapshotEventTypeData {
-				messageCh <- msg
-			}
+		if msg, ok := ctx.Message.(*format.Snapshot); ok && msg.EventType == format.SnapshotEventTypeData {
+			messageCh <- msg
 		}
 		_ = ctx.Ack()
 	}
@@ -271,8 +267,8 @@ func TestSnapshotQueryConditionPerTable(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, table1Name, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
-		cleanupSnapshotTest(t, ctx, table2Name, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, table1Name, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, table2Name, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -289,8 +285,7 @@ func TestSnapshotQueryConditionPerTable(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				tableKey := fmt.Sprintf("%s.%s", m.Schema, m.Table)
 				snapshotDataByTable[tableKey] = append(snapshotDataByTable[tableKey], m.Data)
 			}
@@ -348,4 +343,3 @@ func TestSnapshotQueryConditionPerTable(t *testing.T) {
 		assert.False(t, ids[2], "Should NOT include Order2 (id=2, status=cancelled)")
 	})
 }
-

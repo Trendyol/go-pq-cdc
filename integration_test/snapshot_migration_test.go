@@ -128,7 +128,7 @@ func TestSnapshotSchemaMigration(t *testing.T) {
 
 	t.Cleanup(func() {
 		connector.Close()
-		cleanupSnapshotTest(t, ctx, tableName, slotName, pubName)
+		cleanupSnapshotTest(ctx, t, tableName, slotName, pubName)
 	})
 
 	go connector.Start(ctx)
@@ -278,7 +278,7 @@ func TestSnapshotIdempotentMigration(t *testing.T) {
 	runConnector(3)
 
 	// Cleanup
-	cleanupSnapshotOnlyTest(t, ctx, tableName)
+	cleanupSnapshotOnlyTest(ctx, t, tableName)
 
 	// Verify schema is correct
 	results, err := execQuery(ctx, postgresConn, `
@@ -288,7 +288,8 @@ func TestSnapshotIdempotentMigration(t *testing.T) {
 	`)
 	require.NoError(t, err)
 	var columnCount int
-	fmt.Sscanf(string(results[0].Rows[0][0]), "%d", &columnCount)
+	_, err = fmt.Sscanf(string(results[0].Rows[0][0]), "%d", &columnCount)
+	require.NoError(t, err)
 	assert.Greater(t, columnCount, 10, "should have all columns including migrated ones")
 
 	t.Log("✅ Idempotent migration successful - multiple runs cause no issues")

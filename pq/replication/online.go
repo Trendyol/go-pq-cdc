@@ -138,11 +138,7 @@ func onlineWrite(ctx context.Context, conn net.Conn, write func() error) error {
 	return errors.Join(err, resetErr)
 }
 
-// OnlineReader owns replication I/O and the primary guard. Next is serialized;
-// it never returns a transaction before COMMIT and primary SQL visibility.
-// There is no auto-ACK (including control/heartbeat DML), retry or reconnect.
-// The caller owns returned envelopes and durable completion; reader accounting
-// stops when Next returns. Retain only bounded coordinator work after that.
+// OnlineReaderStats reports bounded encoded-byte and safe-feedback counters.
 type OnlineReaderStats struct {
 	PeakTransactionEncodedBytes, PeakQueueAndAssemblyEncodedBytes, PeakRelationEncodedBytes, BufferedEncodedBytes int64
 	SafeACK                                                                                                       pq.LSN
@@ -150,6 +146,9 @@ type OnlineReaderStats struct {
 	LastFeedback                                                                                                  time.Time
 }
 
+// OnlineReader owns replication I/O and the primary guard. Next waits for
+// COMMIT and primary visibility; there is no automatic ACK, retry or reconnect.
+// Callers own returned immutable envelopes and bounded durable-delivery work.
 type OnlineReader struct {
 	options         OnlineReaderOptions
 	transport       onlineTransport
@@ -188,72 +187,76 @@ func StartOnlineReaderWithStartupTimeout(ctx context.Context, o OnlineReaderOpti
 	if err := o.Validate(); err != nil {
 		return nil, err
 	}
-	// pgconn.Connect has no transparent retry/reconnect. Wrapping the already
-	// connected pgconn reuses the existing connection/query/replication utilities.
-	replicationConfig, err := pgconn.ParseConfig(o.ReplicationDSN)
-	if err != nil {
-		return nil, err
-	}
-	if err = pq.LimitOnlineFrontend(replicationConfig, o.Limits.QueueBytes); err != nil {
-		return nil, err
-	}
-	raw, err := pgconn.ConnectConfig(startup, replicationConfig)
+	conn, err := openOnlineConnection(startup, o.ReplicationDSN, o.Limits.QueueBytes)
 	if err != nil {
 		return nil, fmt.Errorf("online replication connect: %w", err)
 	}
-	conn := &onlineConnected{raw}
-	cleanup := func() {
-		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = conn.Close(closeCtx)
+	if err = checkOnlineIdentity(startup, conn, o.Source); err != nil {
+		return nil, errors.Join(err, closeOnlineResource(ctx, conn.Close))
 	}
-	source, err := pq.IdentifySystem(startup, conn)
+	gate, err := openOnlineGuard(startup, o)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("online IDENTIFY_SYSTEM: %w", err)
+		return nil, errors.Join(err, closeOnlineResource(ctx, conn.Close))
 	}
-	if source.SystemID != o.Source.SystemID || source.Database != o.Source.Database || source.Timeline != o.Source.Timeline {
-		cleanup()
-		return nil, errors.New("online replication source identity mismatch")
-	}
-	sqlConfig, err := pgconn.ParseConfig(o.SQLDSN)
-	if err != nil {
-		cleanup()
-		return nil, err
-	}
-	if err = pq.LimitOnlineFrontend(sqlConfig, o.Limits.QueueBytes); err != nil {
-		cleanup()
-		return nil, err
-	}
-	sqlRaw, err := pgconn.ConnectConfig(startup, sqlConfig)
-	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("online primary guard connect: %w", err)
-	}
-	sqlConn := &onlineConnected{sqlRaw}
-	gate, err := openOnlineVisibilityGate(startup, sqlConn, o)
-	if err != nil {
-		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = sqlConn.Close(closeCtx)
-		cancel()
-		cleanup()
-		return nil, err
-	}
-	replication := New(conn)
-	// Publication names are an identifier list inside a SQL literal, not raw SQL.
-	publication := strings.ReplaceAll(libpq.QuoteIdentifier(o.Publication), "'", "''")
-	err = onlineWrite(startup, conn.Conn(), func() error { return replication.Start(publication, o.Slot, o.StartLSN, 1) })
-	if err == nil {
-		err = replication.Test(startup)
-	}
-	if err != nil {
-		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = gate.close(closeCtx)
-		cancel()
-		cleanup()
-		return nil, fmt.Errorf("online START_REPLICATION: %w", err)
+	if err = negotiateOnlineReplication(startup, conn, o); err != nil {
+		return nil, errors.Join(fmt.Errorf("online START_REPLICATION: %w", err), closeOnlineResource(ctx, gate.close), closeOnlineResource(ctx, conn.Close))
 	}
 	return newOnlineReader(ctx, o, onlinePGTransport{conn}, gate), nil
+}
+
+func closeOnlineResource(ctx context.Context, closeResource func(context.Context) error) error {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return closeResource(cleanup)
+}
+
+func openOnlineConnection(ctx context.Context, dsn string, budget int64) (*onlineConnected, error) {
+	config, err := pgconn.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err = pq.LimitOnlineFrontend(config, budget); err != nil {
+		return nil, err
+	}
+	raw, err := pgconn.ConnectConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	return &onlineConnected{raw}, nil
+}
+
+func checkOnlineIdentity(ctx context.Context, conn *onlineConnected, expected OnlineSourceIdentity) error {
+	source, err := pq.IdentifySystem(ctx, conn)
+	if err != nil {
+		return fmt.Errorf("online IDENTIFY_SYSTEM: %w", err)
+	}
+	if source.SystemID != expected.SystemID || source.Database != expected.Database || source.Timeline != expected.Timeline {
+		return errors.New("online replication source identity mismatch")
+	}
+	return nil
+}
+
+func openOnlineGuard(ctx context.Context, options OnlineReaderOptions) (*onlineVisibilityGate, error) {
+	conn, err := openOnlineConnection(ctx, options.SQLDSN, options.Limits.QueueBytes)
+	if err != nil {
+		return nil, fmt.Errorf("online primary guard connect: %w", err)
+	}
+	gate, err := openOnlineVisibilityGate(ctx, conn, options)
+	if err != nil {
+		return nil, errors.Join(err, closeOnlineResource(ctx, conn.Close))
+	}
+	return gate, nil
+}
+
+func negotiateOnlineReplication(ctx context.Context, conn *onlineConnected, options OnlineReaderOptions) error {
+	replication := New(conn)
+	// Identifier list inside a SQL literal, never raw publication SQL.
+	publication := strings.ReplaceAll(libpq.QuoteIdentifier(options.Publication), "'", "''")
+	err := onlineWrite(ctx, conn.Conn(), func() error { return replication.Start(publication, options.Slot, options.StartLSN, 1) })
+	if err != nil {
+		return err
+	}
+	return replication.Test(ctx)
 }
 
 type onlineConnected struct{ *pgconn.PgConn }
@@ -327,17 +330,8 @@ func (r *OnlineReader) AdvanceSafeACK(lsn pq.LSN) error {
 // Any cancellation/error is terminal for this reader, including Next's context;
 // callers restart through the job/slot fencing protocol, never by retrying SQL.
 func (r *OnlineReader) Next(ctx context.Context) (*OnlineCommittedEnvelope, error) {
-	select {
-	case <-ctx.Done():
-		r.fail(ctx.Err())
-		return nil, ctx.Err()
-	case <-r.ctx.Done():
-		err := r.Err()
-		if err == nil {
-			err = r.ctx.Err()
-		}
+	if err := r.acquireNext(ctx); err != nil {
 		return nil, err
-	case <-r.nextOwner:
 	}
 	defer func() { r.nextOwner <- struct{}{} }()
 	nextCtx, cancel := context.WithCancel(r.ctx)
@@ -349,48 +343,14 @@ func (r *OnlineReader) Next(ctx context.Context) (*OnlineCommittedEnvelope, erro
 			r.fail(err)
 			return nil, err
 		}
-		r.mu.Lock()
-		if r.terminal != nil {
-			err := r.terminal
-			r.mu.Unlock()
-			return nil, err
-		}
-		if err := r.ctx.Err(); err != nil {
-			r.mu.Unlock()
+		env, err := r.takeEnvelope()
+		if err != nil {
 			r.fail(err)
 			return nil, err
 		}
-		if len(r.queue) > 0 {
-			env := r.queue[0]
-			r.queue[0] = nil
-			r.queue = r.queue[1:]
-			r.mu.Unlock()
-			err := r.gate.wait(nextCtx, env.XID)
-			if ctx.Err() != nil {
-				err = ctx.Err()
-			}
-			if err != nil {
-				r.fail(err)
-				return nil, err
-			}
-			r.mu.Lock()
-			if r.terminal != nil {
-				err = r.terminal
-				r.mu.Unlock()
-				return nil, err
-			}
-			if err = r.ctx.Err(); err != nil {
-				r.mu.Unlock()
-				r.fail(err)
-				return nil, err
-			}
-			r.buffered -= env.EncodedBytes
-			r.consumed = env.EndLSN
-			r.mu.Unlock()
-			r.notify()
-			return env, nil
+		if env != nil {
+			return r.gateEnvelope(ctx, nextCtx, env)
 		}
-		r.mu.Unlock()
 		select {
 		case <-nextCtx.Done():
 			err := ctx.Err()
@@ -405,6 +365,68 @@ func (r *OnlineReader) Next(ctx context.Context) (*OnlineCommittedEnvelope, erro
 		case <-r.wake:
 		}
 	}
+}
+
+func (r *OnlineReader) acquireNext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		r.fail(ctx.Err())
+		return ctx.Err()
+	case <-r.ctx.Done():
+		if err := r.Err(); err != nil {
+			return err
+		}
+		return r.ctx.Err()
+	case <-r.nextOwner:
+		return nil
+	}
+}
+
+// Removed envelopes keep their queue charge until visibility certification.
+func (r *OnlineReader) takeEnvelope() (*OnlineCommittedEnvelope, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.terminal != nil {
+		return nil, r.terminal
+	}
+	if err := r.ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(r.queue) == 0 {
+		return nil, nil
+	}
+	env := r.queue[0]
+	r.queue[0] = nil
+	r.queue = r.queue[1:]
+	return env, nil
+}
+
+func (r *OnlineReader) gateEnvelope(ctx, nextCtx context.Context, env *OnlineCommittedEnvelope) (*OnlineCommittedEnvelope, error) {
+	err := r.gate.wait(nextCtx, env.XID)
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		r.fail(err)
+		return nil, err
+	}
+	r.mu.Lock()
+	if r.terminal != nil {
+		err = r.terminal
+	} else {
+		err = r.ctx.Err()
+	}
+	if err == nil {
+		r.buffered -= env.EncodedBytes
+		r.consumed = env.EndLSN
+	}
+	r.mu.Unlock()
+	if err != nil {
+		r.fail(err)
+		return nil, err
+	}
+	r.notify()
+	return env, nil
 }
 
 // Close cancels both owners and waits for connection closure. It never flushes
@@ -451,13 +473,9 @@ func (r *OnlineReader) run() {
 	r.queue = nil
 	r.buffered = 0
 	r.mu.Unlock()
-	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	ioErr := r.transport.close(closeCtx)
-	cancel()
+	ioErr := closeOnlineResource(r.ctx, r.transport.close)
 	<-r.nextOwner
-	closeCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	gateErr := r.gate.close(closeCtx)
-	cancel()
+	gateErr := closeOnlineResource(r.ctx, r.gate.close)
 	r.nextOwner <- struct{}{}
 	if ioErr != nil || gateErr != nil {
 		r.mu.Lock()
@@ -513,68 +531,96 @@ func (r *OnlineReader) readLoop() error {
 			}
 			return fmt.Errorf("online replication receive: %w", err)
 		}
-		switch m := raw.(type) {
-		case *pgproto3.NoticeResponse, *pgproto3.ParameterStatus:
-			continue
-		case *pgproto3.ErrorResponse:
-			return pgconn.ErrorResponseToPgError(m)
-		case *pgproto3.CopyData:
-			if len(m.Data) == 0 {
-				return fmt.Errorf("%w: empty CopyData", ErrOnlineProtocol)
-			}
-			switch m.Data[0] {
-			case 'k':
-				keepalive, err := format.NewPrimaryKeepaliveMessage(m.Data[1:])
-				if err != nil {
-					return fmt.Errorf("%w: %v", ErrOnlineProtocol, err)
-				}
-				if m.Data[17] > 1 {
-					return fmt.Errorf("%w: invalid keepalive reply flag", ErrOnlineProtocol)
-				}
-				if keepalive.ReplyRequested {
-					if err = r.sendFeedback(); err != nil {
-						return err
-					}
-					nextFeedback = time.Now().Add(r.options.Limits.FeedbackInterval)
-				}
-			case 'w':
-				xld, err := ParseXLogData(m.Data[1:])
-				if err != nil {
-					return fmt.Errorf("%w: %v", ErrOnlineProtocol, err)
-				}
-				env, err := a.accept(xld)
-				if err != nil {
-					return err
-				}
-				r.mu.Lock()
-				active := int64(0)
-				if a.tx != nil {
-					active = a.tx.EncodedBytes
-				}
-				size := active
-				if env != nil {
-					size = env.EncodedBytes
-				}
-				r.stats.PeakTransactionEncodedBytes = max(r.stats.PeakTransactionEncodedBytes, size)
-				r.stats.PeakQueueAndAssemblyEncodedBytes = max(r.stats.PeakQueueAndAssemblyEncodedBytes, r.buffered+size)
-				r.stats.PeakRelationEncodedBytes = max(r.stats.PeakRelationEncodedBytes, a.metadataBytes)
-				r.mu.Unlock()
-				if env != nil {
-					if env.EndLSN <= lastEnd {
-						return fmt.Errorf("%w: non-increasing transaction end LSN", ErrOnlineProtocol)
-					}
-					lastEnd = env.EndLSN
-					r.mu.Lock()
-					r.queue = append(r.queue, env)
-					r.buffered += env.EncodedBytes
-					r.mu.Unlock()
-					r.notify()
-				}
-			default:
-				return fmt.Errorf("%w: unknown CopyData kind", ErrOnlineProtocol)
-			}
-		default:
-			return fmt.Errorf("%w: unexpected backend message %T", ErrOnlineProtocol, raw)
+		lastEnd, nextFeedback, err = r.dispatchOnlineMessage(raw, a, lastEnd, nextFeedback)
+		if err != nil {
+			return err
 		}
 	}
+}
+
+func (r *OnlineReader) handleOnlineKeepalive(data []byte) (bool, error) {
+	keepalive, err := format.NewPrimaryKeepaliveMessage(data[1:])
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrOnlineProtocol, err)
+	}
+	if data[17] > 1 {
+		return false, fmt.Errorf("%w: invalid keepalive reply flag", ErrOnlineProtocol)
+	}
+	if !keepalive.ReplyRequested {
+		return false, nil
+	}
+	if err = r.sendFeedback(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *OnlineReader) acceptOnlineXLog(a *onlineAssembler, data []byte, lastEnd pq.LSN) (pq.LSN, error) {
+	xld, err := ParseXLogData(data[1:])
+	if err != nil {
+		return lastEnd, fmt.Errorf("%w: %w", ErrOnlineProtocol, err)
+	}
+	env, err := a.accept(xld)
+	if err != nil {
+		return lastEnd, err
+	}
+	r.mu.Lock()
+	active := int64(0)
+	if a.tx != nil {
+		active = a.tx.EncodedBytes
+	}
+	size := active
+	if env != nil {
+		size = env.EncodedBytes
+	}
+	r.stats.PeakTransactionEncodedBytes = max(r.stats.PeakTransactionEncodedBytes, size)
+	r.stats.PeakQueueAndAssemblyEncodedBytes = max(r.stats.PeakQueueAndAssemblyEncodedBytes, r.buffered+size)
+	r.stats.PeakRelationEncodedBytes = max(r.stats.PeakRelationEncodedBytes, a.metadataBytes)
+	r.mu.Unlock()
+	if env != nil {
+		if env.EndLSN <= lastEnd {
+			return lastEnd, fmt.Errorf("%w: non-increasing transaction end LSN", ErrOnlineProtocol)
+		}
+		lastEnd = env.EndLSN
+		r.mu.Lock()
+		r.queue = append(r.queue, env)
+		r.buffered += env.EncodedBytes
+		r.mu.Unlock()
+		r.notify()
+	}
+	return lastEnd, nil
+}
+
+func (r *OnlineReader) dispatchOnlineMessage(raw pgproto3.BackendMessage, a *onlineAssembler, lastEnd pq.LSN, nextFeedback time.Time) (pq.LSN, time.Time, error) {
+	switch m := raw.(type) {
+	case *pgproto3.NoticeResponse, *pgproto3.ParameterStatus:
+		return lastEnd, nextFeedback, nil
+	case *pgproto3.ErrorResponse:
+		return lastEnd, nextFeedback, pgconn.ErrorResponseToPgError(m)
+	case *pgproto3.CopyData:
+		if len(m.Data) == 0 {
+			return lastEnd, nextFeedback, fmt.Errorf("%w: empty CopyData", ErrOnlineProtocol)
+		}
+		switch m.Data[0] {
+		case 'k':
+			replied, err := r.handleOnlineKeepalive(m.Data)
+			if err != nil {
+				return lastEnd, nextFeedback, err
+			}
+			if replied {
+				nextFeedback = time.Now().Add(r.options.Limits.FeedbackInterval)
+			}
+		case 'w':
+			var err error
+			lastEnd, err = r.acceptOnlineXLog(a, m.Data, lastEnd)
+			if err != nil {
+				return lastEnd, nextFeedback, err
+			}
+		default:
+			return lastEnd, nextFeedback, fmt.Errorf("%w: unknown CopyData kind", ErrOnlineProtocol)
+		}
+	default:
+		return lastEnd, nextFeedback, fmt.Errorf("%w: unexpected backend message %T", ErrOnlineProtocol, raw)
+	}
+	return lastEnd, nextFeedback, nil
 }

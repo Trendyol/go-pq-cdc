@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"log"
@@ -35,66 +36,73 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv(replicationDisconnectHelperEnv) == "1" {
+		os.Exit(runReplicationDisconnectHelper())
+	}
 	if os.Getenv("CDC_ONLINE_HELPER") != "" {
 		os.Exit(runOnlineHelper())
 	}
+	code, err := runIntegrationSuite(m.Run)
+	if err != nil {
+		log.Print(err)
+		code = 1
+	}
+	os.Exit(code)
+}
+
+// Return through every fixture defer before TestMain exits. Cleanup failure
+// makes even an otherwise passing suite nonzero; helper dispatch stays above.
+func runIntegrationSuite(run func() int) (code int, returned error) {
 	var err error
 	Config, err = config.ReadConfigYAML("./test_connector.yaml")
 	if err != nil {
-		log.Fatal(err)
+		return 1, err
 	}
 	Config.SetDefault()
-
 	ctx := context.Background()
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Podman: disable Ryuk
+	if err = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
+		return 1, err
+	}
 	Network, err = network.New(ctx)
 	if err != nil {
-		log.Fatal("create test network", err)
+		return 1, fmt.Errorf("create test network: %w", err)
 	}
 	defer func() {
-		if err = Network.Remove(ctx); err != nil {
-			log.Fatal("remove test network", err)
-		}
+		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		returned = stderrors.Join(returned, Network.Remove(cleanup))
 	}()
 	Container, err = SetupTestContainer(ctx, Config)
 	if err != nil {
-		log.Fatal("setup test container", err)
+		return 1, fmt.Errorf("setup test container: %w", err)
 	}
 	defer func() {
-		err = Container.Terminate(ctx)
-		if err != nil {
-			log.Fatal("terminate test container", err)
-		}
+		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		returned = stderrors.Join(returned, Container.Terminate(cleanup))
 	}()
-
 	mappedPort, err := Container.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		log.Fatal("get mapped port", err)
+		return 1, fmt.Errorf("get mapped port: %w", err)
 	}
 	Config.Host = "localhost"
 	Config.Port = mappedPort.Int()
-
 	conn, err := newPostgresConn()
 	if err != nil {
-		log.Fatal(err)
+		return 1, err
 	}
 	defer func() {
-		err = conn.Close(ctx)
-		if err != nil {
-			log.Fatal(err)
-		}
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		returned = stderrors.Join(returned, conn.Close(cleanup))
 	}()
-
-	err = createCDCUser(ctx, conn, Config)
-	if err != nil {
-		log.Fatal(err)
+	if err = createCDCUser(ctx, conn, Config); err != nil {
+		return 1, err
 	}
-
 	if err = allowReplicationConnections(ctx, conn); err != nil {
-		log.Fatal(err)
+		return 1, err
 	}
-
-	m.Run()
+	return run(), nil
 }
 
 func SetupTestContainer(ctx context.Context, cfg config.Config) (testcontainers.Container, error) {
@@ -292,7 +300,13 @@ func fetchUpdateOpMetric() (int, error) {
 }
 
 func fetchMetrics(metricName string) (string, error) {
-	resp, err := http.Get("http://localhost:8083/metrics")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8083/metrics", nil)
+	if err != nil {
+		return "", errors.Wrap(err, "create metrics request")
+	}
+	resp, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return "", errors.Wrap(err, "error fetching metrics")
 	}

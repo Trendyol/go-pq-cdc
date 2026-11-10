@@ -12,7 +12,6 @@ import (
 	"github.com/Trendyol/go-pq-cdc/internal/metric"
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
-	"github.com/go-playground/errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	libpq "github.com/lib/pq"
@@ -42,12 +41,18 @@ type Slot struct {
 	ticker          *time.Ticker
 	statusSQL       string
 	cfg             Config
-	mu              sync.Mutex
+	operationGate   chan struct{}
+	lifetimeOnce    sync.Once
+	lifetime        context.Context
+	cancelLifetime  context.CancelFunc
 	closed          atomic.Bool
 }
 
 func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, updater XLogUpdater) *Slot {
-	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = '%s';", cfg.Name)
+	if cfg.InfoTimeout == 0 {
+		cfg.InfoTimeout = DefaultInfoTimeout
+	}
+	query := fmt.Sprintf("SELECT slot_name, slot_type, active, active_pid, restart_lsn, confirmed_flush_lsn, wal_status, PG_CURRENT_WAL_LSN() AS current_lsn FROM pg_replication_slots WHERE slot_name = %s;", libpq.QuoteLiteral(cfg.Name))
 
 	return &Slot{
 		cfg:             cfg,
@@ -61,17 +66,24 @@ func NewSlot(replicationDSN, standardDSN string, cfg Config, m metric.Metric, up
 }
 
 func (s *Slot) Connect(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.conn.Connect(ctx)
+	call, release, err := s.beginOperation(ctx, 0)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return s.operationError(s.conn.Connect(call))
 }
 
 func (s *Slot) Create(ctx context.Context) (*Info, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	call, release, err := s.beginOperation(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	ctx = call
 
 	if err := s.conn.Connect(ctx); err != nil {
-		return nil, errors.Wrap(err, "slot connect")
+		return nil, fmt.Errorf("slot connect: %w", err)
 	}
 	defer func() {
 		_ = s.conn.Close(ctx)
@@ -86,7 +98,7 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 	info, err := s.infoLocked(ctx)
 	if err != nil {
 		if !goerrors.Is(err, ErrorSlotIsNotExists) || !s.cfg.CreateIfNotExists {
-			return nil, errors.Wrap(err, "replication slot info")
+			return nil, fmt.Errorf("replication slot info: %w", err)
 		}
 	} else {
 		logger.Warn("replication slot already exists")
@@ -101,7 +113,7 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 	// Slot needs replication connection for CREATE_REPLICATION_SLOT command
 	sql := createReplicationSlotCommand(s.cfg.Name, s.cfg.Failover)
 	if err := s.execReplicationCommand(ctx, sql); err != nil {
-		return nil, errors.Wrap(err, "replication slot create")
+		return nil, fmt.Errorf("replication slot create: %w", err)
 	}
 
 	logger.Info("replication slot created", "name", s.cfg.Name, "failover", s.cfg.Failover)
@@ -114,14 +126,14 @@ func (s *Slot) Create(ctx context.Context) (*Info, error) {
 func (s *Slot) checkFailoverSupportLocked(ctx context.Context) error {
 	raw, err := s.scalarLocked(ctx, "SHOW server_version_num")
 	if err != nil {
-		return errors.Wrap(err, "server version")
+		return fmt.Errorf("server version: %w", err)
 	}
 	version, err := strconv.Atoi(raw)
 	if err != nil {
-		return errors.Wrapf(err, "server version %q", raw)
+		return fmt.Errorf("server version %q: %w", raw, err)
 	}
 	if version < failoverMinServerVersion {
-		return errors.Newf("slot.failover requires PostgreSQL 17 or newer (server_version_num %d)", version)
+		return fmt.Errorf("slot.failover requires PostgreSQL 17 or newer (server_version_num %d)", version)
 	}
 	return nil
 }
@@ -131,9 +143,9 @@ func (s *Slot) checkFailoverSupportLocked(ctx context.Context) error {
 // walsender holds it (rolling deployment) the ALTER is skipped with a warning
 // and retried by the next Create.
 func (s *Slot) enableFailoverLocked(ctx context.Context, info *Info) error {
-	failover, err := s.scalarLocked(ctx, fmt.Sprintf("SELECT failover FROM pg_replication_slots WHERE slot_name = '%s'", s.cfg.Name))
+	failover, err := s.scalarLocked(ctx, fmt.Sprintf("SELECT failover FROM pg_replication_slots WHERE slot_name = %s", libpq.QuoteLiteral(s.cfg.Name)))
 	if err != nil {
-		return errors.Wrap(err, "replication slot failover flag")
+		return fmt.Errorf("replication slot failover flag: %w", err)
 	}
 	if failover == "t" {
 		return nil
@@ -143,7 +155,7 @@ func (s *Slot) enableFailoverLocked(ctx context.Context, info *Info) error {
 		return nil
 	}
 	if err := s.execReplicationCommand(ctx, alterReplicationSlotFailoverCommand(s.cfg.Name)); err != nil {
-		return errors.Wrap(err, "replication slot enable failover")
+		return fmt.Errorf("replication slot enable failover: %w", err)
 	}
 	logger.Info("replication slot failover enabled", "name", s.cfg.Name)
 	return nil
@@ -157,7 +169,7 @@ func (s *Slot) scalarLocked(ctx context.Context, sql string) (string, error) {
 		return "", err
 	}
 	if len(results) == 0 || len(results[0].Rows) == 0 || len(results[0].Rows[0]) == 0 {
-		return "", errors.Newf("no rows: %s", sql)
+		return "", fmt.Errorf("no rows: %s", sql)
 	}
 	return string(results[0].Rows[0][0]), nil
 }
@@ -179,7 +191,7 @@ func alterReplicationSlotFailoverCommand(name string) string {
 // replication connection.
 func (s *Slot) execReplicationCommand(ctx context.Context, sql string) error {
 	if err := s.replicationConn.Connect(ctx); err != nil {
-		return errors.Wrap(err, "slot replication connect")
+		return fmt.Errorf("slot replication connect: %w", err)
 	}
 	defer func() {
 		_ = s.replicationConn.Close(ctx)
@@ -187,30 +199,32 @@ func (s *Slot) execReplicationCommand(ctx context.Context, sql string) error {
 
 	resultReader := s.replicationConn.Exec(ctx, sql)
 	if _, err := resultReader.ReadAll(); err != nil {
-		return errors.Wrap(err, "result")
+		return fmt.Errorf("result: %w", err)
 	}
 	if err := resultReader.Close(); err != nil {
-		return errors.Wrap(err, "result reader close")
+		return fmt.Errorf("result reader close: %w", err)
 	}
 	return nil
 }
 
 func (s *Slot) Info(ctx context.Context) (*Info, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	call, release, err := s.beginOperation(ctx, s.infoTimeout())
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	info, err := s.infoLocked(call)
 	if s.closed.Load() {
 		return nil, ErrorSlotClosed
 	}
-
-	return s.infoLocked(ctx)
+	return info, err
 }
 
 func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 	if s.conn.IsClosed() {
 		logger.Debug("slot info connection closed before query, reconnecting", "name", s.cfg.Name)
 		if err := s.conn.Connect(ctx); err != nil {
-			return nil, errors.Wrap(err, "reconnect slot info connection")
+			return nil, fmt.Errorf("reconnect slot info connection: %w", err)
 		}
 	}
 
@@ -223,6 +237,9 @@ func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 		if s.closed.Load() {
 			return nil, ErrorSlotClosed
 		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if !s.conn.IsClosed() {
 			return nil, err
 		}
@@ -230,7 +247,7 @@ func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 		logger.Warn("slot info connection closed, reconnecting", "name", s.cfg.Name, "error", err)
 
 		if connectErr := s.conn.Connect(ctx); connectErr != nil {
-			return nil, errors.Wrap(connectErr, "reconnect slot info connection")
+			return nil, fmt.Errorf("reconnect slot info connection: %w", connectErr)
 		}
 
 		results, err = s.execStatusQueryLocked(ctx)
@@ -245,11 +262,11 @@ func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 
 	slotInfo, err := decodeSlotInfoResult(results[0])
 	if err != nil {
-		return nil, errors.Wrap(err, "replication slot info result decode")
+		return nil, fmt.Errorf("replication slot info result decode: %w", err)
 	}
 
 	if slotInfo.Type != Logical {
-		return nil, errors.Newf("'%s' replication slot must be logical but it is %s", slotInfo.Name, slotInfo.Type)
+		return nil, fmt.Errorf("'%s' replication slot must be logical but it is %s", slotInfo.Name, slotInfo.Type)
 	}
 
 	return slotInfo, nil
@@ -260,15 +277,20 @@ func (s *Slot) infoLocked(ctx context.Context) (*Info, error) {
 func (s *Slot) execStatusQueryLocked(ctx context.Context) ([]*pgconn.Result, error) {
 	results, err := s.conn.Exec(ctx, s.statusSQL).ReadAll()
 	if err != nil {
-		return nil, errors.Wrap(err, "replication slot info result")
+		return nil, fmt.Errorf("replication slot info result: %w", err)
 	}
 	return results, nil
 }
 
 func (s *Slot) Metrics(ctx context.Context) {
-	for range s.ticker.C {
-		if s.closed.Load() {
+	s.initializeLifetime()
+	for {
+		select {
+		case <-ctx.Done():
 			return
+		case <-s.lifetime.Done():
+			return
+		case <-s.ticker.C:
 		}
 
 		slotInfo, err := s.Info(ctx)
@@ -291,14 +313,19 @@ func (s *Slot) Metrics(ctx context.Context) {
 }
 
 func (s *Slot) Close(ctx context.Context) {
-	s.closed.Store(true)
-	s.ticker.Stop()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.conn.IsClosed() {
-		_ = s.conn.Close(ctx)
+	s.initializeLifetime()
+	if s.closed.Swap(true) {
+		return
+	}
+	s.cancelLifetime()
+	if s.ticker != nil {
+		s.ticker.Stop()
+	}
+	// Cancellation interrupts query/reconnect before waiting for its ownership.
+	s.operationGate <- struct{}{}
+	defer func() { <-s.operationGate }()
+	if s.conn != nil {
+		_ = s.conn.Close(ctx) // PgConn.Close forces socket cleanup even on error.
 	}
 }
 
@@ -328,13 +355,13 @@ func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {
 		case "restart_lsn":
 			lsn, err := pq.ParseLSN(v.(string))
 			if err != nil {
-				return nil, errors.Wrap(err, "parse restart_lsn")
+				return nil, fmt.Errorf("parse restart_lsn: %w", err)
 			}
 			slotInfo.RestartLSN = lsn
 		case "confirmed_flush_lsn":
 			lsn, err := pq.ParseLSN(v.(string))
 			if err != nil {
-				return nil, errors.Wrap(err, "parse confirmed_flush_lsn")
+				return nil, fmt.Errorf("parse confirmed_flush_lsn: %w", err)
 			}
 			slotInfo.ConfirmedFlushLSN = lsn
 		case "wal_status":
@@ -342,7 +369,7 @@ func decodeSlotInfoResult(result *pgconn.Result) (*Info, error) {
 		case "current_lsn":
 			lsn, err := pq.ParseLSN(v.(string))
 			if err != nil {
-				return nil, errors.Wrap(err, "parse current_lsn")
+				return nil, fmt.Errorf("parse current_lsn: %w", err)
 			}
 			slotInfo.CurrentLSN = lsn
 		}

@@ -54,7 +54,7 @@ func (g *onlineVisibilityGate) poll(ctx context.Context) (pgSnapshot, error) {
 	}
 	snap, err := parseSnapshot(row[4])
 	if err != nil {
-		return pgSnapshot{}, fmt.Errorf("%w: %v", ErrVisibilityGuard, err)
+		return pgSnapshot{}, fmt.Errorf("%w: %w", ErrVisibilityGuard, err)
 	}
 	return snap, nil
 }
@@ -75,7 +75,7 @@ func (g *onlineVisibilityGate) wait(ctx context.Context, xid uint32) error {
 				return ctx.Err()
 			}
 			if waitCtx.Err() != nil {
-				return fmt.Errorf("%w: xid %d: %v", ErrVisibilityTimeout, xid, err)
+				return fmt.Errorf("%w: xid %d: %w", ErrVisibilityTimeout, xid, err)
 			}
 			return err
 		}

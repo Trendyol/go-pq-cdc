@@ -78,9 +78,9 @@ func physicalApplyGate(t *testing.T, dsn, start string) (*atomic.Bool, <-chan er
 				result <- e
 				return
 			}
-			if copy, ok := msg.(*pgproto3.CopyData); ok && len(copy.Data) > 0 {
-				if copy.Data[0] == 'w' && len(copy.Data) >= 25 {
-					end := binary.BigEndian.Uint64(copy.Data[1:]) + uint64(len(copy.Data)-25)
+			if data, ok := msg.(*pgproto3.CopyData); ok && len(data.Data) > 0 {
+				if data.Data[0] == 'w' && len(data.Data) >= 25 {
+					end := binary.BigEndian.Uint64(data.Data[1:]) + uint64(len(data.Data)-25)
 					if end > received {
 						received = end
 					}
@@ -206,7 +206,7 @@ func TestOnlineVisibilityBarrier(t *testing.T) {
 		}
 	}
 	require.NoError(t, reader.Close(context.Background()))
-	t.Log(fmt.Sprintf("PG16 real COMMIT-before-SQL-visibility proven for xid=%d, later visible xid held behind it, including reader restart", heldXID))
+	t.Logf("PG16 real COMMIT-before-SQL-visibility proven for xid=%d, later visible xid held behind it, including reader restart", heldXID)
 }
 
 func testOnlineRootVisibility(t *testing.T) {

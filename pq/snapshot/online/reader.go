@@ -9,6 +9,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var ErrRead = errors.New("online bounded read failed")
@@ -35,22 +36,7 @@ func ReadPage(ctx context.Context, conn *pgx.Conn, s TableSchema, cursor, upper 
 		return nil, errors.Join(ErrRead, err)
 	}
 	conn.PgConn().Frontend().SetMaxBodyLen(limitBody)
-	key := pgx.Identifier{s.Key}.Sanitize()
-	sql := "SELECT * FROM " + quoteTable(s.Table) + " WHERE "
-	args := []any{}
-	if upper == nil {
-		sql += "false"
-	} else {
-		args = append(args, *upper)
-		sql += key + " <= $1"
-	}
-	if cursor != nil {
-		args = append(args, *cursor)
-		sql += fmt.Sprintf(" AND %s > $%d", key, len(args))
-	}
-	args = append(args, limit)
-	sql += fmt.Sprintf(" ORDER BY %s LIMIT $%d", key, len(args))
-	args = append([]any{pgx.QueryResultFormats{pgx.TextFormatCode}}, args...)
+	sql, args := keysetQuery(s, cursor, upper, limit)
 	rows, err := conn.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, errors.Join(ErrRead, err)
@@ -68,29 +54,58 @@ func ReadPage(ctx context.Context, conn *pgx.Conn, s TableSchema, cursor, upper 
 		}
 	}
 	for rows.Next() {
-		image := make(map[string]any, len(fields))
-		for i, raw := range rows.RawValues() {
-			used += int64(len(raw))
-			if used > bytes {
-				return nil, fmt.Errorf("%w: chunk byte limit %d", ErrRead, bytes)
-			}
-			value, err := tuple.DecodeOnlineText(types, fields[i].DataTypeOID, raw)
-			if err != nil {
-				return nil, errors.Join(ErrRead, err)
-			}
-			image[fields[i].Name] = value
-		}
-		if err = s.ValidateImage(image); err != nil {
+		row, err := selectedRow(rows, s, types, bytes, &used)
+		if err != nil {
 			return nil, err
 		}
-		k, e := IntegerKey(image, s.Key)
-		if e != nil {
-			return nil, e
-		}
-		selected = append(selected, SelectedRow{Key: k, Image: image})
+		selected = append(selected, row)
 	}
 	if err = rows.Err(); err != nil {
 		return nil, errors.Join(ErrRead, err)
 	}
 	return selected, nil
+}
+
+func keysetQuery(s TableSchema, cursor, upper *int64, limit int) (string, []any) {
+	key := pgx.Identifier{s.Key}.Sanitize()
+	sql := "SELECT * FROM " + quoteTable(s.Table) + " WHERE "
+	args := []any{}
+	if upper == nil {
+		sql += "false"
+	} else {
+		args = append(args, *upper)
+		sql += key + " <= $1"
+	}
+	if cursor != nil {
+		args = append(args, *cursor)
+		sql += fmt.Sprintf(" AND %s > $%d", key, len(args))
+	}
+	args = append(args, limit)
+	sql += fmt.Sprintf(" ORDER BY %s LIMIT $%d", key, len(args))
+	args = append([]any{pgx.QueryResultFormats{pgx.TextFormatCode}}, args...)
+	return sql, args
+}
+
+func selectedRow(rows pgx.Rows, s TableSchema, types *pgtype.Map, bytes int64, used *int64) (SelectedRow, error) {
+	fields := rows.FieldDescriptions()
+	image := make(map[string]any, len(fields))
+	for i, raw := range rows.RawValues() {
+		*used += int64(len(raw))
+		if *used > bytes {
+			return SelectedRow{}, fmt.Errorf("%w: chunk byte limit %d", ErrRead, bytes)
+		}
+		value, err := tuple.DecodeOnlineText(types, fields[i].DataTypeOID, raw)
+		if err != nil {
+			return SelectedRow{}, errors.Join(ErrRead, err)
+		}
+		image[fields[i].Name] = value
+	}
+	if err := s.ValidateImage(image); err != nil {
+		return SelectedRow{}, err
+	}
+	k, e := IntegerKey(image, s.Key)
+	if e != nil {
+		return SelectedRow{}, e
+	}
+	return SelectedRow{Key: k, Image: image}, nil
 }

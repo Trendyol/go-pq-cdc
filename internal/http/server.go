@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"sync/atomic"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
@@ -29,7 +30,7 @@ type server struct {
 	slotInfoProvider SlotInfoProvider
 	server           http.Server
 	cdcConfig        config.Config
-	closed           bool
+	closed           atomic.Bool
 }
 
 func NewServer(cfg config.Config, registry metric.Registry, slotInfoProvider SlotInfoProvider) Server {
@@ -53,10 +54,13 @@ func NewServer(cfg config.Config, registry metric.Registry, slotInfoProvider Slo
 	}
 
 	s.server = http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Metric.Port),
-		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:              fmt.Sprintf(":%d", cfg.Metric.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	return s
@@ -67,7 +71,7 @@ func (s *server) Listen() {
 
 	err := s.server.ListenAndServe()
 	if err != nil {
-		if errors.Is(err, http.ErrServerClosed) && s.closed {
+		if errors.Is(err, http.ErrServerClosed) && s.closed.Load() {
 			logger.Info("server stopped")
 			return
 		}
@@ -76,14 +80,16 @@ func (s *server) Listen() {
 }
 
 func (s *server) Shutdown() {
-	if s == nil {
+	if s == nil || !s.closed.CompareAndSwap(false, true) {
 		return
 	}
-	s.closed = true
-	err := s.server.Shutdown(context.Background())
-	if err != nil {
-		logger.Error("error while api cannot be shutdown", "error", err)
-		panic(err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.server.Shutdown(ctx); err != nil {
+		logger.Error("api graceful shutdown failed; closing active connections", "error", err)
+		if closeErr := s.server.Close(); closeErr != nil {
+			logger.Error("api connection cleanup failed", "error", closeErr)
+		}
 	}
 }
 

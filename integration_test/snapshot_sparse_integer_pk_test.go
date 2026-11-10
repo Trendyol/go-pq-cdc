@@ -41,7 +41,7 @@ func collectSnapshotUntilEnd(t *testing.T, messageCh <-chan any, expectedData in
 	}
 }
 
-func queryChunkStats(t *testing.T, ctx context.Context, slotName string) (totalChunks, emptyChunks, totalRows int, strategy string) {
+func queryChunkStats(ctx context.Context, t *testing.T, slotName string) (totalChunks, emptyChunks, totalRows int, strategy string) {
 	t.Helper()
 	conn, err := newPostgresConn()
 	require.NoError(t, err)
@@ -109,8 +109,7 @@ func TestSnapshotSparseIntegerPK_AutoFallsBackToCTID(t *testing.T) {
 
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -122,7 +121,7 @@ func TestSnapshotSparseIntegerPK_AutoFallsBackToCTID(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -134,7 +133,7 @@ func TestSnapshotSparseIntegerPK_AutoFallsBackToCTID(t *testing.T) {
 	data := collectSnapshotUntilEnd(t, messageCh, 3, 60*time.Second)
 	assert.Len(t, data, 3, "should receive exactly 3 DATA events")
 
-	totalChunks, _, totalRows, strategy := queryChunkStats(t, ctx, cdcCfg.Slot.Name)
+	totalChunks, _, totalRows, strategy := queryChunkStats(ctx, t, cdcCfg.Slot.Name)
 	t.Logf("sparse auto: strategy=%s totalChunks=%d rows=%d", strategy, totalChunks, totalRows)
 
 	assert.Equal(t, string(snapshot.PartitionStrategyCTIDBlock), strategy,
@@ -179,8 +178,7 @@ func TestSnapshotSparseIntegerPK_CTIDAvoidsChunkExplosion(t *testing.T) {
 
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -192,7 +190,7 @@ func TestSnapshotSparseIntegerPK_CTIDAvoidsChunkExplosion(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -213,7 +211,7 @@ func TestSnapshotSparseIntegerPK_CTIDAvoidsChunkExplosion(t *testing.T) {
 		assert.True(t, received[int32(id)], "missing id %d", id)
 	}
 
-	totalChunks, _, totalRows, strategy := queryChunkStats(t, ctx, cdcCfg.Slot.Name)
+	totalChunks, _, totalRows, strategy := queryChunkStats(ctx, t, cdcCfg.Slot.Name)
 	t.Logf("sparse ctid: strategy=%s totalChunks=%d rows=%d", strategy, totalChunks, totalRows)
 
 	assert.Equal(t, string(snapshot.PartitionStrategyCTIDBlock), strategy)
@@ -255,8 +253,7 @@ func TestSnapshotDenseIntegerPK_AutoIsEfficient(t *testing.T) {
 
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
@@ -268,7 +265,7 @@ func TestSnapshotDenseIntegerPK_AutoIsEfficient(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -280,7 +277,7 @@ func TestSnapshotDenseIntegerPK_AutoIsEfficient(t *testing.T) {
 	data := collectSnapshotUntilEnd(t, messageCh, 20, 60*time.Second)
 	assert.Len(t, data, 20)
 
-	totalChunks, emptyChunks, totalRows, strategy := queryChunkStats(t, ctx, cdcCfg.Slot.Name)
+	totalChunks, emptyChunks, totalRows, strategy := queryChunkStats(ctx, t, cdcCfg.Slot.Name)
 	t.Logf("dense auto: strategy=%s totalChunks=%d emptyChunks=%d rows=%d",
 		strategy, totalChunks, emptyChunks, totalRows)
 

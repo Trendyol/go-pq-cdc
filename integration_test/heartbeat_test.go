@@ -27,14 +27,10 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		// Ensure base DB objects (books table, drop old publication)
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		// Extend publication with heartbeat table so that heartbeat changes are part of CDC stream
 		cdcCfg.Publication.Tables = append(cdcCfg.Publication.Tables,
@@ -62,38 +58,30 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 		}
 
 		connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			connector.Close()
-			assert.NoError(t, RestoreDB(ctx))
-			assert.NoError(t, postgresConn.Close(ctx))
+			require.NoError(t, RestoreDB(ctx))
+			require.NoError(t, postgresConn.Close(ctx))
 		})
 
 		go connector.Start(ctx)
 
 		waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {
-			cancel()
-			t.FailNow()
-		}
+		err = connector.WaitUntilReady(waitCtx)
 		cancel()
+		require.NoError(t, err)
 
 		// Capture initial LSNs for the test slot
 		initialRestart, initialConfirmed, err := readSlotLSNs(ctx, postgresConn, cdcCfg.Slot.Name)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		// Wait long enough for a few heartbeat cycles
 		time.Sleep(7 * time.Second)
 
 		finalRestart, finalConfirmed, err := readSlotLSNs(ctx, postgresConn, cdcCfg.Slot.Name)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		// Heartbeat should cause at least confirmed_flush_lsn to move forward.
 		assert.NotEmpty(t, initialConfirmed)
@@ -110,7 +98,6 @@ func TestHeartbeatAdvancesLSN(t *testing.T) {
 	})
 }
 
-
 func TestHeartbeatMissingFromPublicationFails(t *testing.T) {
 	t.Helper()
 
@@ -123,13 +110,9 @@ func TestHeartbeatMissingFromPublicationFails(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		// Heartbeat enabled but heartbeat table intentionally omitted from publication.tables
 		cdcCfg.Heartbeat = config.HeartbeatConfig{
@@ -141,8 +124,8 @@ func TestHeartbeatMissingFromPublicationFails(t *testing.T) {
 		}
 
 		t.Cleanup(func() {
-			assert.NoError(t, RestoreDB(ctx))
-			assert.NoError(t, postgresConn.Close(ctx))
+			require.NoError(t, RestoreDB(ctx))
+			require.NoError(t, postgresConn.Close(ctx))
 		})
 
 		_, err = cdc.NewConnector(ctx, cdcCfg, func(ctx *replication.ListenerContext) {

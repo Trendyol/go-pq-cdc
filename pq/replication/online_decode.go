@@ -56,97 +56,116 @@ func (a *onlineAssembler) inTransaction() bool { return a.tx != nil }
 func (a *onlineAssembler) accept(xld XLogData) (*OnlineCommittedEnvelope, error) {
 	b := xld.WALData
 	if err := validateOnlineWire(b, a.relations); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrOnlineProtocol, err)
+		return nil, fmt.Errorf("%w: %w", ErrOnlineProtocol, err)
 	}
-	tag := b[0]
-	if tag == 'B' {
+	if err := a.accountMessage(b); err != nil {
+		return nil, err
+	}
+	switch b[0] {
+	case 'B', 'Y', 'O':
+		return nil, nil
+	case 'R':
+		return a.acceptRelation(xld)
+	case 'C':
+		return a.completeTransaction(b)
+	default:
+		return a.acceptChange(xld)
+	}
+}
+
+func (a *onlineAssembler) accountMessage(b []byte) error {
+	if b[0] == 'B' {
 		if a.tx != nil {
-			return nil, fmt.Errorf("%w: nested BEGIN", ErrOnlineProtocol)
+			return fmt.Errorf("%w: nested BEGIN", ErrOnlineProtocol)
 		}
 		begin, err := format.NewBegin(b)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if begin.Xid == 0 || begin.FinalLSN == 0 {
-			return nil, fmt.Errorf("%w: zero BEGIN xid/LSN", ErrOnlineProtocol)
+			return fmt.Errorf("%w: zero BEGIN xid/LSN", ErrOnlineProtocol)
 		}
 		a.tx = &OnlineCommittedEnvelope{XID: begin.Xid, CommitLSN: begin.FinalLSN}
-	} else if a.tx == nil && tag != 'R' && tag != 'Y' {
-		return nil, fmt.Errorf("%w: %q outside transaction", ErrOnlineProtocol, tag)
+	} else if a.tx == nil && b[0] != 'R' && b[0] != 'Y' {
+		return fmt.Errorf("%w: %q outside transaction", ErrOnlineProtocol, b[0])
 	}
 	if a.tx != nil {
 		if int64(len(b)) > a.transactionLimit-a.tx.EncodedBytes {
-			return nil, ErrOnlineTransactionLimit
+			return ErrOnlineTransactionLimit
 		}
 		a.tx.EncodedBytes += int64(len(b))
 	}
-	switch tag {
-	case 'B':
-		return nil, nil
-	case 'Y', 'O':
-		return nil, nil // normal Type/Origin metadata: validated, no row ordinal
-	case 'R':
-		oid := binary.BigEndian.Uint32(b[1:])
-		size := int64(len(b))
-		next := a.metadataBytes - a.relationBytes[oid] + size
-		if next > a.metadataLimit {
-			return nil, ErrOnlineMetadataLimit
-		}
-		_, err := message.New(b, false, xld.ServerTime, a.relations)
-		if err != nil {
-			return nil, err
-		}
-		a.relationBytes[oid] = size
-		a.metadataBytes = next
-		return nil, nil
-	case 'C':
-		commit, err := format.NewCommit(b)
-		if err != nil {
-			return nil, err
-		}
-		if commit.CommitLSN != a.tx.CommitLSN || commit.TransactionEndLSN <= commit.CommitLSN {
-			return nil, fmt.Errorf("%w: COMMIT LSN does not match BEGIN/end boundary", ErrOnlineProtocol)
-		}
-		a.tx.EndLSN = commit.TransactionEndLSN
-		env := a.tx
-		a.tx = nil
-		return env, nil
-	default:
-		// Reuse tuple/TOAST wire parsing without running legacy value codecs.
-		// OID 0 yields raw text; the shared online decoder below applies the
-		// ORIGINAL column OIDs exactly once (including huge JSON numbers).
-		oid := binary.BigEndian.Uint32(b[1:])
-		rawRelation := *a.relations[oid]
-		rawRelation.Columns = append([]tuple.RelationColumn(nil), rawRelation.Columns...)
-		for i := range rawRelation.Columns {
-			rawRelation.Columns[i].DataType = 0
-		}
-		decoded, err := message.New(b, false, xld.ServerTime, map[uint32]*format.Relation{oid: &rawRelation})
-		if err != nil {
-			return nil, fmt.Errorf("%w: decode %q: %v", ErrOnlineProtocol, tag, err)
-		}
-		switch m := decoded.(type) {
-		case *format.Insert:
-			m.LSN = xld.WALStart
-			m.Decoded, err = tuple.DecodeOnlineData(a.types, m.TupleData, a.relations[m.OID].Columns)
-		case *format.Update:
-			m.LSN = xld.WALStart
-			m.NewDecoded, err = tuple.DecodeOnlineData(a.types, m.NewTupleData, a.relations[m.OID].Columns)
-			if err == nil && m.OldTupleData != nil {
-				m.OldDecoded, err = tuple.DecodeOnlineData(a.types, m.OldTupleData, a.relations[m.OID].Columns)
-			}
-		case *format.Delete:
-			m.LSN = xld.WALStart
-			m.OldDecoded, err = tuple.DecodeOnlineData(a.types, m.OldTupleData, a.relations[m.OID].Columns)
-		default:
-			return nil, fmt.Errorf("%w: unexpected decoded type %T", ErrOnlineProtocol, decoded)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("%w: full image: %v", ErrOnlineProtocol, err)
-		}
-		a.tx.Changes = append(a.tx.Changes, OnlineChange{Message: decoded, Ordinal: uint32(len(a.tx.Changes)), EncodedBytes: int64(len(b))})
-		return nil, nil
+	return nil
+}
+
+func (a *onlineAssembler) acceptRelation(xld XLogData) (*OnlineCommittedEnvelope, error) {
+	b := xld.WALData
+	oid := binary.BigEndian.Uint32(b[1:])
+	size := int64(len(b))
+	next := a.metadataBytes - a.relationBytes[oid] + size
+	if next > a.metadataLimit {
+		return nil, ErrOnlineMetadataLimit
 	}
+	_, err := message.New(b, false, xld.ServerTime, a.relations)
+	if err != nil {
+		return nil, err
+	}
+	a.relationBytes[oid] = size
+	a.metadataBytes = next
+	return nil, nil
+}
+
+func (a *onlineAssembler) completeTransaction(b []byte) (*OnlineCommittedEnvelope, error) {
+	commit, err := format.NewCommit(b)
+	if err != nil {
+		return nil, err
+	}
+	if commit.CommitLSN != a.tx.CommitLSN || commit.TransactionEndLSN <= commit.CommitLSN {
+		return nil, fmt.Errorf("%w: COMMIT LSN does not match BEGIN/end boundary", ErrOnlineProtocol)
+	}
+	a.tx.EndLSN = commit.TransactionEndLSN
+	env := a.tx
+	a.tx = nil
+	return env, nil
+}
+
+func (a *onlineAssembler) acceptChange(xld XLogData) (*OnlineCommittedEnvelope, error) {
+	b := xld.WALData
+	tag := b[0]
+	// Reuse tuple/TOAST wire parsing without running legacy value codecs.
+	// OID 0 yields raw text; the shared online decoder below applies the
+	// ORIGINAL column OIDs exactly once (including huge JSON numbers).
+	oid := binary.BigEndian.Uint32(b[1:])
+	rawRelation := *a.relations[oid]
+	rawRelation.Columns = append([]tuple.RelationColumn(nil), rawRelation.Columns...)
+	for i := range rawRelation.Columns {
+		rawRelation.Columns[i].DataType = 0
+	}
+	decoded, err := message.New(b, false, xld.ServerTime, map[uint32]*format.Relation{oid: &rawRelation})
+	if err != nil {
+		return nil, fmt.Errorf("%w: decode %q: %w", ErrOnlineProtocol, tag, err)
+	}
+	switch m := decoded.(type) {
+	case *format.Insert:
+		m.LSN = xld.WALStart
+		m.Decoded, err = tuple.DecodeOnlineData(a.types, m.TupleData, a.relations[m.OID].Columns)
+	case *format.Update:
+		m.LSN = xld.WALStart
+		m.NewDecoded, err = tuple.DecodeOnlineData(a.types, m.NewTupleData, a.relations[m.OID].Columns)
+		if err == nil && m.OldTupleData != nil {
+			m.OldDecoded, err = tuple.DecodeOnlineData(a.types, m.OldTupleData, a.relations[m.OID].Columns)
+		}
+	case *format.Delete:
+		m.LSN = xld.WALStart
+		m.OldDecoded, err = tuple.DecodeOnlineData(a.types, m.OldTupleData, a.relations[m.OID].Columns)
+	default:
+		return nil, fmt.Errorf("%w: unexpected decoded type %T", ErrOnlineProtocol, decoded)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: full image: %w", ErrOnlineProtocol, err)
+	}
+	a.tx.Changes = append(a.tx.Changes, OnlineChange{Message: decoded, Ordinal: uint32(len(a.tx.Changes)), EncodedBytes: int64(len(b))})
+	return nil, nil
 }
 
 // Existing decoders intentionally accept some trailing bytes and assume parts
@@ -245,32 +264,8 @@ func validateOnlineWire(b []byte, relations map[uint32]*format.Relation) error {
 		}
 		c.take(24)
 	case 'R':
-		if c.u32() == 0 && c.err == nil {
-			return errors.New("zero relation OID")
-		}
-		c.str()
-		c.str()
-		id := c.byte()
-		if id != 'd' && id != 'n' && id != 'f' && id != 'i' {
-			return errors.New("invalid replica identity")
-		}
-		n := int(c.u16())
-		names := make(map[string]bool)
-		for i := 0; i < n && c.err == nil; i++ {
-			if c.byte() > 1 {
-				return errors.New("invalid relation column flags")
-			}
-			start := c.pos
-			c.str()
-			if c.err != nil {
-				break
-			}
-			name := string(b[start : c.pos-1])
-			if name == "" || names[name] {
-				return errors.New("empty or duplicate relation column name")
-			}
-			names[name] = true
-			c.take(8)
+		if err := validateOnlineRelation(&c); err != nil {
+			return err
 		}
 	case 'Y':
 		c.take(4)
@@ -280,39 +275,8 @@ func validateOnlineWire(b []byte, relations map[uint32]*format.Relation) error {
 		c.take(8)
 		c.str()
 	case 'I', 'U', 'D':
-		rel := relations[c.u32()]
-		if c.err != nil {
-			return c.err
-		}
-		if rel == nil {
-			return errors.New("relation not found")
-		}
-		n := len(rel.Columns)
-		switch tag {
-		case 'I':
-			c.tuple(n, 'N')
-		case 'U':
-			kind := c.byte()
-			if c.err != nil {
-				break
-			}
-			c.pos--
-			if kind == 'K' || kind == 'O' {
-				c.tuple(n, kind)
-			} else if kind != 'N' {
-				return errors.New("invalid UPDATE tuple tag")
-			}
-			c.tuple(n, 'N')
-		case 'D':
-			kind := c.byte()
-			if c.err != nil {
-				break
-			}
-			c.pos--
-			if kind != 'K' && kind != 'O' {
-				return errors.New("invalid DELETE tuple tag")
-			}
-			c.tuple(n, kind)
+		if err := validateOnlineDML(&c, tag, relations); err != nil {
+			return err
 		}
 	case 'T':
 		return errors.New("TRUNCATE is unsupported in online mode; stop before checkpoint")
@@ -324,6 +288,75 @@ func validateOnlineWire(b []byte, relations map[uint32]*format.Relation) error {
 	}
 	if c.pos != len(b) {
 		return errors.New("trailing message bytes")
+	}
+	return nil
+}
+
+func validateOnlineRelation(c *onlineCursor) error {
+	if c.u32() == 0 && c.err == nil {
+		return errors.New("zero relation OID")
+	}
+	c.str()
+	c.str()
+	id := c.byte()
+	if id != 'd' && id != 'n' && id != 'f' && id != 'i' {
+		return errors.New("invalid replica identity")
+	}
+	n := int(c.u16())
+	names := make(map[string]bool)
+	for i := 0; i < n && c.err == nil; i++ {
+		if c.byte() > 1 {
+			return errors.New("invalid relation column flags")
+		}
+		start := c.pos
+		c.str()
+		if c.err != nil {
+			break
+		}
+		name := string(c.b[start : c.pos-1])
+		if name == "" || names[name] {
+			return errors.New("empty or duplicate relation column name")
+		}
+		names[name] = true
+		c.take(8)
+	}
+	return nil
+}
+
+func validateOnlineDML(c *onlineCursor, tag byte, relations map[uint32]*format.Relation) error {
+	rel := relations[c.u32()]
+	if c.err != nil {
+		return c.err
+	}
+	if rel == nil {
+		return errors.New("relation not found")
+	}
+	n := len(rel.Columns)
+	switch tag {
+	case 'I':
+		c.tuple(n, 'N')
+	case 'U':
+		kind := c.byte()
+		if c.err != nil {
+			return c.err
+		}
+		c.pos--
+		if kind == 'K' || kind == 'O' {
+			c.tuple(n, kind)
+		} else if kind != 'N' {
+			return errors.New("invalid UPDATE tuple tag")
+		}
+		c.tuple(n, 'N')
+	case 'D':
+		kind := c.byte()
+		if c.err != nil {
+			return c.err
+		}
+		c.pos--
+		if kind != 'K' && kind != 'O' {
+			return errors.New("invalid DELETE tuple tag")
+		}
+		c.tuple(n, kind)
 	}
 	return nil
 }

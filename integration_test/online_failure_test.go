@@ -42,7 +42,7 @@ func TestOnlineInitialFailureSafety(t *testing.T) {
 			}
 			sinkError := errors.New("durable sink unavailable")
 			entered := make(chan struct{}, 1)
-			handler := func(ctx context.Context, e online.Event) error {
+			handler := func(ctx context.Context, _ online.Event) error {
 				if fault == "handler" {
 					return sinkError
 				}

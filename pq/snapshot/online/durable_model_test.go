@@ -62,69 +62,7 @@ func testOnlineDurableSchedules(t *testing.T) {
 				disk := modelDisk{checkpoint: 100, confirmed: 100, generation: 1}
 				sink := modelTarget{ledger: map[string]Event{}, projection: map[int64]Event{}}
 				window := NewReadWindow(table, []SelectedRow{{Key: -1, Image: map[string]any{"id": int64(-1), "v": "old"}}, {Key: 0, Image: map[string]any{"id": int64(0), "v": "old"}}})
-				trace := []string{"durable LOW100; SELECT frozen page[-1,0]"}
-				calls := 0
-				failCall := random.Intn(5)
-				reply := 1 + random.Intn(2)
-				stopped := phase == "LOW" || phase == "SELECT"
-				highObserved := false
-				deliver := func(e Event) bool {
-					calls++
-					fault := 0
-					if calls == failCall {
-						fault = reply
-					}
-					ok := sink.apply(e, fault)
-					trace = append(trace, fmt.Sprintf("deliver %s/%d reply=%d", e.Operation, e.Key, fault))
-					return ok
-				}
-				if !stopped {
-					// Earlier XID may be invisible while a later XID is independently visible.
-					// It blocks HIGH/delivery/frontier, never inferred from the later XID.
-					if seed%2 == 0 {
-						if disk.checkpoint != 100 || disk.confirmed != 100 {
-							t.Fatal(trace)
-						}
-						trace = append(trace, "earlier XID invisible; later XID visible; no frontier change; release earlier")
-					}
-					for _, e := range cdc[:2] {
-						window.Conflict(e.Table, e.Key)
-						if !deliver(e) {
-							stopped = true
-							break
-						}
-					}
-					if !stopped {
-						highObserved = true
-						if phase == "HIGH" {
-							stopped = true
-						}
-					}
-				}
-				oldReads := window.Reads(jobID, "attempt-generation-1", 200)
-				if !stopped {
-					for _, e := range oldReads {
-						if !deliver(e) {
-							stopped = true
-							break
-						}
-					}
-					if phase == "ONE_READ" || phase == "LAST_READ" {
-						stopped = true
-					}
-				}
-				if !stopped {
-					last := window.LastKey()
-					disk.cursor = last
-					disk.checkpoint = 200
-					disk.completed = true
-					trace = append(trace, "atomic cursor0 + complete + checkpoint200 commit")
-					if phase == "METADATA" {
-						stopped = true
-					} else {
-						disk.confirmed = 200
-					}
-				}
+				trace, oldReads, highObserved := modelFirstWindow(t, phase, seed, random, &disk, &sink, window, cdc, jobID)
 				// Crash discards all volatile work/received positions, not committed target
 				// effects or an already committed completion whose response was lost.
 				if disk.confirmed > disk.checkpoint {
@@ -209,4 +147,69 @@ func testOnlineDurableSchedules(t *testing.T) {
 			})
 		}
 	}
+}
+
+func modelFirstWindow(t *testing.T, phase string, seed int64, random *rand.Rand, disk *modelDisk, sink *modelTarget, window *ReadWindow, cdc []Event, jobID string) ([]string, []Event, bool) {
+	trace := []string{"durable LOW100; SELECT frozen page[-1,0]"}
+	calls := 0
+	failCall := random.Intn(5)
+	reply := 1 + random.Intn(2)
+	stopped := phase == "LOW" || phase == "SELECT"
+	highObserved := false
+	deliver := func(e Event) bool {
+		calls++
+		fault := 0
+		if calls == failCall {
+			fault = reply
+		}
+		ok := sink.apply(e, fault)
+		trace = append(trace, fmt.Sprintf("deliver %s/%d reply=%d", e.Operation, e.Key, fault))
+		return ok
+	}
+	if !stopped {
+		// Earlier XID may be invisible while a later XID is independently visible.
+		// It blocks HIGH/delivery/frontier, never inferred from the later XID.
+		if seed%2 == 0 {
+			if disk.checkpoint != 100 || disk.confirmed != 100 {
+				t.Fatal(trace)
+			}
+			trace = append(trace, "earlier XID invisible; later XID visible; no frontier change; release earlier")
+		}
+		for _, e := range cdc[:2] {
+			window.Conflict(e.Table, e.Key)
+			if !deliver(e) {
+				stopped = true
+				break
+			}
+		}
+		if !stopped {
+			highObserved = true
+			if phase == "HIGH" {
+				stopped = true
+			}
+		}
+	}
+	oldReads := window.Reads(jobID, "attempt-generation-1", 200)
+	if !stopped {
+		for _, e := range oldReads {
+			if !deliver(e) {
+				stopped = true
+				break
+			}
+		}
+		if phase == "ONE_READ" || phase == "LAST_READ" {
+			stopped = true
+		}
+	}
+	if !stopped {
+		last := window.LastKey()
+		disk.cursor = last
+		disk.checkpoint = 200
+		disk.completed = true
+		trace = append(trace, "atomic cursor0 + complete + checkpoint200 commit")
+		if phase != "METADATA" {
+			disk.confirmed = 200
+		}
+	}
+	return trace, oldReads, highObserved
 }

@@ -3,10 +3,10 @@ package integration
 import (
 	"context"
 	"fmt"
-	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"testing"
 	"time"
 
+	"github.com/Trendyol/go-pq-cdc/pq/publication"
 	"github.com/Trendyol/go-pq-cdc/pq/snapshot/online"
 	"github.com/stretchr/testify/require"
 )

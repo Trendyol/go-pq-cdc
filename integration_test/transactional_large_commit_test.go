@@ -12,6 +12,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestLargeTransactionalCommit ensures that the CDC stream keeps only O(1) messages in memory
@@ -34,34 +35,25 @@ func TestLargeTransactionalCommit(t *testing.T) {
 	cdcCfg.Slot.ProtoVersion = 1
 
 	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 	// Channel to collect messages coming from the CDC connector
 	messageCh := make(chan any, rowCount+10)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Insert:
+		if msg, ok := ctx.Message.(*format.Insert); ok {
 			messageCh <- msg
 		}
 		_ = ctx.Ack()
 	}
 
 	connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -71,7 +63,7 @@ func TestLargeTransactionalCommit(t *testing.T) {
 
 	go connector.Start(ctx)
 	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
 	cancel()
 
 	// --- RUN LARGE TRANSACTION --------------------------------------------
@@ -79,16 +71,16 @@ func TestLargeTransactionalCommit(t *testing.T) {
 	runtime.ReadMemStats(&memBefore)
 
 	tx, err := pool.Begin(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for i := 0; i < rowCount; i++ {
 		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, 'bulk tx')", i+10000)
-		if !assert.NoError(t, err) {
+		if err != nil {
 			_ = tx.Rollback(ctx)
-			t.FailNow()
+			require.NoError(t, err)
 		}
 	}
-	assert.NoError(t, tx.Commit(ctx))
+	require.NoError(t, tx.Commit(ctx))
 
 	// Collect messages
 	received := 0

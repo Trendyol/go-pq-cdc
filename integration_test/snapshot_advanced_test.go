@@ -167,8 +167,7 @@ func TestSnapshotMultipleTables(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				switch m.EventType {
 				case format.SnapshotEventTypeBegin:
 					snapshotBeginReceived = true
@@ -477,8 +476,7 @@ func TestSnapshotNoPrimaryKey(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				switch m.EventType {
 				case format.SnapshotEventTypeBegin:
 					snapshotBeginReceived = true

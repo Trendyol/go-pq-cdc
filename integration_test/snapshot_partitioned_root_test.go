@@ -20,7 +20,7 @@ import (
 // a leaf whose name needs quoting, a sub-partitioned branch (two levels) and an empty leaf.
 // Rows are padded so every non-empty leaf spans several ctid chunks at ChunkSize 50.
 // Returns the ids expected per region.
-func partitionedRootFixture(t *testing.T, ctx context.Context, tableName string) map[string][]int {
+func partitionedRootFixture(ctx context.Context, t *testing.T, tableName string) map[string][]int {
 	t.Helper()
 	conn, err := newPostgresConn()
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func TestSnapshotPartitionedRootDeliversEveryRowOnce(t *testing.T) {
 	ctx := context.Background()
 	tableName := "snapshot_partitioned_root"
 	cdcCfg := partitionedRootConfig(tableName, "slot_snapshot_partitioned_root")
-	expected := partitionedRootFixture(t, ctx, tableName)
+	expected := partitionedRootFixture(ctx, t, tableName)
 
 	rows := newSnapshotRows()
 	connector, err := cdc.NewConnector(ctx, cdcCfg, func(lc *replication.ListenerContext) {
@@ -136,7 +136,7 @@ func TestSnapshotPartitionedRootDeliversEveryRowOnce(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		connector.Close()
-		cleanupSnapshotTest(t, ctx, tableName+" CASCADE", cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName+" CASCADE", cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 	go connector.Start(ctx)
 
@@ -177,7 +177,7 @@ func TestSnapshotPartitionedRootCompletesWhenLeafDropped(t *testing.T) {
 	ctx := context.Background()
 	tableName := "snapshot_partitioned_drop"
 	cdcCfg := partitionedRootConfig(tableName, "slot_snapshot_partitioned_drop")
-	expected := partitionedRootFixture(t, ctx, tableName)
+	expected := partitionedRootFixture(ctx, t, tableName)
 
 	dropConn, err := newPostgresConn()
 	require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestSnapshotPartitionedRootCompletesWhenLeafDropped(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		dropConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName+" CASCADE", cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName+" CASCADE", cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 	go connector.Start(ctx)
 

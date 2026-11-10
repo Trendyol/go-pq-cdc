@@ -3,8 +3,9 @@ package online
 import (
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // RollbackBounded never lets a lost rollback response hold an owner/delivery

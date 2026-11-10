@@ -13,6 +13,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // lowerLogicalDecodingWorkMem sets logical_decoding_work_mem to a very small
@@ -22,13 +23,11 @@ func lowerLogicalDecodingWorkMem(ctx context.Context, t *testing.T) {
 	t.Helper()
 
 	conn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	defer conn.Close(ctx)
 
-	assert.NoError(t, pgExec(ctx, conn, "ALTER SYSTEM SET logical_decoding_work_mem = '64kB'"))
-	assert.NoError(t, pgExec(ctx, conn, "SELECT pg_reload_conf()"))
+	require.NoError(t, pgExec(ctx, conn, "ALTER SYSTEM SET logical_decoding_work_mem = '64kB'"))
+	require.NoError(t, pgExec(ctx, conn, "SELECT pg_reload_conf()"))
 
 	t.Cleanup(func() {
 		c, err := newPostgresConn()
@@ -65,12 +64,8 @@ func TestStreamingLargeTransactionCommit(t *testing.T) {
 	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 	var received atomic.Int64
 	msgCh := make(chan *format.Insert, rowCount+10)
@@ -83,15 +78,11 @@ func TestStreamingLargeTransactionCommit(t *testing.T) {
 	}
 
 	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -102,22 +93,20 @@ func TestStreamingLargeTransactionCommit(t *testing.T) {
 
 	go connector.Start(ctx)
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
 	cancel()
 
 	// --- Insert many rows in a single transaction -------------------------
 	tx, err := pool.Begin(ctx)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	for i := 0; i < rowCount; i++ {
 		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+40000, fmt.Sprintf("stream-book-%d", i))
-		if !assert.NoError(t, err) {
+		if err != nil {
 			_ = tx.Rollback(ctx)
-			t.FailNow()
+			require.NoError(t, err)
 		}
 	}
-	assert.NoError(t, tx.Commit(ctx))
+	require.NoError(t, tx.Commit(ctx))
 
 	// --- Collect all messages ---------------------------------------------
 	deadline := time.After(15 * time.Second)
@@ -165,12 +154,8 @@ func TestStreamingInterleavedTransactions(t *testing.T) {
 	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 	var totalReceived atomic.Int64
 	msgCh := make(chan *format.Insert, largeRowCount+10)
@@ -183,15 +168,11 @@ func TestStreamingInterleavedTransactions(t *testing.T) {
 	}
 
 	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -202,32 +183,30 @@ func TestStreamingInterleavedTransactions(t *testing.T) {
 
 	go connector.Start(ctx)
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
 	cancel()
 
 	// --- Start the large transaction (will be streamed) -------------------
 	largeTx, err := pool.Begin(ctx)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	// Insert first half
 	half := largeRowCount / 2
 	for i := 0; i < half; i++ {
 		_, err = largeTx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+50000, fmt.Sprintf("large-%d", i))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// --- Interleave a small transaction -----------------------------------
 	_, err = pool.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, 'interleaved')", smallRowID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// --- Continue and commit the large transaction ------------------------
 	for i := half; i < largeRowCount; i++ {
 		_, err = largeTx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+50000, fmt.Sprintf("large-%d", i))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
-	assert.NoError(t, largeTx.Commit(ctx))
+	require.NoError(t, largeTx.Commit(ctx))
 
 	// --- Collect all messages (large tx + 1 interleaved) ------------------
 	expectedTotal := int64(largeRowCount + 1)

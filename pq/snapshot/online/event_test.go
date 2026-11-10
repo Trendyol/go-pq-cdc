@@ -1,10 +1,11 @@
 package online
 
 import (
+	"testing"
+
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestOnlineEventIdentityAndOrder(t *testing.T) {

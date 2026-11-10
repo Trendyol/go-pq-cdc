@@ -1,3 +1,0 @@
-$ (cd integration_test && go vet ./...)
-
-EXIT 0

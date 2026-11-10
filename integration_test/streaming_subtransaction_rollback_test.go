@@ -11,7 +11,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestStreamingSubTransactionRollback verifies that ROLLBACK TO SAVEPOINT inside
@@ -37,12 +37,8 @@ func TestStreamingSubTransactionRollback(t *testing.T) {
 	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 	msgCh := make(chan *format.Insert, keptRows+rolledBack+afterRows)
 	handler := func(lCtx *replication.ListenerContext) {
@@ -53,15 +49,11 @@ func TestStreamingSubTransactionRollback(t *testing.T) {
 	}
 
 	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -72,30 +64,31 @@ func TestStreamingSubTransactionRollback(t *testing.T) {
 
 	go connector.Start(ctx)
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
 	cancel()
 
 	tx, err := pool.Begin(ctx)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	for i := 0; i < keptRows; i++ {
-		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", keptBase+i, fmt.Sprintf("kept-%d", i))
-		assert.NoError(t, err)
+		name := fmt.Sprintf("kept-%d", i)
+		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", keptBase+i, name)
+		require.NoError(t, err)
 	}
 	_, err = tx.Exec(ctx, "SAVEPOINT sp")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	for i := 0; i < rolledBack; i++ {
-		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", rollbackBase+i, fmt.Sprintf("rolled-back-%d", i))
-		assert.NoError(t, err)
+		name := fmt.Sprintf("rolled-back-%d", i)
+		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", rollbackBase+i, name)
+		require.NoError(t, err)
 	}
 	_, err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	for i := 0; i < afterRows; i++ {
-		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", afterBase+i, fmt.Sprintf("after-%d", i))
-		assert.NoError(t, err)
+		name := fmt.Sprintf("after-%d", i)
+		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", afterBase+i, name)
+		require.NoError(t, err)
 	}
-	assert.NoError(t, tx.Commit(ctx))
+	require.NoError(t, tx.Commit(ctx))
 
 	want := keptRows + afterRows
 	got := make(map[int32]struct{}, want)

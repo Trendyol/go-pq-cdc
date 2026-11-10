@@ -2,8 +2,9 @@ package tuple
 
 import (
 	"encoding/json"
-	"github.com/jackc/pgx/v5/pgtype"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestOnlineLosslessValues(t *testing.T) {

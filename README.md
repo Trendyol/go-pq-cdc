@@ -5,6 +5,9 @@ The architecture leverages PostgreSQL's built-in logical replication capabilitie
 stream these changes to downstream systems, such as Kafka, Elasticsearch etc. The entire system is written in Golang,
 ensuring low resource consumption and high performance.
 
+Build with **Go 1.26.10 or a later patched, supported release**.
+Both active modules enforce this minimum. CI reads the version from `go.mod`.
+
 [Debezium vs go-pq-cdc benchmark](./benchmark)
 
 ## Snapshot Feature
@@ -357,6 +360,21 @@ You can run [Replica Identity Using Index](./example/replica-identity-using-inde
 
 You can run [Replica Identity Nothing](./example/replica-identity-nothing) for an insert-only `NOTHING` example.
 
+### Online initial snapshot: supported PG16 profile
+
+`snapshot.strategy` selects `consistent` (the default) or `online`.
+Online mode requires `NewOnlineConnector` and a synchronous durable handler.
+It captures CDC between bounded snapshot windows rather than deferring all CDC until the snapshot ends.
+
+The supported online profile is PostgreSQL 16 on one primary, protocol 1, and immutable single integer-family primary keys.
+It requires `REPLICA IDENTITY FULL`, a frozen schema, and an explicit business-table publication with the watermark table.
+Unsupported keys, types, publication features and failover conditions fail closed.
+Delivery is at least once. The sink must reject stale orders and retain identity records and delete tombstones.
+
+Read the [online snapshot guide](docs/ONLINE_SNAPSHOT.md) for supported types, provisioning, limits, readiness, monitoring, shutdown and recovery.
+See its [validation section](docs/ONLINE_SNAPSHOT.md#validation) for test and security-check commands.
+The example sink does not certify an arbitrary production deployment.
+
 ### Configuration
 
 | Variable                                |   Type   | Required | Default | Description                                                                                           | Options                                                                                                                                            |
@@ -384,9 +402,18 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `slot.createIfNotExists`                |   bool   |    no    |    -    | Create replication slot if not exists. Otherwise, return `replication slot is not exists` error.      |                                                                                                                                                    |
 | `slot.name`                             |  string  |   yes    |    -    | Set the logical replication slot name                                                                 | Should be unique and descriptive. Quoted when sent to PostgreSQL.                                                            |
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
+| `slot.infoTimeout`                      | duration | no | 5s | Bounds a slot-status query, admission wait and its single reconnect. | Negative values are rejected. Caller deadlines can shorten this limit. |
 | `slot.protoVersion`                     |   int    |    no    |    2    | `pgoutput` protocol version used in `START_REPLICATION`                                               | `1`: PostgreSQL 10+ compatibility, no streaming transaction protocol messages. `2`: PostgreSQL 14+, enables streaming/messages options.           |
 | `slot.failover`                         |   bool   |    no    |  false  | Create the slot with `FAILOVER true` (PostgreSQL 17+) so standbys running `sync_replication_slots` keep a synchronized copy; an existing slot is altered with `ALTER_REPLICATION_SLOT … (FAILOVER true)`. | Rejected with a clear error on older servers. Needs `synchronized_standby_slots` on the primary, see [Failover slots](#failover-slots-postgresql-17). |
-| `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
+| `snapshot.strategy`                     | string | no | consistent | Select the snapshot implementation. | `consistent` uses the legacy constructor. `online` requires `NewOnlineConnector`, `mode: initial`, and explicit `slot.protoVersion: 1`. |
+| `snapshot.online.queryTimeout` | duration | no | 5s | Limit each online source query/startup operation. | Positive duration. |
+| `snapshot.online.deliveryTimeout` | duration | no | 30s | Limit a synchronous online handler or observer call. | The callback must honor cancellation. |
+| `snapshot.online.chunkBytes` | int64 | no | 4194304 | Bound encoded/raw work for an online chunk. | A row-count limit also applies. Not a total RSS bound. |
+| `snapshot.online.transactionBytes` | int64 | no | 16777216 | Bound one encoded online transaction. | Must admit BEGIN/COMMIT. |
+| `snapshot.online.queueBytes` | int64 | no | 33554432 | Bound online encoded queue/assembly work. | Must admit one maximum transaction. |
+| `snapshot.online.checkpointInterval` | duration | no | 1s | Set the online checkpoint interval. | Positive duration. |
+| `snapshot.online.markerInterval` | duration | no | 5s | Set the online marker interval. | Positive duration. |
+| `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature | CDC ordering depends on `snapshot.strategy`. |
 | `snapshot.mode`                         |  string  |    no    |  never  | Snapshot mode: `initial`, `never`, or `snapshot_only`                                                 | **initial:** Take snapshot only if no previous snapshot exists, then start CDC. <br> **never:** Skip snapshot, start CDC immediately. <br> **snapshot_only:** Take snapshot and exit (no CDC, no replication slot required). |
 | `snapshot.chunkSize`                    |  int64   |    no    |  8000   | Number of rows per chunk during snapshot                                                              | Adjust based on table size. Larger chunks = fewer chunks but more memory per chunk.                                                               |
 | `snapshot.claimTimeout`                 | duration |    no    |  30s    | Timeout to reclaim stale chunks                                                                       | If a worker doesn't send heartbeat for this duration, chunk is reclaimed by another worker.                                                        |
@@ -408,7 +435,8 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 
 | Endpoint             | Description                                                                               |
 |----------------------|-------------------------------------------------------------------------------------------|
-| `GET /status`        | Returns a 200 OK status if the client is able to ping the PostgreSQL server successfully. |
+| `GET /status`        | Legacy HTTP reachability: fixed `OK` body. Not PostgreSQL connectivity, CDC readiness or sink freshness. |
+| `GET /slot`          | Legacy bounded slot-status query. Not snapshot or application readiness. |
 | `GET /metrics`       | Prometheus metric endpoint.                                                               |
 | `GET /debug/pprof/*` | (Only for `debugMode=true`) [pprof](https://pkg.go.dev/net/http/pprof)                    |
 
@@ -630,6 +658,12 @@ the `/metrics` endpoint.
 | go_pq_cdc_visibility_replica_checks_total           | Transactions certified per standby: `cached` (a poll under 1 s old already passed the commit) or `polled`. | slot_name, host, replica, result | Counter |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
+Online mode does not start this HTTP server automatically.
+Register `connector.MetricsCollector()` in the host application's Prometheus registry to expose `go_pq_cdc_online_*` counters and gauges.
+Use `Health().Running` with the required capture/snapshot flag for application readiness.
+Counter values reset with each connector instance. Encoded-byte gauges do not measure process RSS.
+See the [online monitoring contract](docs/ONLINE_SNAPSHOT.md#monitoring-procedure) for metric names and WAL/backpressure alerts.
+
 ### Grafana Dashboard
 
 Import the grafana dashboard [json file](./grafana/dashboard.json).
@@ -641,9 +675,11 @@ Import the grafana dashboard [json file](./grafana/dashboard.json).
 |-------------------|-------------------|-----------------------------------|-------|
 | 0.0.2 or higher   | 1                 | 10                                | No streaming transaction protocol messages |
 | 0.0.2 or higher   | 2                 | 14                                | Supports streamed in-progress transactions |
+| Online opt-in profile | 1 | 16 primary | Immutable integer PK, frozen supported schema, FULL identity. No failover or protocol downgrade. |
 
 ### Breaking Changes
 
 | Date taking effect | Version | Change | How to check |
 |--------------------|---------|--------|--------------|
+| Next release | TBD | Online strategy requires `NewOnlineConnector` and synchronous durable delivery. The default remains `consistent`. | Review the [online snapshot guide](docs/ONLINE_SNAPSHOT.md). |
 | Next release       | TBD     | Startup fails when heartbeat is enabled but the heartbeat table is missing from a selective publication. | Ensure `publication.tables` includes your heartbeat table, or use a `FOR ALL TABLES` publication. See [Upgrade: heartbeat table must be in publication](#upgrade-heartbeat-table-must-be-in-publication). |

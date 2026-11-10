@@ -23,113 +23,141 @@ import (
 // Dedicated test-process mode, dispatched before TestMain's legacy containers.
 // Pipes carry one bounded barrier line, never row payloads or credentials.
 func runOnlineHelper() int {
-	var cfg config.Config
-	if err := json.Unmarshal([]byte(os.Getenv("CDC_ONLINE_CONFIG")), &cfg); err != nil {
-		return 2
-	}
-	conn, err := pgx.Connect(context.Background(), os.Getenv("CDC_ONLINE_TARGET"))
+	code, err := runOnlineProcessHelper()
 	if err != nil {
-		return 2
-	}
-	defer conn.Close(context.Background())
-	target := &onlineTarget{Conn: conn}
-	mode := os.Getenv("CDC_ONLINE_HELPER")
-	reads := 0
-	barrier := func(ctx context.Context) error {
-		fmt.Fprintln(os.Stdout, "ONLINE-BARRIER")
-		done := make(chan error, 1)
-		go func() { input := bufio.NewReaderSize(os.Stdin, 64); _, err := input.ReadString('\n'); done <- err }()
-		select {
-		case err := <-done:
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
+		if _, writeErr := fmt.Fprintln(os.Stderr, err); writeErr != nil {
+			return 2
 		}
-	}
-	handler := func(ctx context.Context, e online.Event) (result error) {
-		if mode == "delayed-request" && e.Operation == online.Read && reads == 0 {
-			data, err := json.Marshal(e)
-			if err != nil {
-				return err
-			}
-			tx, err := conn.Begin(ctx)
-			if err != nil {
-				return err
-			}
-			defer func() { result = errors.Join(result, online.RollbackBounded(tx)) }()
-			if _, err = tx.Exec(ctx, "SET LOCAL synchronous_commit=on"); err != nil {
-				return err
-			}
-			if _, err = tx.Exec(ctx, "INSERT INTO online_pending_read VALUES($1::jsonb)", string(data)); err != nil {
-				return err
-			}
-			if err = tx.Commit(ctx); err != nil {
-				return err
-			}
-			return barrier(ctx)
-		}
-		if e.Operation == online.Read && mode == "before-read" && reads == 0 {
-			if err := barrier(ctx); err != nil {
-				return err
-			}
-		}
-		if err := target.Apply(ctx, e, onlineTargetOK); err != nil {
-			return err
-		}
-		if e.Operation == online.Read {
-			reads++
-			if mode == "after-read" && reads == 1 || mode == "after-last-read" && reads == 2 || mode == "after-third-read" && reads == 3 {
-				if err := barrier(ctx); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-	observer := func(ctx context.Context, o online.Observation) error {
-		match := mode == "after-low" && o.Phase == online.LOWRecorded || mode == "observed-select" && o.Phase == online.ReadResult || mode == "after-confirmed" && o.Phase == online.ACKAdvanced || mode == "visibility-root" && o.Phase == online.CaptureStarted
-		if !match {
-			return nil
-		}
-		if mode == "after-confirmed" {
-			sql, err := pgx.Connect(ctx, cfg.DSN())
-			if err != nil {
-				return err
-			}
-			defer sql.Close(context.Background())
-			for {
-				var confirmed bool
-				err = sql.QueryRow(ctx, "SELECT confirmed_flush_lsn >= $1::pg_lsn FROM pg_replication_slots WHERE slot_name=$2", o.EndLSN.String(), cfg.Slot.Name).Scan(&confirmed)
-				if err != nil {
-					return err
-				}
-				if confirmed {
-					break
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(10 * time.Millisecond):
-				}
-			}
-		}
-		return barrier(ctx)
-	}
-	connector, err := cdc.NewOnlineConnector(context.Background(), cfg, handler, cdc.WithOnlineObserver(observer))
-	if err != nil {
-		return 2
-	}
-	if err = connector.Run(context.Background()); err != nil {
 		return 1
 	}
-	return 0
+	return code
+}
+
+type onlineProcessHelper struct {
+	cfg    config.Config
+	conn   *pgx.Conn
+	target *onlineTarget
+	mode   string
+	reads  int
+}
+
+func runOnlineProcessHelper() (code int, returned error) {
+	var cfg config.Config
+	if err := json.Unmarshal([]byte(os.Getenv("CDC_ONLINE_CONFIG")), &cfg); err != nil {
+		return 2, err
+	}
+	// This helper lives until its parent intentionally kills it; connect timeout
+	// does not own the lifetime of successful Run/delayed-target barriers.
+	ctx := context.Background()
+	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	conn, err := pgx.Connect(connectCtx, os.Getenv("CDC_ONLINE_TARGET"))
+	cancel()
+	if err != nil {
+		return 2, err
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		returned = errors.Join(returned, conn.Close(closeCtx))
+	}()
+	helper := &onlineProcessHelper{cfg: cfg, conn: conn, target: &onlineTarget{Conn: conn}, mode: os.Getenv("CDC_ONLINE_HELPER")}
+	connector, err := cdc.NewOnlineConnector(ctx, cfg, helper.handle, cdc.WithOnlineObserver(helper.observe))
+	if err != nil {
+		return 2, err
+	}
+	if err = connector.Run(ctx); err != nil {
+		return 1, err
+	}
+	return 0, nil
+}
+func onlineHelperBarrier(ctx context.Context) error {
+	if _, err := fmt.Fprintln(os.Stdout, "ONLINE-BARRIER"); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { input := bufio.NewReaderSize(os.Stdin, 64); _, err := input.ReadString('\n'); done <- err }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (h *onlineProcessHelper) handle(ctx context.Context, e online.Event) (result error) {
+	if h.mode == "delayed-request" && e.Operation == online.Read && h.reads == 0 {
+		data, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		tx, err := h.conn.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { result = errors.Join(result, online.RollbackBounded(tx)) }()
+		if _, err = tx.Exec(ctx, "SET LOCAL synchronous_commit=on"); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "INSERT INTO online_pending_read VALUES($1::jsonb)", string(data)); err != nil {
+			return err
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return err
+		}
+		return onlineHelperBarrier(ctx)
+	}
+	if e.Operation == online.Read && h.mode == "before-read" && h.reads == 0 {
+		if err := onlineHelperBarrier(ctx); err != nil {
+			return err
+		}
+	}
+	if err := h.target.Apply(ctx, e, onlineTargetOK); err != nil {
+		return err
+	}
+	if e.Operation == online.Read {
+		h.reads++
+		if h.mode == "after-read" && h.reads == 1 || h.mode == "after-last-read" && h.reads == 2 || h.mode == "after-third-read" && h.reads == 3 {
+			if err := onlineHelperBarrier(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+func (h *onlineProcessHelper) observe(ctx context.Context, o online.Observation) error {
+	match := h.mode == "after-low" && o.Phase == online.LOWRecorded || h.mode == "observed-select" && o.Phase == online.ReadResult || h.mode == "after-confirmed" && o.Phase == online.ACKAdvanced || h.mode == "visibility-root" && o.Phase == online.CaptureStarted
+	if !match {
+		return nil
+	}
+	if h.mode == "after-confirmed" {
+		sql, err := pgx.Connect(ctx, h.cfg.DSN())
+		if err != nil {
+			return err
+		}
+		defer sql.Close(context.Background())
+		for {
+			var confirmed bool
+			err = sql.QueryRow(ctx, "SELECT confirmed_flush_lsn >= $1::pg_lsn FROM pg_replication_slots WHERE slot_name=$2", o.EndLSN.String(), h.cfg.Slot.Name).Scan(&confirmed)
+			if err != nil {
+				return err
+			}
+			if confirmed {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+	return onlineHelperBarrier(ctx)
 }
 
 func startOnlineChild(t *testing.T, cfg config.Config, targetDSN, mode string) (*exec.Cmd, <-chan string, io.WriteCloser) {
 	t.Helper()
 	data, err := json.Marshal(cfg)
 	require.NoError(t, err)
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
 	cmd.Env = append(os.Environ(), "CDC_ONLINE_HELPER="+mode, "CDC_ONLINE_CONFIG="+string(data), "CDC_ONLINE_TARGET="+targetDSN)
 	output, err := cmd.StdoutPipe()
 	require.NoError(t, err)
@@ -149,10 +177,7 @@ func startOnlineChild(t *testing.T, cfg config.Config, targetDSN, mode string) (
 	}()
 	t.Cleanup(func() {
 		_ = input.Close()
-		if cmd.ProcessState == nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-		}
+		cleanupTestProcess(t, cmd)
 	})
 	return cmd, lines, input
 }
@@ -187,15 +212,16 @@ func TestOnlineInitialRecovery(t *testing.T) {
 				mode = "none"
 			}
 			child, lines, _ := startOnlineChild(t, cfg, dest.DSN, mode)
-			if point == "after-select" {
+			switch point {
+			case "after-select":
 				waitHighBarrier(t, conn)
-			} else if point == "metadata-before-reply" {
+			case "metadata-before-reply":
 				select {
 				case <-committed:
 				case <-time.After(10 * time.Second):
 					t.Fatal("committed reply barrier timeout")
 				}
-			} else {
+			default:
 				select {
 				case line := <-lines:
 					require.Equal(t, "ONLINE-BARRIER", line)

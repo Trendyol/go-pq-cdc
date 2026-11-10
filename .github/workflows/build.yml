@@ -9,22 +9,28 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref
+    }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
 
       - name: Lint
         run: |
@@ -42,7 +48,9 @@ jobs:
         run: go test -v ./...
 
   security-gates:
-    uses: Trendyol/security-actions/.github/workflows/security-gates.yml@master
+    uses: "Trendyol/security-actions/\
+      .github/workflows/security-gates.yml@\
+      e8dac3ff6ebf28aaaa8d3ec06652f606bdbdb111"
     needs: build
     permissions:
       actions: read

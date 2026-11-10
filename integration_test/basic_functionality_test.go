@@ -3,17 +3,19 @@ package integration
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	cdc "github.com/Trendyol/go-pq-cdc"
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -race -p=1 -v -run=TestBasicFunctionalitySanityTest
-func TestBasicFunctionalitySanityTest(t *testing.T) {
+func TestBasicFunctionalitySanityTest(_ *testing.T) {
 	fmt.Println("sanity test")
 }
 
@@ -25,13 +27,9 @@ func TestBasicFunctionality(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		messageCh := make(chan any, 500)
 		handlerFunc := func(ctx *replication.ListenerContext) {
@@ -43,29 +41,25 @@ func TestBasicFunctionality(t *testing.T) {
 		}
 
 		connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			connector.Close()
-			assert.NoError(t, RestoreDB(ctx))
-			assert.NoError(t, postgresConn.Close(ctx))
+			require.NoError(t, RestoreDB(ctx))
+			require.NoError(t, postgresConn.Close(ctx))
 		})
 
 		go connector.Start(ctx)
 
 		waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {
-			t.FailNow()
-		}
+		require.NoError(t, connector.WaitUntilReady(waitCtx))
 		cancel()
 
 		t.Run("Insert 10 book to table. Then check messages and metric", func(t *testing.T) {
 			books := CreateBooks(10)
 			for _, b := range books {
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("INSERT INTO books(id, name) VALUES(%d, '%s')", b.ID, b.Name))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for i := range 10 {
@@ -74,7 +68,7 @@ func TestBasicFunctionality(t *testing.T) {
 			}
 
 			metric, _ := fetchInsertOpMetric()
-			assert.True(t, metric == 10)
+			assert.Equal(t, 10, metric)
 		})
 
 		t.Run("Update 5 book on table. Then check messages and metric", func(t *testing.T) {
@@ -83,7 +77,7 @@ func TestBasicFunctionality(t *testing.T) {
 				b.ID = i + 1
 				books[i] = b
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("UPDATE books SET name = '%s' WHERE id = %d", b.Name, b.ID))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for i := range 5 {
@@ -92,13 +86,13 @@ func TestBasicFunctionality(t *testing.T) {
 			}
 
 			metric, _ := fetchUpdateOpMetric()
-			assert.True(t, metric == 5)
+			assert.Equal(t, 5, metric)
 		})
 
 		t.Run("Delete 5 book from table. Then check messages and metric", func(t *testing.T) {
 			for i := range 5 {
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("DELETE FROM books WHERE id = %d", i+1))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for i := range 5 {
@@ -107,7 +101,7 @@ func TestBasicFunctionality(t *testing.T) {
 			}
 
 			metric, _ := fetchDeleteOpMetric()
-			assert.True(t, metric == 5)
+			assert.Equal(t, 5, metric)
 		})
 	})
 }

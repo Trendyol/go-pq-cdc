@@ -51,6 +51,7 @@ func TestOnlineStrategyValidation(t *testing.T) {
 		{"only", "initial", func(c *Config) { c.Snapshot.Mode = SnapshotModeSnapshotOnly }},
 		{"unknown", "strategy", func(c *Config) { c.Snapshot.Strategy = "typo" }},
 		{"protocol2", "protocol 1", func(c *Config) { c.Slot.ProtoVersion = 2 }},
+		{"logical messages", "logicalMessages", func(c *Config) { c.Slot.LogicalMessages = slot.LogicalMessagesOn }},
 		{"resnapshot", "resnapshot", func(c *Config) { c.Snapshot.Resnapshot = true }},
 		{"broad publication", "explicit table", func(c *Config) { c.Publication.AllTables = true }},
 		{"operations", "INSERT, UPDATE, DELETE, TRUNCATE", func(c *Config) {

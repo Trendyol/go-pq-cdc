@@ -86,6 +86,8 @@ Metadata relations must be permanent. Source row payloads are not stored in a me
 
 The following limits are safety defaults, not measured throughput recommendations.
 Explicit `slot.protoVersion: 1` is required. Protocol 2 is not silently downgraded.
+Online capture always excludes logical decoding messages; `slot.logicalMessages: on` is rejected.
+Legacy streams retain their automatic logical-message support independently.
 
 ```yaml
 host: source-primary

@@ -68,7 +68,7 @@ func TestStatusUpdateAdvancesSlotWhileStreamIsBusy(t *testing.T) {
 
 		time.Sleep(8 * time.Second)
 
-		require.Greater(t, consumed.Load(), int64(0), "no CDC message consumed")
+		require.Positive(t, consumed.Load(), "no CDC message consumed")
 
 		_, finalConfirmed, err := readSlotLSNs(ctx, postgresConn, cdcCfg.Slot.Name)
 		require.NoError(t, err)

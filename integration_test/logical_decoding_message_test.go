@@ -52,13 +52,8 @@ func TestLogicalDecodingMessage(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
-
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		dropSlot(ctx, postgresConn, cdcCfg.Slot.Name)
 
@@ -69,15 +64,11 @@ func TestLogicalDecodingMessage(t *testing.T) {
 		}
 
 		connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 		pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			connector.Close()
@@ -89,19 +80,17 @@ func TestLogicalDecodingMessage(t *testing.T) {
 		go connector.Start(ctx)
 
 		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {
-			cancel()
-			t.FailNow()
-		}
+		defer cancel()
+		require.NoError(t, connector.WaitUntilReady(waitCtx))
 		cancel()
 
 		t.Run("Non-transactional message is delivered before the next transaction", func(t *testing.T) {
 			// Emitted outside any transaction: pgoutput delivers it standalone,
 			// with no BEGIN/COMMIT around it.
-			emitLSN := emitMessage(t, ctx, pool, logicalMessagePrefix, logicalMessageNonTxContent)
+			emitLSN := emitMessage(ctx, t, pool, logicalMessagePrefix, logicalMessageNonTxContent)
 
 			// A transaction right after it must not swallow the message.
-			emitMessageInTransaction(t, ctx, pool, logicalMessagePrefix, logicalMessageTxContent)
+			emitMessageInTransaction(ctx, t, pool, logicalMessagePrefix, logicalMessageTxContent)
 
 			// 1) The non-transactional message arrives first, immediately —
 			// not held back or dropped by the following BEGIN.
@@ -191,8 +180,8 @@ func TestLogicalDecodingMessageDisabled(t *testing.T) {
 
 	// The same traffic as the enabled test: a standalone message, then a
 	// transaction carrying a row change and a message.
-	emitMessage(t, ctx, pool, logicalMessagePrefix, logicalMessageNonTxContent)
-	emitMessageInTransaction(t, ctx, pool, logicalMessagePrefix, logicalMessageTxContent)
+	emitMessage(ctx, t, pool, logicalMessagePrefix, logicalMessageNonTxContent)
+	emitMessageInTransaction(ctx, t, pool, logicalMessagePrefix, logicalMessageTxContent)
 
 	// The row change proves the stream processed that traffic. Nothing else may
 	// arrive: not the standalone message that precedes it, and not the message
@@ -221,7 +210,7 @@ func TestLogicalDecodingMessageDisabled(t *testing.T) {
 
 // emitMessage emits a logical decoding message outside of any transaction and
 // returns the LSN PostgreSQL assigned to it.
-func emitMessage(t *testing.T, ctx context.Context, pool *pgxpool.Pool, prefix, content string) pq.LSN {
+func emitMessage(ctx context.Context, t *testing.T, pool *pgxpool.Pool, prefix, content string) pq.LSN {
 	t.Helper()
 
 	var lsnStr string
@@ -235,7 +224,7 @@ func emitMessage(t *testing.T, ctx context.Context, pool *pgxpool.Pool, prefix, 
 // emitMessageInTransaction inserts a book and emits a transactional logical
 // decoding message in one transaction, so pgoutput delivers it wrapped in
 // BEGIN/COMMIT.
-func emitMessageInTransaction(t *testing.T, ctx context.Context, pool *pgxpool.Pool, prefix, content string) {
+func emitMessageInTransaction(ctx context.Context, t *testing.T, pool *pgxpool.Pool, prefix, content string) {
 	t.Helper()
 
 	tx, err := pool.Begin(ctx)

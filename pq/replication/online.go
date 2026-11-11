@@ -12,6 +12,7 @@ import (
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	libpq "github.com/lib/pq"
@@ -252,7 +253,10 @@ func negotiateOnlineReplication(ctx context.Context, conn *onlineConnected, opti
 	replication := New(conn)
 	// Identifier list inside a SQL literal, never raw publication SQL.
 	publication := strings.ReplaceAll(libpq.QuoteIdentifier(options.Publication), "'", "''")
-	err := onlineWrite(ctx, conn.Conn(), func() error { return replication.Start(publication, options.Slot, options.StartLSN, 1) })
+	err := onlineWrite(ctx, conn.Conn(), func() error {
+		return replication.StartWithOptions(publication, options.Slot, options.StartLSN,
+			StartOptions{ProtoVersion: 1, LogicalMessages: slot.LogicalMessagesOff})
+	})
 	if err != nil {
 		return err
 	}

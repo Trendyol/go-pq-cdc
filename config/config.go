@@ -158,24 +158,9 @@ func (c *Config) SetDefault() {
 		}
 	}
 
-	if c.Slot.SlotActivityCheckerInterval == 0 {
-		c.Slot.SlotActivityCheckerInterval = 1000
-	}
+	c.setSlotDefaults()
 
-	if c.Slot.ProtoVersion == 0 {
-		c.Slot.ProtoVersion = 2
-	}
-	if c.Slot.InfoTimeout == 0 {
-		c.Slot.InfoTimeout = slot.DefaultInfoTimeout
-	}
-
-	// Postgres kills a standby that has not replied within wal_sender_timeout
-	// (60s by default). An explicit zero disables the periodic update, so only
-	// an unset value takes the default.
-	if c.StatusUpdateInterval == nil {
-		interval := DefaultStatusUpdateInterval
-		c.StatusUpdateInterval = &interval
-	}
+	c.setStatusUpdateDefault()
 
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
@@ -223,6 +208,27 @@ func (c *Config) SetDefault() {
 				c.Snapshot.Tables[tableID].Schema = defaultSchema
 			}
 		}
+	}
+}
+
+func (c *Config) setSlotDefaults() {
+	if c.Slot.SlotActivityCheckerInterval == 0 {
+		c.Slot.SlotActivityCheckerInterval = 1000
+	}
+	if c.Slot.ProtoVersion == 0 {
+		c.Slot.ProtoVersion = 2
+	}
+	if c.Slot.InfoTimeout == 0 {
+		c.Slot.InfoTimeout = slot.DefaultInfoTimeout
+	}
+}
+
+// Postgres kills a standby that has not replied within wal_sender_timeout.
+// An explicit zero disables periodic updates; only an unset value defaults.
+func (c *Config) setStatusUpdateDefault() {
+	if c.StatusUpdateInterval == nil {
+		interval := DefaultStatusUpdateInterval
+		c.StatusUpdateInterval = &interval
 	}
 }
 
@@ -606,6 +612,7 @@ func (c *Config) validateOnline() error {
 		}
 	}
 	reject(c.Slot.ProtoVersion != 1, "snapshot.strategy online requires explicit slot.protoVersion: 1 (protocol 1); protocol 2 is not downgraded")
+	reject(c.Slot.LogicalMessages == slot.LogicalMessagesOn, "slot.logicalMessages: on is unsupported with online strategy; online capture excludes logical decoding messages")
 	reject(c.Publication.AllTables, "snapshot.strategy online requires an explicit table publication; FOR ALL TABLES is unsupported")
 	reject(c.Slot.Failover, "slot.failover is unsupported in the same-primary PG16 online POC")
 	reject(c.ExtensionSupport.EnableTimeScaleDB, "extensionSupport.enableTimescaleDB is unsupported in the online POC (TimescaleDB)")

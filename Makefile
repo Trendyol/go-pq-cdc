@@ -45,6 +45,22 @@ tidy/all:
 test/integration:
 	cd integration_test && go test -race -p=1 -v ./...
 
+# test/integration/linux runs the integration suite in a Linux container on the
+# Docker host's network, so the tests reach containers at their Docker network
+# IP (TestReplicaGuardDNS needs that; Docker Desktop does not route container
+# IPs to a macOS host). INTEGRATION_CONTAINER_IPS makes the suite reach every
+# container that way; CI=true makes TestReplicaGuardDNS fail instead of skipping.
+# Narrow the run with RUN, e.g. make test/integration/linux RUN=TestReplicaGuardDNS
+RUN ?=
+.PHONY: test/integration/linux
+test/integration/linux:
+	docker run --rm --network host \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(CURDIR)":/src -w /src/integration_test \
+		-v go-pq-cdc-gomod:/go/pkg/mod -v go-pq-cdc-gocache:/root/.cache/go-build \
+		-e CI=true -e INTEGRATION_CONTAINER_IPS=true -e POSTGRES_VERSION \
+		golang:1.25 go test -race -count=1 -p=1 -v -run '$(RUN)' ./...
+
 .PHONY: lint
 lint: init/lint
 	@echo 'Formatting code...'

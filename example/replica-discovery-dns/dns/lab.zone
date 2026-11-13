@@ -1,0 +1,4 @@
+$ORIGIN lab.
+@ 3600 IN SOA ns.lab. admin.lab. 1 3600 600 86400 1
+@ 3600 IN NS ns.lab.
+ns 3600 IN A 10.99.0.53

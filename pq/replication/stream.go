@@ -189,7 +189,7 @@ func (s *stream) Open(ctx context.Context) error {
 		// Standbys share the guard's budget and failMode; they need the primary
 		// guard because P5 (sync rep + fail-closed) is what closes the timeline
 		// race the replica poll cannot see. See docs/replica-guard-design.md.
-		if len(s.config.VisibilityGuard.Replicas) > 0 {
+		if len(s.config.VisibilityGuard.Replicas) > 0 || s.config.VisibilityGuard.ResolveReplicas != nil {
 			replicas, err := openReplicaGuard(ctx, s.config, s.system, s.metric)
 			if err != nil {
 				_ = s.guard.close(ctx)
@@ -197,7 +197,11 @@ func (s *stream) Open(ctx context.Context) error {
 				return errors.Wrap(err, "replica guard")
 			}
 			s.replicas = replicas
-			logger.Info("replica guard enabled", "replicas", s.config.VisibilityGuard.Replicas)
+			if s.config.VisibilityGuard.ResolveReplicas != nil {
+				logger.Info("replica guard enabled", "discovery", true, "refreshInterval", replicas.refreshInterval())
+			} else {
+				logger.Info("replica guard enabled", "replicas", s.config.VisibilityGuard.Replicas)
+			}
 		}
 	}
 

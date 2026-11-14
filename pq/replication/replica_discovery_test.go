@@ -46,13 +46,13 @@ func member(addr string, timeline int32) config.ReplicaMember {
 	return config.ReplicaMember{Addr: addr, Source: "replica.a.service.consul", Timeline: timeline}
 }
 
-// discoveryMetric records which lag series the guard deleted.
+// discoveryMetric records which replica series the guard deleted.
 type discoveryMetric struct {
 	*countingMetric
 	deleted []string
 }
 
-func (m *discoveryMetric) DeleteVisibilityReplicaLag(replica string) {
+func (m *discoveryMetric) DeleteVisibilityReplica(replica string) {
 	m.deleted = append(m.deleted, replica)
 	m.lags.Delete(replica)
 }

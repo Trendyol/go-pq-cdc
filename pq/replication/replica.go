@@ -645,7 +645,7 @@ func validateMembers(members []config.ReplicaMember) error {
 }
 
 // apply makes members the replica set (design R18). A replica that left is
-// closed and its lag series deleted; one that joined is dialled and fully
+// closed and its metric series deleted; one that joined is dialled and fully
 // checked (R13 identity, recovery, timeline) by its first poll; one that
 // stayed keeps its connection and replay cache and takes its new timeline.
 // Called between rounds only. The first answer and every change are logged
@@ -678,7 +678,7 @@ func (g *replicaGuard) apply(ctx context.Context, members []config.ReplicaMember
 		if r.conn != nil && !r.conn.IsClosed() {
 			_ = r.conn.Close(ctx)
 		}
-		g.metric.DeleteVisibilityReplicaLag(r.name)
+		g.metric.DeleteVisibilityReplica(r.name)
 		removed = append(removed, r.name)
 	}
 	g.replicas, g.resolvedAt = next, at

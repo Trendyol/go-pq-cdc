@@ -42,9 +42,10 @@ type Metric interface {
 	VisibilityTimeoutIncrement()
 	VisibilityFailOpenIncrement()
 	SetVisibilityReplicaLag(replica string, lagBytes float64)
-	// DeleteVisibilityReplicaLag drops the lag series of a standby that left
-	// the resolved replica set; the gauge would otherwise keep its last value.
-	DeleteVisibilityReplicaLag(replica string)
+	// DeleteVisibilityReplica drops every series of a standby that left the
+	// resolved replica set: its lag gauge and its check counters. Otherwise
+	// they would keep their last values and grow with historical membership.
+	DeleteVisibilityReplica(replica string)
 	VisibilityReplicaCheck(replica string, cached bool)
 
 	PrometheusCollectors() []prometheus.Collector
@@ -489,8 +490,9 @@ func (m *metric) SetVisibilityReplicaLag(replica string, lagBytes float64) {
 	m.visibilityReplicaLagBytes.WithLabelValues(replica).Set(lagBytes)
 }
 
-func (m *metric) DeleteVisibilityReplicaLag(replica string) {
+func (m *metric) DeleteVisibilityReplica(replica string) {
 	m.visibilityReplicaLagBytes.DeleteLabelValues(replica)
+	m.visibilityReplicaChecks.DeletePartialMatch(prometheus.Labels{"replica": replica})
 }
 
 func (m *metric) VisibilityReplicaCheck(replica string, cached bool) {

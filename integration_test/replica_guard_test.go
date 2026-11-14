@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -25,6 +26,14 @@ import (
 // returns the standby as the replica guard lists it (host:port) and a
 // superuser pool on it.
 func startStandby(ctx context.Context, t *testing.T, name, applyDelay string) (string, *pgxpool.Pool) {
+	t.Helper()
+	hostPort, pool, _ := startStandbyContainer(ctx, t, name, applyDelay)
+	return hostPort, pool
+}
+
+// startStandbyContainer is startStandby that also returns the container, for
+// tests that stop the standby while the stream runs.
+func startStandbyContainer(ctx context.Context, t *testing.T, name, applyDelay string) (string, *pgxpool.Pool, testcontainers.Container) {
 	t.Helper()
 	version := os.Getenv(PostgresVersion)
 	if version == "" {
@@ -55,10 +64,15 @@ exec postgres -c fsync=off -c max_wal_senders=100 -c max_replication_slots=50 -c
 	port, err := standby.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err)
 	hostPort := fmt.Sprintf("localhost:%d", port.Int())
+	if reachContainerIPs {
+		ip, ipErr := standby.ContainerIP(ctx)
+		require.NoError(t, ipErr)
+		hostPort = net.JoinHostPort(ip, "5432")
+	}
 	pool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://postgres:postgres@%s/%s?sslmode=disable", hostPort, Config.Database))
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
-	return hostPort, pool
+	return hostPort, pool, standby
 }
 
 // dropReplicationSlot removes the physical slot pg_basebackup -C created on the
@@ -83,16 +97,29 @@ func dropReplicationSlot(ctx context.Context, t *testing.T, name string) {
 }
 
 type replicaEvent struct {
-	waitErr      error
 	dispatchedAt time.Time
+	waitErr      error
+	visibleOn    []bool
 	commitLSN    pq.LSN
 	id           int32
 	visible      bool
 }
 
-// runReplicaGuardConnector starts a connector whose handler, on every insert,
-// reads the standby and records what it found; the connector is closed with t.
-func runReplicaGuardConnector(ctx context.Context, t *testing.T, cdcCfg config.Config, standby *pgxpool.Pool) <-chan replicaEvent {
+// guardedConnector is a connector whose handler, on every insert, reads every
+// standby it was given and records what it found.
+type guardedConnector struct {
+	connector cdc.Connector
+	events    <-chan replicaEvent
+	// done is closed when Start returns: the connector stopped on its own.
+	done chan struct{}
+}
+
+// newGuardedConnector builds a connector from cdcCfg (through NewConnector, so
+// SetDefault, Validate and the discovery wiring run) without starting it. On
+// every insert the handler records, for each standby in order, whether the row
+// is readable there (visibleOn; visible is the first one) and whether
+// WaitReplayed passes on the first. The connector is closed with t.
+func newGuardedConnector(ctx context.Context, t *testing.T, cdcCfg config.Config, standbys ...*pgxpool.Pool) *guardedConnector {
 	t.Helper()
 	postgresConn, err := newPostgresConn()
 	require.NoError(t, err)
@@ -102,9 +129,16 @@ func runReplicaGuardConnector(ctx context.Context, t *testing.T, cdcCfg config.C
 	handler := func(lCtx *replication.ListenerContext) {
 		if ins, ok := lCtx.Message.(*format.Insert); ok {
 			ev := replicaEvent{id: ins.Decoded["id"].(int32), dispatchedAt: time.Now(), commitLSN: lCtx.CommitLSN}
-			var n int
-			ev.visible = standby.QueryRow(ctx, "SELECT count(*) FROM books WHERE id = $1", ev.id).Scan(&n) == nil && n == 1
-			ev.waitErr = replication.WaitReplayed(ctx, standby, lCtx.CommitLSN, replication.WaitOptions{Timeout: 500 * time.Millisecond})
+			for _, standby := range standbys {
+				qCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				var n int
+				ev.visibleOn = append(ev.visibleOn, standby.QueryRow(qCtx, "SELECT count(*) FROM books WHERE id = $1", ev.id).Scan(&n) == nil && n == 1)
+				cancel()
+			}
+			ev.visible = len(ev.visibleOn) > 0 && ev.visibleOn[0]
+			if len(standbys) > 0 {
+				ev.waitErr = replication.WaitReplayed(ctx, standbys[0], lCtx.CommitLSN, replication.WaitOptions{Timeout: 500 * time.Millisecond})
+			}
 			events <- ev
 		}
 		_ = lCtx.Ack()
@@ -116,11 +150,28 @@ func runReplicaGuardConnector(ctx context.Context, t *testing.T, cdcCfg config.C
 		_ = RestoreDB(ctx)
 		_ = postgresConn.Close(ctx)
 	})
-	go connector.Start(ctx)
-	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	return &guardedConnector{connector: connector, events: events, done: make(chan struct{})}
+}
+
+// start runs the connector and returns once it is ready, or the error that
+// WaitUntilReady gave within the timeout.
+func (g *guardedConnector) start(ctx context.Context, timeout time.Duration) error {
+	go func() {
+		g.connector.Start(ctx)
+		close(g.done)
+	}()
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	require.NoError(t, connector.WaitUntilReady(waitCtx))
-	return events
+	return g.connector.WaitUntilReady(waitCtx)
+}
+
+// runReplicaGuardConnector starts a connector whose handler, on every insert,
+// reads the standby and records what it found; the connector is closed with t.
+func runReplicaGuardConnector(ctx context.Context, t *testing.T, cdcCfg config.Config, standby *pgxpool.Pool) <-chan replicaEvent {
+	t.Helper()
+	g := newGuardedConnector(ctx, t, cdcCfg, standby)
+	require.NoError(t, g.start(ctx, 15*time.Second))
+	return g.events
 }
 
 // waitStandbyCaughtUp blocks until the standby has replayed everything the
@@ -128,19 +179,21 @@ func runReplicaGuardConnector(ctx context.Context, t *testing.T, cdcCfg config.C
 // that transaction's commit sits in the apply delay the standby holds its
 // AccessExclusiveLock, and a read of books there would block (forever, once
 // replay is paused). Start every scenario from a caught-up standby.
-func waitStandbyCaughtUp(ctx context.Context, t *testing.T, primary, standby *pgxpool.Pool) {
+func waitStandbyCaughtUp(ctx context.Context, t *testing.T, primary *pgxpool.Pool, standbys ...*pgxpool.Pool) {
 	t.Helper()
 	var lsn string
 	require.NoError(t, primary.QueryRow(ctx, "SELECT pg_current_wal_lsn()::text").Scan(&lsn))
 	deadline := time.Now().Add(15 * time.Second)
-	for {
-		var caughtUp bool
-		require.NoError(t, standby.QueryRow(ctx, "SELECT pg_last_wal_replay_lsn() >= $1::pg_lsn", lsn).Scan(&caughtUp))
-		if caughtUp {
-			return
+	for _, standby := range standbys {
+		for {
+			var caughtUp bool
+			require.NoError(t, standby.QueryRow(ctx, "SELECT pg_last_wal_replay_lsn() >= $1::pg_lsn", lsn).Scan(&caughtUp))
+			if caughtUp {
+				break
+			}
+			require.False(t, time.Now().After(deadline), "standby did not catch up to %s", lsn)
+			time.Sleep(100 * time.Millisecond)
 		}
-		require.False(t, time.Now().After(deadline), "standby did not catch up to %s", lsn)
-		time.Sleep(100 * time.Millisecond)
 	}
 }
 

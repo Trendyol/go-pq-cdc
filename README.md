@@ -650,6 +650,7 @@ the `/metrics` endpoint.
 | go_pq_cdc_cdc_latency_current_milliseconds          | The current latency in capturing data changes from PostgreSQL, in milliseconds.                      | slot_name, host| Gauge      |
 | go_pq_cdc_process_latency_current                   | The current latency in processing the captured data changes, in nanoseconds.                         | slot_name, host| Gauge      |
 | go_pq_cdc_process_latency_current_milliseconds      | The current latency in processing the captured data changes, in milliseconds.                        | slot_name, host| Gauge      |
+| go_pq_cdc_message_buffer_length                    | Messages queued in the stream's internal channel, read at scrape time, out of a capacity of 1000. Near 1000 means the consumer cannot keep up; near 0 while slot lag grows means the upstream is the bottleneck. | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_confirmed_flush_lsn | The last confirmed flush Log Sequence Number (LSN) in the PostgreSQL replication slot.                | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_current_lsn         | The current Log Sequence Number (LSN) being processed in the PostgreSQL replication slot.             | slot_name, host| Gauge      |
 | go_pq_cdc_replication_slot_slot_is_active           | Indicates whether the PostgreSQL replication slot is currently active (1 for active, 0 for inactive). | slot_name, host| Gauge      |

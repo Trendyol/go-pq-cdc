@@ -1,7 +1,9 @@
 package metric
 
 import (
+	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,6 +13,10 @@ const (
 	cdcNamespace              = "go_pq_cdc"
 	replicationSlotSubsystem  = "replication_slot"
 	nanosecondsPerMillisecond = 1_000_000
+
+	// MessageBufferCapacity is the capacity of the replication stream's internal
+	// message channel. It is part of the help text of the message buffer gauge.
+	MessageBufferCapacity = 1000
 )
 
 type Metric interface {
@@ -43,6 +49,11 @@ type Metric interface {
 	VisibilityFailOpenIncrement()
 	SetVisibilityReplicaLag(replica string, lagBytes float64)
 	VisibilityReplicaCheck(replica string, cached bool)
+
+	// SetMessageBufferSource registers the function the message buffer gauge
+	// calls at each scrape to read the number of buffered messages. Nothing is
+	// sampled on the message path.
+	SetMessageBufferSource(length func() int)
 
 	PrometheusCollectors() []prometheus.Collector
 }
@@ -82,12 +93,16 @@ type metric struct {
 	visibilityFailOpenTotal   prometheus.Counter
 	visibilityReplicaLagBytes *prometheus.GaugeVec
 	visibilityReplicaChecks   *prometheus.CounterVec
+
+	// Message buffer metric
+	messageBufferLength prometheus.GaugeFunc
+	messageBufferSource atomic.Pointer[func() int]
 }
 
 //nolint:funlen
 func NewMetric(slotName string) Metric {
 	hostname, _ := os.Hostname()
-	return &metric{
+	m := &metric{
 		totalInsert: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: cdcNamespace,
 			Subsystem: "insert",
@@ -350,6 +365,28 @@ func NewMetric(slotName string) Metric {
 			},
 		}, []string{"replica", "result"}),
 	}
+	m.messageBufferLength = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: cdcNamespace,
+		Subsystem: "message_buffer",
+		Name:      "length",
+		Help:      fmt.Sprintf("messages queued in the replication stream's internal channel, waiting to be processed (capacity %d)", MessageBufferCapacity),
+		ConstLabels: prometheus.Labels{
+			"slot_name": slotName,
+			"host":      hostname,
+		},
+	}, m.readMessageBufferLength)
+	return m
+}
+
+// readMessageBufferLength is called by the registry at scrape time, so the
+// gauge reflects the channel as it is at that moment, including while the
+// sink is parked on a full channel or idle after the consumer drained it.
+func (m *metric) readMessageBufferLength() float64 {
+	length := m.messageBufferSource.Load()
+	if length == nil {
+		return 0
+	}
+	return float64((*length)())
 }
 
 func (m *metric) PrometheusCollectors() []prometheus.Collector {
@@ -380,6 +417,7 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.visibilityFailOpenTotal,
 		m.visibilityReplicaLagBytes,
 		m.visibilityReplicaChecks,
+		m.messageBufferLength,
 	}
 }
 
@@ -492,4 +530,8 @@ func (m *metric) VisibilityReplicaCheck(replica string, cached bool) {
 		result = "cached"
 	}
 	m.visibilityReplicaChecks.WithLabelValues(replica, result).Inc()
+}
+
+func (m *metric) SetMessageBufferSource(length func() int) {
+	m.messageBufferSource.Store(&length)
 }

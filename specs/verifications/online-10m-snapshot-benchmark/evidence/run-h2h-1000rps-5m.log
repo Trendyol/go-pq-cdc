@@ -1,0 +1,115 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/11/08 18:44:24 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.1.4
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 89caf8e92ef3b13b27fdfbfd3b0bd278be214590325d4d436eaf43e1e109713b
+  Test ProcessID: 5159e416-9c88-4e1c-a794-8f8e03398824
+2026/11/08 18:44:24 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/08 18:44:25 ✅ Container created: 720a33f28bf9
+2026/11/08 18:44:25 🐳 Starting container: 720a33f28bf9
+2026/11/08 18:44:25 ✅ Container started: 720a33f28bf9
+2026/11/08 18:44:25 🚧 Waiting for container id 720a33f28bf9 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0x1267eeaa3a80 Strategies:[0x1267eeb02500]}
+2026/11/08 18:44:25 🔔 Container is ready: 720a33f28bf9
+=== RUN   TestOnlineInitialSnapshot10MHeadToHead
+2026/11/08 18:44:25 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/08 18:44:25 ✅ Container created: 5b2755b408ce
+2026/11/08 18:44:25 🐳 Starting container: 5b2755b408ce
+2026/11/08 18:44:25 ✅ Container started: 5b2755b408ce
+2026/11/08 18:44:25 🚧 Waiting for container id 5b2755b408ce image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0x1267eea64008 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1055aff80 ResponseMatcher:0x105697570 PollInterval:100ms}
+2026/11/08 18:44:26 🔔 Container is ready: 5b2755b408ce
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"postgres","password":"*******","database":"online_poc","publication":{"name":"bench_legacy_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"bench_legacy_slot","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":3000000000,"deliveryTimeout":3000000000,"chunkBytes":4194304,"transactionBytes":16777216,"queueBytes":33554432,"checkpointInterval":20000000,"markerInterval":50000000},"mode":"initial","instanceId":"","id":"","tables":null,"chunkSize":5000,"claimTimeout":30000000000,"heartbeatInterval":5000000000,"enabled":true,"resnapshot":false},"port":45975,"metric":{"port":61748},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-11-08T18:44:33.639521+03:00","level":"INFO","msg":"publication created","name":"bench_legacy_pub"}
+{"time":"2026-11-08T18:44:33.639537+03:00","level":"INFO","msg":"publication","info":{"name":"bench_legacy_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-11-08T18:44:33.671662+03:00","level":"INFO","msg":"[snapshot-connection-pool] creating connection pool","size":5}
+{"time":"2026-11-08T18:44:33.702838+03:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool ready","size":5}
+{"time":"2026-11-08T18:44:33.703229+03:00","level":"INFO","msg":"server starting on port :61748"}
+{"time":"2026-11-08T18:44:33.725332+03:00","level":"INFO","msg":"replication slot created","name":"bench_legacy_slot","failover":false}
+{"time":"2026-11-08T18:44:33.760238+03:00","level":"INFO","msg":"[coordinator] exporting snapshot"}
+{"time":"2026-11-08T18:44:33.761977+03:00","level":"INFO","msg":"[coordinator] snapshot exported","snapshotID":"00000011-0000000A-1"}
+{"time":"2026-11-08T18:44:33.761983+03:00","level":"INFO","msg":"[coordinator] snapshot transaction ready for workers"}
+{"time":"2026-11-08T18:44:33.761985+03:00","level":"INFO","msg":"[coordinator] creating metadata and chunks"}
+{"time":"2026-11-08T18:44:33.76524+03:00","level":"INFO","msg":"[chunk] range chunks created","table":"workload","chunkSize":5000,"numChunks":2000,"rangeMin":1,"rangeMax":10000000}
+{"time":"2026-11-08T18:44:34.355493+03:00","level":"INFO","msg":"[coordinator] chunks created","table":"public.workload","chunks":2000}
+{"time":"2026-11-08T18:44:34.356598+03:00","level":"INFO","msg":"[coordinator] metadata committed","totalChunks":2000,"lsn":"0/542DA000"}
+{"time":"2026-11-08T18:44:56.244412+03:00","level":"INFO","msg":"[snapshot] all chunks completed, finalizing snapshot"}
+{"time":"2026-11-08T18:44:56.245595+03:00","level":"INFO","msg":"[metadata] job marked as completed","slotName":"bench_legacy_slot"}
+{"time":"2026-11-08T18:44:56.245601+03:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-11-08T18:44:56.245607+03:00","level":"INFO","msg":"[coordinator] committing and closing snapshot export connection"}
+{"time":"2026-11-08T18:44:56.2462+03:00","level":"INFO","msg":"[snapshot-connection-pool] closing all connections","count":5}
+{"time":"2026-11-08T18:44:56.246317+03:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool closed"}
+{"time":"2026-11-08T18:44:56.246365+03:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-11-08T18:44:56.24637+03:00","level":"INFO","msg":"[snapshot] execution completed","instanceID":"PY7W2WPH7R-77406","duration":21889601209}
+{"time":"2026-11-08T18:44:56.246372+03:00","level":"INFO","msg":"snapshot completed successfully"}
+{"time":"2026-11-08T18:44:56.2572+03:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-11-08T18:44:57.268416+03:00","level":"INFO","msg":"system identification","systemID":"7705827024789778461","timeline":1,"xLogPos":1423642184,"database:":"online_poc"}
+{"time":"2026-11-08T18:44:57.268439+03:00","level":"INFO","msg":"fetching snapshot LSN from database","slotName":"bench_legacy_slot"}
+{"time":"2026-11-08T18:44:57.277807+03:00","level":"INFO","msg":"fetched snapshot LSN from database","slotName":"bench_legacy_slot","snapshotLSN":"0/542DA000"}
+{"time":"2026-11-08T18:44:57.278427+03:00","level":"INFO","msg":"replication started from snapshot LSN","slot":"bench_legacy_slot","lsn":"0/542DA000"}
+{"time":"2026-11-08T18:44:57.278435+03:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-11-08T18:44:57.278437+03:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-11-08T18:44:57.278511+03:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-11-08T18:44:57.27852+03:00","level":"INFO","msg":"postgres message sink started"}
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=4776/28400 (snapshot done=false sentinels=0) legacy cdc=28400
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=12198/60008 (snapshot done=false sentinels=0) legacy cdc=60008
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=20500/92008 (snapshot done=false sentinels=0) legacy cdc=92008
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=28407/122008 (snapshot done=false sentinels=0) legacy cdc=122008
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=37091/154011 (snapshot done=false sentinels=0) legacy cdc=154011
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=45786/186008 (snapshot done=false sentinels=0) legacy cdc=186008
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=53622/216008 (snapshot done=false sentinels=0) legacy cdc=216008
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=61665/246009 (snapshot done=false sentinels=0) legacy cdc=246008
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=11/2000 online reads=55000 online cdc=70629/278009 (snapshot done=false sentinels=0) legacy cdc=278009
+{"time":"2026-11-08T18:49:34.40742+03:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-11-08T18:49:34.407442+03:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-11-08T18:49:34.407492+03:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-11-08T18:49:34.668102+03:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-11-08T18:49:34.668166+03:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-11-08T18:49:34.668169+03:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-11-08T18:49:34.66817+03:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-11-08T18:49:34.668238+03:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-11-08T18:49:34.668246+03:00","level":"INFO","msg":"[connector] connector closed successfully"}
+    online_snapshot_h2h_benchmark_test.go:313: legacy arm stopped at sentinel after 5m0.301880417s
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=79824/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=88620/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=98165/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=107537/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=116940/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=125720/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=135393/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=144144/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=153522/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=162852/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=171563/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=180900/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=189510/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=198157/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=207362/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=215888/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=225215/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=233905/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=243288/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=252617/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=261940/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=270612/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=279750/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=288998/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=12/2000 online reads=55000 online cdc=298446/300000 (snapshot done=false sentinels=0) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=16/2000 online reads=3205000 online cdc=300001/300000 (snapshot done=false sentinels=1) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:329: progress: online windows completed=16/2000 online reads=7030000 online cdc=300001/300000 (snapshot done=false sentinels=1) legacy cdc=300001
+    online_snapshot_h2h_benchmark_test.go:315: online arm stopped at sentinel after 19m3.728841542s
+    online_snapshot_h2h_benchmark_test.go:387: timing: legacy snapshot done at 21.881796625s, writers stopped and sentinel committed at 300.002047125s, online snapshot done at 1143.728835125s (onlineSnapshotBeforeSentinel=false, online post-snapshot CDC beyond sentinel: none by stream construction)
+    online_snapshot_h2h_benchmark_test.go:441: SNAPSHOT_H2H {"actualSourceTransactionsPerSecond":1000,"chunkRows":5000,"legacy":{"cdcDeliveries":300001,"peakConfirmedLagBytes":26352120,"peakFeedbackAgeSeconds":29.193105,"peakSlotRetainedWAL":36409240,"slotName":"bench_legacy_slot","snapshotDoneSeconds":21.881796625,"snapshotKeyChecksum":50000005000000,"snapshotRows":10000000,"stopAtSentinelSeconds":300.040922875},"legacyLiveCDCSeconds":278.1202505,"maxSourceReadExecutionMS":8.824932,"online":{"cdcDeliveries":300001,"onlineStats":{"PeakChunkRawBytes":75003,"PeakReadLatency":7123834,"ReadQueries":2000,"PeakTransactionEncodedBytes":557,"PeakQueueAndAssemblyEncodedBytes":16777579,"PeakRelationEncodedBytes":193,"BufferedEncodedBytes":0,"SafeACK":1539623488,"FeedbackWrites":1145,"LastFeedback":"2026-11-08T19:03:37.884819+03:00"},"peakConfirmedLagBytes":95284352,"peakFeedbackAgeSeconds":0.669991,"peakSlotRetainedWAL":106215824,"slotName":"bench_online_slot","snapshotDoneSeconds":1143.728835125,"snapshotKeyChecksum":49999717497500,"snapshotRows":9995000,"stopAtSentinelSeconds":1143.728835167},"onlineSnapshotBeforeSentinel":false,"ratioOnlineOverLegacyStopAtSentinel":3.8119094695742177,"requestedUpdatesPerSecond":1000,"rows":10000000,"sentinel":{"id":10000000,"legacyCommitLSN":"0/5ABE9D78","onlineCommitLSN":"0/5ABE9D78","sameCommitLSN":true,"value":9000000007,"writerPostLSN":"0/5ABE9DA8","writerPreLSN":"0/5ABE70C8"},"sentinelCommitSeconds":300.002047125,"sharedProcessPeakHeapBytes":399672152,"sharedProcessPeakRSSBytes":476856320,"sourceContainer":"5b2755b408cef17f5fd47f6bf1c54b4d84bbe2f23df9cd34dbda43d20fea085b","sourceReadQueries":4000,"writersDurationSeconds":300,"writes":300000}
+2026/11/08 19:03:38 🐳 Terminating container: 5b2755b408ce
+2026/11/08 19:03:38 🚫 Container terminated: 5b2755b408ce
+--- PASS: TestOnlineInitialSnapshot10MHeadToHead (1152.41s)
+PASS
+2026/11/08 19:03:38 🐳 Terminating container: 720a33f28bf9
+2026/11/08 19:03:38 🚫 Container terminated: 720a33f28bf9
+ok  	github.com/Trendyol/go-pq-cdc/integration	1153.613s

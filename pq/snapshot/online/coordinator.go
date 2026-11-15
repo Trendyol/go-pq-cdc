@@ -35,6 +35,7 @@ type Coordinator struct {
 	Options  CoordinatorOptions
 	incoming chan *replication.OnlineCommittedEnvelope
 	request  chan struct{}
+	cdcOnly  bool // set only after durable snapshot completion
 }
 
 func (c *Coordinator) observe(ctx context.Context, phase ObservationPhase, attempt Window, end pq.LSN, selected int, last *int64) error {
@@ -57,15 +58,6 @@ func (c *Coordinator) bounded(ctx context.Context, fn func(context.Context) erro
 	ctx, cancel := context.WithTimeout(ctx, c.Options.QueryTimeout)
 	defer cancel()
 	return fn(ctx)
-}
-func (c *Coordinator) checkSchema(ctx context.Context) error {
-	return c.bounded(ctx, func(ctx context.Context) error {
-		actual, err := ValidatePublication(ctx, c.SQL, c.Options.Publication)
-		if err != nil {
-			return err
-		}
-		return ValidateSchemas(c.Schemas, actual)
-	})
 }
 func (c *Coordinator) apply(ctx context.Context, e Event) error {
 	select {
@@ -129,9 +121,6 @@ func (c *Coordinator) ack(end pq.LSN) error {
 	return nil
 }
 func (c *Coordinator) process(ctx context.Context, env *replication.OnlineCommittedEnvelope, w *ReadWindow, expected *Marker) (bool, error) {
-	if err := c.checkSchema(ctx); err != nil {
-		return false, err
-	}
 	// Validate the entire envelope BEFORE releasing any event. An unsupported
 	// key/image/control in a later ordinal must not escape as partial delivery.
 	events := make([]Event, 0, len(env.Changes))
@@ -152,7 +141,15 @@ func (c *Coordinator) process(ctx context.Context, env *replication.OnlineCommit
 			matched = matched || found
 			continue
 		}
-		event, err := BusinessEvent(change, env, c.Schemas, c.Job.SlotBinding)
+		schemas := c.Schemas
+		if c.cdcOnly {
+			schema, err := CDCRelationSchema(change, c.Schemas)
+			if err != nil {
+				return false, err
+			}
+			schemas = []TableSchema{schema}
+		}
+		event, err := BusinessEvent(change, env, schemas, c.Job.SlotBinding)
 		if err != nil {
 			return false, err
 		}
@@ -199,6 +196,7 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 	if s.Fingerprint != p.SchemaFingerprint || s.KeyFingerprint != p.KeyFingerprint {
 		return ErrSchema
 	}
+
 	id, err := NewID()
 	if err != nil {
 		return err
@@ -211,10 +209,23 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 	if err != nil {
 		return err
 	}
-	attempt := Window{ID: id, JobID: c.Job.ID, Generation: c.Job.Generation, Table: p.Table, PreviousCursor: p.Cursor, LowID: lowID, HighID: highID}
-	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.RegisterAttempt(ctx, attempt) }); err != nil {
+
+	attempt := Window{
+		ID:             id,
+		JobID:          c.Job.ID,
+		Generation:     c.Job.Generation,
+		Table:          p.Table,
+		PreviousCursor: p.Cursor,
+		LowID:          lowID,
+		HighID:         highID,
+	}
+	if err = c.bounded(ctx,
+		func(ctx context.Context) error {
+			return c.Store.RegisterAttempt(ctx, attempt)
+		}); err != nil {
 		return err
 	}
+
 	var marker Marker
 	if err = c.bounded(ctx, func(ctx context.Context) error {
 		marker, err = c.Store.EmitLOW(ctx, c.SQL, id, c.Job.Generation)
@@ -222,52 +233,60 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 	}); err != nil {
 		return err
 	}
+
 	low, err := c.through(ctx, marker, nil)
 	if err != nil {
 		return err
 	}
-	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.RecordLOW(ctx, id, c.Job.Generation, lowID, low) }); err != nil {
+
+	if err = c.bounded(ctx, func(ctx context.Context) error {
+		return c.Store.RecordLOW(ctx, id, c.Job.Generation, lowID, low)
+	}); err != nil {
 		return err
 	}
+
 	if err = c.observe(ctx, LOWRecorded, attempt, low, 0, nil); err != nil {
 		return err
 	}
 	if err = c.ack(low); err != nil {
 		return err
 	}
-	// Dispatch is frozen from observed/visible LOW until SELECT and separately
-	// committed HIGH. The source reader still receives and sends safe feedback.
-	if err = c.checkSchema(ctx); err != nil {
-		return err
-	}
+
+	// Dispatch is frozen from LOW until SELECT and separately committed HIGH.
+	// Use the startup-validated schema; runtime catalog changes are not polled.
+	// The source reader still receives and sends safe feedback.
 	if err = c.observe(ctx, ReadStarted, attempt, low, 0, nil); err != nil { //nolint:gofmt
 		return err
 	}
+
 	rows, err := ReadPage(ctx, c.SQL, s, p.Cursor, p.UpperKey, c.Options.ChunkRows, c.Options.ChunkBytes, c.Options.QueryTimeout, c.Options.Counters)
 	if err != nil {
-		abandonErr := c.bounded(ctx, func(ctx context.Context) error { return c.Store.AbandonAttempt(ctx, id, c.Job.Generation) })
+		abandonErr := c.bounded(ctx, func(ctx context.Context) error {
+			return c.Store.AbandonAttempt(ctx, id, c.Job.Generation)
+		})
 		return errors.Join(err, abandonErr)
 	}
+
 	w := NewReadWindow(p.Table, rows)
 	if err = c.observe(ctx, ReadResult, attempt, low, len(rows), w.LastKey()); err != nil {
 		return err
 	}
+
 	if err = c.bounded(ctx, func(ctx context.Context) error {
 		marker, err = c.Store.EmitHIGH(ctx, c.SQL, id, c.Job.Generation)
 		return err
 	}); err != nil {
 		return err
 	}
+
 	high, err := c.through(ctx, marker, w)
 	if err != nil {
 		return err
 	}
+
 	if err = c.bounded(ctx, func(ctx context.Context) error {
 		return c.Store.RecordHIGH(ctx, id, c.Job.Generation, highID, high, w.LastKey())
 	}); err != nil {
-		return err
-	}
-	if err = c.checkSchema(ctx); err != nil {
 		return err
 	}
 	if err = c.observe(ctx, HIGHRecorded, attempt, high, len(rows), w.LastKey()); err != nil {
@@ -282,6 +301,7 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 		return err
 	}
 	complete := len(rows) < c.Options.ChunkRows || (w.LastKey() != nil && p.UpperKey != nil && *w.LastKey() == *p.UpperKey)
+
 	if err = c.bounded(ctx, func(ctx context.Context) error { return c.Store.CompleteAttempt(ctx, id, c.Job.Generation, complete) }); err != nil {
 		// A lost metadata reply is resolved by original identity, never by replaying
 		// an unconditional transition. A broken non-reconnecting store fails closed.
@@ -297,8 +317,10 @@ func (c *Coordinator) window(ctx context.Context, p TableProgress) error {
 	if err = c.ack(high); err != nil {
 		return err
 	}
+
 	return c.observe(ctx, ACKAdvanced, attempt, high, len(rows), w.LastKey())
 }
+
 func (c *Coordinator) Run(ctx context.Context) error {
 	run, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -363,6 +385,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	c.cdcOnly = true
 	if c.Options.SnapshotComplete != nil {
 		c.Options.SnapshotComplete()
 	}

@@ -368,10 +368,17 @@ func (c *OnlineConnector) Run(ctx context.Context) (result error) {
 		case <-watchDone:
 		}
 	}()
+	// Apply the guard before the coordinator consumes any LOW/HIGH or CDC
+	// transactions. Startup source verification has already succeeded.
+	if !c.cfg.VisibilityGuard.Enabled {
+		reader.SkipVisibilityChecks()
+	}
 	c.mu.Lock()
 	c.reader = reader
 	c.mu.Unlock()
-	coordinator := online.Coordinator{Store: store, SQL: sql, Reader: reader, Job: job, Schemas: schemas, Handler: c.handler, Options: online.CoordinatorOptions{Publication: c.cfg.Publication.Name, Selected: selected, ChunkRows: int(c.cfg.Snapshot.ChunkSize), ChunkBytes: limits.ChunkBytes, QueryTimeout: limits.QueryTimeout, DeliveryTimeout: limits.DeliveryTimeout, CheckpointInterval: limits.CheckpointInterval, MarkerInterval: limits.MarkerInterval, SnapshotComplete: func() { close(c.snapshot) }, Observer: c.observer, Counters: &c.counters}}
+	coordinator := online.Coordinator{Store: store, SQL: sql, Reader: reader, Job: job, Schemas: schemas, Handler: c.handler, Options: online.CoordinatorOptions{Publication: c.cfg.Publication.Name, Selected: selected, ChunkRows: int(c.cfg.Snapshot.ChunkSize), ChunkBytes: limits.ChunkBytes, QueryTimeout: limits.QueryTimeout, DeliveryTimeout: limits.DeliveryTimeout, CheckpointInterval: limits.CheckpointInterval, MarkerInterval: limits.MarkerInterval, SnapshotComplete: func() {
+		close(c.snapshot)
+	}, Observer: c.observer, Counters: &c.counters}}
 	if c.observer != nil {
 		call, stop := context.WithTimeout(run, limits.DeliveryTimeout)
 		err = c.observer(call, online.Observation{Phase: online.CaptureStarted, JobID: job.ID, Generation: job.Generation, EndLSN: job.Checkpoint})

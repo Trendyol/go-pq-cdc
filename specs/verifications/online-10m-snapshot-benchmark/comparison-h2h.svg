@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="940" viewBox="0 0 1240 940" role="img" aria-labelledby="title desc">
+<title id="title">10M-row head-to-head snapshot comparison at 1000 RPS, sentinel barrier</title>
+<desc id="desc">Legacy consistent and online connectors consume the same transaction stream from one shared PostgreSQL 16 source concurrently and stop on the same sentinel commit LSN. 1000 updates per second for 5 minutes plus one sentinel transaction.</desc>
+<rect width="1240" height="940" fill="#ffffff"/>
+<style><![CDATA[text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;fill:#111827}.title{font-size:30px;font-weight:750}.subtitle{font-size:15px;fill:#4b5563}.label{font-size:17px;font-weight:650}.small{font-size:13px;fill:#4b5563}.value{font-size:14px;font-weight:650}.axis{stroke:#e5e7eb;stroke-width:1}.legacy{fill:#111827}.online{fill:#dc2626}.note{font-size:14px;fill:#374151}.ok{fill:#047857;font-weight:650}]]></style>
+<text x="60" y="52" class="title">Head-to-head at 1000 RPS: both arms stop on the same CDC message</text>
+<text x="60" y="80" class="subtitle">Legacy consistent vs online · shared source · chunk size 5,000 · PostgreSQL 16-alpine · 1,000 updates/s × 5 min + 1 sentinel transaction</text>
+<text x="60" y="108" class="subtitle">Sentinel barrier: both arms delivered the sentinel exactly once and report the same commit LSN 0/5ABE9D78 → <tspan class="ok">ok</tspan></text>
+<text x="60" y="136" class="subtitle">Writer window 0/5ABE70C8 .. 0/5ABE9DA8 · each arm delivered 300,001 CDC changes = 300,000 writes + sentinel · writers ran exactly 300s</text>
+<text x="60" y="164" class="subtitle">Snapshot rows: legacy 10,000,000 at 21.9s · online 9,995,000 at 1,143.7s (online absorbed the whole live stream into its snapshot)</text>
+<text x="60" y="192" class="subtitle">Run-length guarantee: legacy consumed live CDC for 278s after its snapshot; online’s only post-snapshot CDC message was the sentinel</text>
+<rect x="60" y="204" width="18" height="18" rx="3" class="legacy"/><text x="88" y="218" class="small">legacy consistent</text>
+<rect x="240" y="204" width="18" height="18" rx="3" class="online"/><text x="268" y="218" class="small">online</text>
+<line x1="305" y1="220" x2="915" y2="220" class="axis"/>
+<text x="60" y="258" class="label">Stop at sentinel (fair metric)</text>
+<text x="60" y="279" class="small">seconds · lower</text>
+<rect x="305" y="236" width="610" height="1" fill="#f3f4f6"/>
+<rect x="305" y="246" width="160.0" height="24" rx="4" class="legacy"/>
+<rect x="305" y="280" width="610.0" height="24" rx="4" class="online"/>
+<text x="475.0" y="264" class="value">300.041 seconds</text>
+<text x="925.0" y="298" class="value">1,143.729 seconds</text>
+<text x="935" y="279" class="small">online / legacy = 3.81×</text>
+<text x="60" y="340" class="label">Snapshot complete</text>
+<text x="60" y="361" class="small">seconds · lower</text>
+<rect x="305" y="318" width="610" height="1" fill="#f3f4f6"/>
+<rect x="305" y="328" width="11.7" height="24" rx="4" class="legacy"/>
+<rect x="305" y="362" width="610.0" height="24" rx="4" class="online"/>
+<text x="326.7" y="346" class="value">21.882 seconds</text>
+<text x="925.0" y="380" class="value">1,143.729 seconds</text>
+<text x="935" y="361" class="small">online / legacy = 52.27×</text>
+<text x="60" y="422" class="label">Peak slot-retained WAL</text>
+<text x="60" y="443" class="small">MB · lower</text>
+<rect x="305" y="400" width="610" height="1" fill="#f3f4f6"/>
+<rect x="305" y="410" width="209.1" height="24" rx="4" class="legacy"/>
+<rect x="305" y="444" width="610.0" height="24" rx="4" class="online"/>
+<text x="524.1" y="428" class="value">36.41 MB</text>
+<text x="925.0" y="462" class="value">106.22 MB</text>
+<text x="935" y="443" class="small">online / legacy = 2.92×</text>
+<text x="60" y="504" class="label">Peak confirmed lag</text>
+<text x="60" y="525" class="small">MB · lower</text>
+<rect x="305" y="482" width="610" height="1" fill="#f3f4f6"/>
+<rect x="305" y="492" width="168.7" height="24" rx="4" class="legacy"/>
+<rect x="305" y="526" width="610.0" height="24" rx="4" class="online"/>
+<text x="483.7" y="510" class="value">26.35 MB</text>
+<text x="925.0" y="544" class="value">95.28 MB</text>
+<text x="935" y="525" class="small">online / legacy = 3.62×</text>
+<text x="60" y="586" class="label">Peak feedback age</text>
+<text x="60" y="607" class="small">seconds · lower</text>
+<rect x="305" y="564" width="610" height="1" fill="#f3f4f6"/>
+<rect x="305" y="574" width="610.0" height="24" rx="4" class="legacy"/>
+<rect x="305" y="608" width="14.0" height="24" rx="4" class="online"/>
+<text x="925.0" y="592" class="value">29.193 seconds</text>
+<text x="329.0" y="626" class="value">0.670 seconds</text>
+<text x="935" y="607" class="small">online / legacy = 0.02×</text>
+<text x="60" y="668" class="label">CDC deliveries (writes+sentinel)</text>
+<text x="60" y="689" class="small">events · equal</text>
+<rect x="305" y="646" width="610" height="1" fill="#f3f4f6"/>
+<rect x="305" y="656" width="610.0" height="24" rx="4" class="legacy"/>
+<rect x="305" y="690" width="610.0" height="24" rx="4" class="online"/>
+<text x="925.0" y="674" class="value">300,001 events</text>
+<text x="925.0" y="708" class="value">300,001 events</text>
+<text x="935" y="689" class="small">identical — fairness gate</text>
+<rect x="60" y="754" width="1120" height="116" rx="14" fill="#f9fafb" stroke="#e5e7eb"/>
+<text x="86" y="784" class="note">Fairness: equal 300,001 CDC deliveries and one shared sentinel commit LSN prove both connectors stopped on the identical final message.</text>
+<text x="86" y="809" class="note">At 1000 RPS the online snapshot drains slower than the stream (completion lands after writers stop, ratio 3.81×); at 120 RPS it was sustainable at 1.85×.</text>
+<text x="86" y="834" class="note">WAL: online confirms only delivered data, so its slot retains the in-flight backlog (106 MB); legacy confirms at stream head after its fast snapshot (36 MB).</text>
+<text x="86" y="857" class="note">Caveat: single local run on a 6 GB VM, no durable target sink, not a production SLO.</text>
+</svg>

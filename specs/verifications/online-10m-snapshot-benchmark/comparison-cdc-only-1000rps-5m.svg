@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1050" viewBox="0 0 1440 1050" role="img" aria-labelledby="title desc">
+<title id="title">Legacy versus online CDC: 1000 inserts per second for five minutes</title>
+<desc id="desc">Both connectors delivered 300001 CDC events and stopped on the same sentinel. Throughput and stop times were effectively equal. Online sampled lower peak retained WAL, confirmed lag, and feedback age. No snapshot rows were delivered.</desc>
+<rect width="1440" height="1050" fill="#fff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#172033}.title{font-size:30px;font-weight:700}.sub{font-size:16px;fill:#536078}.label{font-size:19px;font-weight:700}.value{font-size:17px;font-weight:700}.note{font-size:15px;fill:#536078}.result{font-size:18px;font-weight:700;fill:#087b52}</style>
+<text x="48" y="52" class="title">CDC-only comparison — legacy and online at 1,000 RPS</text>
+<text x="48" y="84" class="sub">One shared PostgreSQL 16 source · 300 seconds · 300,000 INSERT transactions + one sentinel</text>
+<text x="48" y="112" class="sub">Legacy snapshot disabled; online empty snapshot completed before timing. Zero snapshot READ rows.</text>
+<rect x="48" y="134" width="1344" height="56" rx="9" fill="#eaf7ef"/>
+<text x="68" y="168" class="result">PASS: 300,001 deliveries each · same sentinel commit LSN 0/56C4958 · both kept up with input</text>
+<rect x="48" y="211" width="18" height="18" rx="3" fill="#172033"/>
+<text x="76" y="226" class="note">Legacy CDC</text>
+<rect x="228" y="211" width="18" height="18" rx="3" fill="#dc3b32"/>
+<text x="256" y="226" class="note">Online CDC</text>
+<text x="480" y="226" class="note">Each row has its own linear scale. WAL values are sampled peaks, not final lag.</text>
+<text x="48" y="287" class="label">Stop at sentinel</text>
+<text x="48" y="311" class="note">seconds</text>
+<rect x="365" y="263" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="263" width="510.000" height="25" rx="4" fill="#172033"/>
+<text x="895" y="282" class="value">300.019726 s</text>
+<rect x="365" y="299" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="299" width="510.000" height="25" rx="4" fill="#dc3b32"/>
+<text x="895" y="318" class="value">300.019759 s</text>
+<text x="1165" y="305" class="note">Effectively equal</text>
+<line x1="48" y1="350" x2="1392" y2="350" stroke="#e5e9ef"/>
+<text x="48" y="392" class="label">Delivery rate over run</text>
+<text x="48" y="416" class="note">events/s</text>
+<rect x="365" y="368" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="368" width="510.000" height="25" rx="4" fill="#172033"/>
+<text x="895" y="387" class="value">999.94 events/s</text>
+<rect x="365" y="404" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="404" width="510.000" height="25" rx="4" fill="#dc3b32"/>
+<text x="895" y="423" class="value">999.94 events/s</text>
+<text x="1165" y="410" class="note">Input-limited at 1,000 RPS</text>
+<line x1="48" y1="455" x2="1392" y2="455" stroke="#e5e9ef"/>
+<text x="48" y="497" class="label">Peak slot-retained WAL</text>
+<text x="48" y="521" class="note">decimal MB</text>
+<rect x="365" y="473" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="473" width="510.000" height="25" rx="4" fill="#172033"/>
+<text x="895" y="492" class="value">12.669 MB</text>
+<rect x="365" y="509" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="509" width="137.512" height="25" rx="4" fill="#dc3b32"/>
+<text x="895" y="528" class="value">3.416 MB</text>
+<text x="1165" y="515" class="note">Online 3.71× lower</text>
+<line x1="48" y1="560" x2="1392" y2="560" stroke="#e5e9ef"/>
+<text x="48" y="602" class="label">Peak confirmed lag</text>
+<text x="48" y="626" class="note">decimal MB</text>
+<rect x="365" y="578" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="578" width="510.000" height="25" rx="4" fill="#172033"/>
+<text x="895" y="597" class="value">6.238 MB</text>
+<rect x="365" y="614" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="614" width="17.777" height="25" rx="4" fill="#dc3b32"/>
+<text x="895" y="633" class="value">0.217 MB</text>
+<text x="1165" y="620" class="note">Online 28.69× lower</text>
+<line x1="48" y1="665" x2="1392" y2="665" stroke="#e5e9ef"/>
+<text x="48" y="707" class="label">Peak feedback age</text>
+<text x="48" y="731" class="note">seconds</text>
+<rect x="365" y="683" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="683" width="510.000" height="25" rx="4" fill="#172033"/>
+<text x="895" y="702" class="value">28.084 s</text>
+<rect x="365" y="719" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="719" width="18.544" height="25" rx="4" fill="#dc3b32"/>
+<text x="895" y="738" class="value">1.021 s</text>
+<text x="1165" y="725" class="note">Online 27.50× lower</text>
+<line x1="48" y1="770" x2="1392" y2="770" stroke="#e5e9ef"/>
+<text x="48" y="812" class="label">CDC deliveries</text>
+<text x="48" y="836" class="note">events</text>
+<rect x="365" y="788" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="788" width="510.000" height="25" rx="4" fill="#172033"/>
+<text x="895" y="807" class="value">300,001 events</text>
+<rect x="365" y="824" width="510" height="25" rx="4" fill="#f1f3f6"/>
+<rect x="365" y="824" width="510.000" height="25" rx="4" fill="#dc3b32"/>
+<text x="895" y="843" class="value">300,001 events</text>
+<text x="1165" y="830" class="note">Identical stream prefix</text>
+<line x1="48" y1="875" x2="1392" y2="875" stroke="#e5e9ef"/>
+<rect x="48" y="904" width="1344" height="106" rx="10" fill="#f5f7fa"/>
+<text x="68" y="930" class="note">Guard disabled: no per-transaction visibility SQL; schema catalog validation at startup, Relation-driven CDC afterward.</text>
+<text x="68" y="953" class="note">Shared process only: peak heap 4.36 MB · peak RSS 36.19 MB. Not attributable to either arm separately.</text>
+<text x="68" y="976" class="note">Single local counting-handler run, no durable target. This does not measure maximum throughput or prove production readiness.</text>
+<text x="68" y="999" class="note">Source: evidence/cdc-only-1000rps-5m.json · feedback sampled every 2 seconds; stop timestamps include polling delay.</text>
+</svg>

@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
@@ -139,7 +140,8 @@ func onlineWrite(ctx context.Context, conn net.Conn, write func() error) error {
 }
 
 // OnlineReader owns replication I/O and the primary guard. Next is serialized;
-// it never returns a transaction before COMMIT and primary SQL visibility.
+// it never returns a transaction before COMMIT. Primary SQL visibility is
+// controlled by the connector's visibility guard in both snapshot and CDC modes.
 // There is no auto-ACK (including control/heartbeat DML), retry or reconnect.
 // The caller owns returned envelopes and durable completion; reader accounting
 // stops when Next returns. Retain only bounded coordinator work after that.
@@ -151,22 +153,23 @@ type OnlineReaderStats struct {
 }
 
 type OnlineReader struct {
-	options         OnlineReaderOptions
-	transport       onlineTransport
-	gate            onlineGate
-	ctx             context.Context
-	cancel          context.CancelFunc
-	done            chan struct{}
-	wake            chan struct{}
-	capacityChanged chan struct{}
-	nextOwner       chan struct{} // context-aware sole SQL guard owner, including cleanup
-	mu              sync.Mutex
-	queue           []*OnlineCommittedEnvelope
-	buffered        int64 // queued + removed-but-still-gating envelope bytes
-	safeACK         pq.LSN
-	consumed        pq.LSN
-	terminal        error
-	stats           OnlineReaderStats
+	options            OnlineReaderOptions
+	transport          onlineTransport
+	gate               onlineGate
+	ctx                context.Context
+	cancel             context.CancelFunc
+	done               chan struct{}
+	wake               chan struct{}
+	capacityChanged    chan struct{}
+	nextOwner          chan struct{} // context-aware sole SQL guard owner, including cleanup
+	mu                 sync.Mutex
+	queue              []*OnlineCommittedEnvelope
+	buffered           int64 // queued + removed-but-still-gating envelope bytes
+	safeACK            pq.LSN
+	consumed           pq.LSN
+	terminal           error
+	stats              OnlineReaderStats
+	visibilityDisabled atomic.Bool // startup verification is never skipped
 }
 
 // StartOnlineReader returns only after identity/PG16/primary checks and
@@ -303,8 +306,16 @@ func (r *OnlineReader) Done() <-chan struct{} { return r.done }
 // cached relations, caller-retained envelopes or measured heap overhead.
 func (r *OnlineReader) BufferedBytes() int64 { r.mu.Lock(); defer r.mu.Unlock(); return r.buffered }
 
+// SkipVisibilityChecks disables per-transaction visibility/identity SQL.
+// Startup source validation remains mandatory. Disabling during snapshot removes
+// the SQL-visible LOW/HIGH fence guarantee. Call before Next to apply this policy
+// from the first transaction; an already-running gate is allowed to finish.
+func (r *OnlineReader) SkipVisibilityChecks() {
+	r.visibilityDisabled.Store(true)
+}
+
 // AdvanceSafeACK accepts only monotonic caller-proven progress at/below the
-// visibility-gated consumed frontier. It does not imply target completion;
+// consumed committed frontier (visibility-gated unless explicitly disabled). It does not imply target completion;
 // the caller must persist its durable checkpoint and enforce the LOW ceiling
 // first. Receiving WAL/keepalives/COMMIT or returning Next never auto-ACKs.
 func (r *OnlineReader) AdvanceSafeACK(lsn pq.LSN) error {
@@ -317,13 +328,14 @@ func (r *OnlineReader) AdvanceSafeACK(lsn pq.LSN) error {
 		return err
 	}
 	if lsn < r.safeACK || lsn > r.consumed {
-		return errors.New("online safe ACK must be monotonic and at/below consumed visibility frontier")
+		return errors.New("online safe ACK must be monotonic and at/below consumed frontier")
 	}
 	r.safeACK = lsn
 	return nil
 }
 
-// Next blocks until one committed envelope passes the primary visibility gate.
+// Next returns only committed envelopes. It checks primary SQL visibility unless
+// the caller explicitly disabled that check through SkipVisibilityChecks.
 // Any cancellation/error is terminal for this reader, including Next's context;
 // callers restart through the job/slot fencing protocol, never by retrying SQL.
 func (r *OnlineReader) Next(ctx context.Context) (*OnlineCommittedEnvelope, error) {
@@ -365,7 +377,10 @@ func (r *OnlineReader) Next(ctx context.Context) (*OnlineCommittedEnvelope, erro
 			r.queue[0] = nil
 			r.queue = r.queue[1:]
 			r.mu.Unlock()
-			err := r.gate.wait(nextCtx, env.XID)
+			var err error
+			if !r.visibilityDisabled.Load() {
+				err = r.gate.wait(nextCtx, env.XID)
+			}
 			if ctx.Err() != nil {
 				err = ctx.Err()
 			}

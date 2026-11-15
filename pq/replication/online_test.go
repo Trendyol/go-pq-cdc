@@ -81,6 +81,15 @@ func TestOnlineCommittedEnvelope(t *testing.T) {
 	require.IsType(t, &format.Update{}, env.Changes[1].Message)
 	require.IsType(t, &format.Delete{}, env.Changes[2].Message)
 	require.False(t, a.inTransaction())
+	// Cache updates from read-ahead must not change queued row descriptors.
+	previous := env.Changes[0].Relation
+	require.NotNil(t, previous)
+	updated := append([]byte(nil), onlineRelation()...)
+	updated[8] = 'x' // same OID, changed namespace
+	_, err = a.accept(XLogData{WALData: updated})
+	require.NoError(t, err)
+	require.NotSame(t, previous, a.relations[7])
+	require.Equal(t, "public", previous.Namespace)
 }
 
 func TestOnlineInvalidInput(t *testing.T) {

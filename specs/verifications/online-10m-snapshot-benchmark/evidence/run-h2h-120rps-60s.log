@@ -1,0 +1,78 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/11/07 17:59:16 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.1.4
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 8ba1189b376ff97946b0210d96cda9131ce53c5231b99c3bf6c3dce6fe3b4985
+  Test ProcessID: 86589047-336b-4e3e-9720-dac693058b37
+2026/11/07 17:59:16 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/07 17:59:16 ✅ Container created: 2fed125a2b1d
+2026/11/07 17:59:16 🐳 Starting container: 2fed125a2b1d
+2026/11/07 17:59:16 ✅ Container started: 2fed125a2b1d
+2026/11/07 17:59:16 🚧 Waiting for container id 2fed125a2b1d image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0x5d636f184c80 Strategies:[0x5d636efe24c0]}
+2026/11/07 17:59:17 🔔 Container is ready: 2fed125a2b1d
+=== RUN   TestOnlineInitialSnapshot10MHeadToHead
+2026/11/07 17:59:17 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/07 17:59:17 ✅ Container created: 323ee192c21b
+2026/11/07 17:59:17 🐳 Starting container: 323ee192c21b
+2026/11/07 17:59:17 ✅ Container started: 323ee192c21b
+2026/11/07 17:59:17 🚧 Waiting for container id 323ee192c21b image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0x5d636f588010 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x100837f80 ResponseMatcher:0x10091edb0 PollInterval:100ms}
+2026/11/07 17:59:18 🔔 Container is ready: 323ee192c21b
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"postgres","password":"*******","database":"online_poc","publication":{"name":"bench_legacy_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"bench_legacy_slot","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":3000000000,"deliveryTimeout":3000000000,"chunkBytes":4194304,"transactionBytes":16777216,"queueBytes":33554432,"checkpointInterval":20000000,"markerInterval":50000000},"mode":"initial","instanceId":"","id":"","tables":null,"chunkSize":5000,"claimTimeout":30000000000,"heartbeatInterval":5000000000,"enabled":true,"resnapshot":false},"port":39501,"metric":{"port":55495},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-11-07T17:59:24.3804+03:00","level":"INFO","msg":"publication created","name":"bench_legacy_pub"}
+{"time":"2026-11-07T17:59:24.380424+03:00","level":"INFO","msg":"publication","info":{"name":"bench_legacy_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-11-07T17:59:24.398928+03:00","level":"INFO","msg":"[snapshot-connection-pool] creating connection pool","size":5}
+{"time":"2026-11-07T17:59:24.429541+03:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool ready","size":5}
+{"time":"2026-11-07T17:59:24.429909+03:00","level":"INFO","msg":"server starting on port :55495"}
+{"time":"2026-11-07T17:59:24.469324+03:00","level":"INFO","msg":"replication slot created","name":"bench_legacy_slot","failover":false}
+{"time":"2026-11-07T17:59:24.505592+03:00","level":"INFO","msg":"[coordinator] exporting snapshot"}
+{"time":"2026-11-07T17:59:24.507304+03:00","level":"INFO","msg":"[coordinator] snapshot exported","snapshotID":"0000000F-0000000B-1"}
+{"time":"2026-11-07T17:59:24.507312+03:00","level":"INFO","msg":"[coordinator] snapshot transaction ready for workers"}
+{"time":"2026-11-07T17:59:24.507313+03:00","level":"INFO","msg":"[coordinator] creating metadata and chunks"}
+{"time":"2026-11-07T17:59:24.511388+03:00","level":"INFO","msg":"[chunk] range chunks created","table":"workload","chunkSize":5000,"numChunks":2000,"rangeMin":1,"rangeMax":10000000}
+{"time":"2026-11-07T17:59:25.18759+03:00","level":"INFO","msg":"[coordinator] chunks created","table":"public.workload","chunks":2000}
+{"time":"2026-11-07T17:59:25.18841+03:00","level":"INFO","msg":"[coordinator] metadata committed","totalChunks":2000,"lsn":"0/542DC000"}
+{"time":"2026-11-07T17:59:38.990565+03:00","level":"INFO","msg":"[snapshot] all chunks completed, finalizing snapshot"}
+{"time":"2026-11-07T17:59:38.991264+03:00","level":"INFO","msg":"[metadata] job marked as completed","slotName":"bench_legacy_slot"}
+{"time":"2026-11-07T17:59:38.99127+03:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-11-07T17:59:38.991273+03:00","level":"INFO","msg":"[coordinator] committing and closing snapshot export connection"}
+{"time":"2026-11-07T17:59:38.991716+03:00","level":"INFO","msg":"[snapshot-connection-pool] closing all connections","count":5}
+{"time":"2026-11-07T17:59:38.991841+03:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool closed"}
+{"time":"2026-11-07T17:59:38.991885+03:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-11-07T17:59:38.991889+03:00","level":"INFO","msg":"[snapshot] execution completed","instanceID":"PY7W2WPH7R-12586","duration":13803431708}
+{"time":"2026-11-07T17:59:38.991891+03:00","level":"INFO","msg":"snapshot completed successfully"}
+{"time":"2026-11-07T17:59:39.013217+03:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-11-07T17:59:40.028044+03:00","level":"INFO","msg":"system identification","systemID":"7705444307644956701","timeline":1,"xLogPos":1418046216,"database:":"online_poc"}
+{"time":"2026-11-07T17:59:40.028069+03:00","level":"INFO","msg":"fetching snapshot LSN from database","slotName":"bench_legacy_slot"}
+{"time":"2026-11-07T17:59:40.036769+03:00","level":"INFO","msg":"fetched snapshot LSN from database","slotName":"bench_legacy_slot","snapshotLSN":"0/542DC000"}
+{"time":"2026-11-07T17:59:40.043612+03:00","level":"INFO","msg":"replication started from snapshot LSN","slot":"bench_legacy_slot","lsn":"0/542DC000"}
+{"time":"2026-11-07T17:59:40.043626+03:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-11-07T17:59:40.043629+03:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-11-07T17:59:40.043695+03:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-11-07T17:59:40.043704+03:00","level":"INFO","msg":"postgres message sink started"}
+{"time":"2026-11-07T18:00:25.2467+03:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-11-07T18:00:25.246711+03:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-11-07T18:00:25.246747+03:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-11-07T18:00:25.255973+03:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-11-07T18:00:25.255987+03:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-11-07T18:00:25.25599+03:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-11-07T18:00:25.255991+03:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-11-07T18:00:25.25603+03:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-11-07T18:00:25.256038+03:00","level":"INFO","msg":"[connector] connector closed successfully"}
+    online_snapshot_h2h_benchmark_test.go:292: legacy arm stopped at sentinel after 1m0.060027s
+    online_snapshot_h2h_benchmark_test.go:294: online arm stopped at sentinel after 1m51.106063042s
+    online_snapshot_h2h_benchmark_test.go:398: SNAPSHOT_H2H {"chunkRows":5000,"legacy":{"cdcDeliveries":7201,"peakConfirmedLagBytes":13203416,"peakFeedbackAgeSeconds":15.22399,"peakSlotRetainedWAL":14853880,"slotName":"bench_legacy_slot","snapshotDoneSeconds":13.795955417,"snapshotKeyChecksum":50000005000000,"snapshotRows":10000000,"stopAtSentinelSeconds":60.050629042},"maxSourceReadExecutionMS":6.949477,"online":{"cdcDeliveries":7201,"onlineStats":{"PeakChunkRawBytes":75003,"PeakReadLatency":8270791,"ReadQueries":2000,"PeakTransactionEncodedBytes":557,"PeakQueueAndAssemblyEncodedBytes":1175,"PeakRelationEncodedBytes":193,"BufferedEncodedBytes":0,"SafeACK":1432993904,"FeedbackWrites":112,"LastFeedback":"2026-11-07T18:01:15.536858+03:00"},"peakConfirmedLagBytes":284712,"peakFeedbackAgeSeconds":0.842053,"peakSlotRetainedWAL":5338688,"slotName":"bench_online_slot","snapshotDoneSeconds":111.106059917,"snapshotKeyChecksum":50000005000000,"snapshotRows":10000000,"stopAtSentinelSeconds":111.106059958},"ratioOnlineOverLegacyStopAtSentinel":1.8502064296494103,"requestedUpdateDurationSec":60,"requestedUpdatesPerSecond":120,"rows":10000000,"sentinel":{"id":10000000,"legacyCommitLSN":"0/55106D68","onlineCommitLSN":"0/55106D68","sameCommitLSN":true,"value":9000000007,"writerPostLSN":"0/55106D98","writerPreLSN":"0/55106C80"},"sharedProcessPeakHeapBytes":10355384,"sharedProcessPeakRSSBytes":44384256,"sourceContainer":"323ee192c21baf37632ed1df28ca2ce2b4d49ab8ebd594f7c6f7c56d5bc671c3","sourceReadQueries":4000,"writes":7200}
+2026/11/07 18:01:16 🐳 Terminating container: 323ee192c21b
+2026/11/07 18:01:16 🚫 Container terminated: 323ee192c21b
+--- PASS: TestOnlineInitialSnapshot10MHeadToHead (118.93s)
+PASS
+2026/11/07 18:01:16 🐳 Terminating container: 2fed125a2b1d
+2026/11/07 18:01:16 🚫 Container terminated: 2fed125a2b1d
+ok  	github.com/Trendyol/go-pq-cdc/integration	120.385s

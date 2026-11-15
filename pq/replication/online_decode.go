@@ -25,6 +25,9 @@ type OnlineChange struct {
 	Message      any // *format.Insert, *format.Update, or *format.Delete
 	Ordinal      uint32
 	EncodedBytes int64 // pgoutput message bytes, including the message tag
+	// Relation is the immutable descriptor used to decode this change. Capture
+	// it per change: the reader cache can advance ahead of coordinator delivery.
+	Relation *format.Relation
 }
 
 // OnlineCommittedEnvelope is immutable after publication by the reader.
@@ -144,7 +147,7 @@ func (a *onlineAssembler) accept(xld XLogData) (*OnlineCommittedEnvelope, error)
 		if err != nil {
 			return nil, fmt.Errorf("%w: full image: %v", ErrOnlineProtocol, err)
 		}
-		a.tx.Changes = append(a.tx.Changes, OnlineChange{Message: decoded, Ordinal: uint32(len(a.tx.Changes)), EncodedBytes: int64(len(b))})
+		a.tx.Changes = append(a.tx.Changes, OnlineChange{Message: decoded, Ordinal: uint32(len(a.tx.Changes)), EncodedBytes: int64(len(b)), Relation: a.relations[oid]})
 		return nil, nil
 	}
 }

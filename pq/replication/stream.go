@@ -32,6 +32,12 @@ var (
 const (
 	StandbyStatusUpdateByteID = 'r'
 	streamShutdownTimeout     = 30 * time.Second
+	// sinkStallWarnInterval is how long one send may stay blocked on a full
+	// message channel before the sink warns, and the period between repeat
+	// warnings while it stays blocked.
+	sinkStallWarnInterval = 30 * time.Second
+	messageSinkStallMsg   = "postgres message sink is blocked on a full message channel, the consumer is not draining it; the listener or its downstream is slow or stuck"
+	messageSinkResumedMsg = "postgres message sink resumed"
 	// standbyStatusWriteTimeout bounds a single 34-byte status write. A peer
 	// that stops reading must not pin connMu (and with it Close) past the
 	// shutdown budget.
@@ -125,12 +131,12 @@ type stream struct {
 }
 
 func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc ListenerFunc) Streamer {
-	return &stream{
+	s := &stream{
 		conn:         pq.NewConnectionTemplate(dsn),
 		metric:       m,
 		config:       cfg,
 		relation:     make(map[uint32]*format.Relation),
-		messageCH:    make(chan *Message, 1000),
+		messageCH:    make(chan *Message, metric.MessageBufferCapacity),
 		listenerFunc: listenerFunc,
 		// lastXLogPos:0 is not magical, 0 means, create replication starts with confirmed_flush_lsn
 		// https://github.com/postgres/postgres/blob/master/src/include/access/xlogdefs.h#L28
@@ -142,6 +148,12 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 		statusUpdateEnd: make(chan struct{}),
 		mu:              &sync.RWMutex{},
 	}
+	// messageCH is never reassigned, so the scrape-time read needs no lock.
+	// Some tests build a stream with a nil metric.
+	if m != nil {
+		m.SetMessageBufferSource(func() int { return len(s.messageCH) })
+	}
+	return s
 }
 
 func (s *stream) Connect(ctx context.Context) error {
@@ -269,20 +281,75 @@ type messageBuffer struct {
 	xid       uint32 // current transaction, from Begin
 	inTx      bool   // between Begin and Commit; Begin itself is never delivered
 	commitLSN pq.LSN // current transaction's commit record, from Begin.FinalLSN
+
+	// stallWarnInterval overrides sinkStallWarnInterval when set. Tests use it.
+	stallWarnInterval time.Duration
+	// progress returns the stream's acked count and confirmed LSN for the stall
+	// warning. Nil when the buffer is not attached to a stream.
+	progress func() (acked uint64, confirmedLSN pq.LSN)
 }
 
+// send hands msg to outCh and reports whether it was delivered; false means ctx
+// was cancelled first. The fast path is a non-blocking send that allocates
+// nothing. Only a full channel reaches sendBlocked.
 func (b *messageBuffer) send(msg *Message) bool {
-	ctx := b.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	select {
 	case b.outCh <- msg:
 		b.sent++
 		return true
-	case <-ctx.Done():
-		return false
+	default:
 	}
+	return b.sendBlocked(msg)
+}
+
+// sendBlocked waits for room in outCh. Each stall interval it logs a warning;
+// if the send then succeeds, it logs once that the sink resumed.
+func (b *messageBuffer) sendBlocked(msg *Message) bool {
+	ctx := b.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	interval := b.stallWarnInterval
+	if interval <= 0 {
+		interval = sinkStallWarnInterval
+	}
+	start := time.Now()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	warned := false
+	for {
+		select {
+		case b.outCh <- msg:
+			b.sent++
+			if warned {
+				logger.Info(messageSinkResumedMsg, "blocked", time.Since(start))
+			}
+			return true
+		case <-ctx.Done():
+			return false
+		case <-ticker.C:
+			warned = true
+			b.warnStalled(time.Since(start))
+		}
+	}
+}
+
+// warnStalled logs the state of a send that has been blocked for the given
+// duration. buffered equal to capacity means the channel is full and the
+// consumer is the one not keeping up.
+func (b *messageBuffer) warnStalled(blocked time.Duration) {
+	var acked uint64
+	var confirmedLSN pq.LSN
+	if b.progress != nil {
+		acked, confirmedLSN = b.progress()
+	}
+	logger.Warn(messageSinkStallMsg,
+		"blocked", blocked,
+		"buffered", len(b.outCh),
+		"capacity", cap(b.outCh),
+		"sent", b.sent,
+		"acked", acked,
+		"confirmedLSN", confirmedLSN.String())
 }
 
 // flush emits the pending message (if any) with its original WAL position.
@@ -444,7 +511,7 @@ func (s *streamTxBuffer) abortTx(xid, subXid uint32) {
 func (s *stream) sink(ctx context.Context) {
 	logger.Info("postgres message sink started")
 
-	buf := &messageBuffer{outCh: s.messageCH}
+	buf := &messageBuffer{outCh: s.messageCH, progress: s.messageBufferProgress}
 	buf.ctx = ctx
 	streamBuf := &streamTxBuffer{}
 	corrupted := s.sinkLoop(ctx, buf, streamBuf)
@@ -466,6 +533,12 @@ func (s *stream) sink(ctx context.Context) {
 			panic("corrupted connection")
 		}
 	}
+}
+
+// messageBufferProgress is read by the sink's stall warning on the sink
+// goroutine. acked is atomic, and the confirmed LSN takes s.mu only for a read.
+func (s *stream) messageBufferProgress() (uint64, pq.LSN) {
+	return s.acked.Load(), s.LoadConfirmedXLogPos()
 }
 
 // sinkLoop reads raw replication messages and dispatches them until the

@@ -115,7 +115,7 @@ type stream struct {
 	confirmedXLogPos    pq.LSN
 	acked               atomic.Uint64 // messages acked at least once; in flight = messageBuffer.sent - acked
 	messageCloseOnce    sync.Once
-	connMu              sync.Mutex
+	connMu              sync.Mutex // serializes every use of conn, which has no locking of its own; see Close
 	closed              atomic.Bool
 	sinkStarted         atomic.Bool
 	processStarted      atomic.Bool
@@ -145,6 +145,10 @@ func NewStream(dsn string, cfg config.Config, m metric.Metric, listenerFunc List
 }
 
 func (s *stream) Connect(ctx context.Context) error {
+	// Close may run concurrently or later on another goroutine; see connMu.
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
 	if err := s.conn.Connect(ctx); err != nil {
 		return errors.Wrap(err, "stream connection")
 	}
@@ -161,6 +165,12 @@ func (s *stream) Connect(ctx context.Context) error {
 }
 
 func (s *stream) Open(ctx context.Context) error {
+	// Held until Open returns, so Close sees the stream either opened (guards,
+	// cancel, started goroutines) or failed, never half-way. Nothing Open runs
+	// synchronously takes connMu; the goroutines it starts wait for it.
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
 	if s.conn.IsClosed() {
 		return ErrorNotConnected
 	}
@@ -924,7 +934,9 @@ func (s *stream) Close(ctx context.Context) error {
 	// callback is synchronous and may be blocked outside this package; waiting
 	// for it before closing the socket can leave the walsender connection open
 	// for the whole shutdown timeout. Every writer bounds its write with
-	// standbyStatusWriteTimeout, so this lock cannot outlive the shutdown budget.
+	// standbyStatusWriteTimeout. Connect and Open hold this lock for their whole
+	// startup exchange, so a Close during startup waits for that step to finish
+	// and a Close after a failed startup is ordered after everything it did.
 	s.connMu.Lock()
 	if !s.conn.IsClosed() {
 		s.flushFinalStandbyStatusUpdateLocked(ctx)

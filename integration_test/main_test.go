@@ -34,6 +34,13 @@ var (
 	defaultVersion  = "16-alpine"
 )
 
+// reachContainerIPs, set by make test/integration/linux, makes the tests reach
+// the primary and the standbys at their Docker network IP on port 5432 instead
+// of a published port. That run shares the Docker host's network, where Docker
+// Desktop serves no published port of a container created through the mounted
+// socket; container IPs are reachable there and on any Linux Docker host.
+var reachContainerIPs = os.Getenv("INTEGRATION_CONTAINER_IPS") != ""
+
 func TestMain(m *testing.M) {
 	var err error
 	Config, err = config.ReadConfigYAML("./test_connector.yaml")
@@ -70,6 +77,12 @@ func TestMain(m *testing.M) {
 	}
 	Config.Host = "localhost"
 	Config.Port = mappedPort.Int()
+	if reachContainerIPs {
+		if Config.Host, err = Container.ContainerIP(ctx); err != nil {
+			log.Fatal("get container ip", err)
+		}
+		Config.Port = 5432
+	}
 
 	conn, err := newPostgresConn()
 	if err != nil {

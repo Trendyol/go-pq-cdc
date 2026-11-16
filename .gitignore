@@ -1,3 +1,4 @@
 .idea
 .claude
 vendor
+/example/replica-discovery-dns/replica-discovery-dns

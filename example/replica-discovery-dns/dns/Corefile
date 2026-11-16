@@ -1,0 +1,15 @@
+# Records come from ./hosts, re-read every second. A name with no line in it
+# falls through to the empty lab zone, which answers NXDOMAIN: an emptied name is
+# an empty answer, the case the connector must never read as "zero replicas".
+# A known name asked for a type it lacks (AAAA) gets an empty NOERROR.
+# CoreDNS answers over UDP and TCP; the connector's nameserver option uses TCP.
+.:53 {
+    hosts /etc/coredns/hosts {
+        ttl 1
+        reload 1s
+        fallthrough
+    }
+    file /etc/coredns/lab.zone lab
+    log
+    errors
+}

@@ -1,0 +1,117 @@
+# Primary + two hot standbys (mars caught up, venus applies commits 5s late) +
+# a CoreDNS whose records you edit from the host + the connector. Every address
+# the connector needs is fixed, because DNS answers carry addresses, not names.
+#
+#   lab        10.99.0.0/24   primary .10, mars .11, venus .12, dns .53, connector .20
+#   lab-b      10.99.1.0/24   mars .11 (a second address of the same server), connector .20
+#
+# mars has two addresses so that the venus DNS name can keep one standby behind
+# it while venus itself is removed (lab.sh step 3). Two names must never list
+# the same host:port, so the spare address cannot be venus's own.
+x-standby: &standby
+  image: postgres:17-alpine
+  user: postgres
+  entrypoint: [ "sh", "-ec" ]
+  environment:
+    PGPASSWORD: cdc_pass
+  depends_on:
+    primary:
+      condition: service_healthy
+  healthcheck:
+    test: [ "CMD-SHELL", "pg_isready -U cdc_user -d cdc_db" ]
+    interval: 2s
+    timeout: 5s
+    retries: 30
+
+services:
+  primary:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: cdc_db
+      POSTGRES_USER: cdc_user
+      POSTGRES_PASSWORD: cdc_pass
+    ports:
+      - "127.0.0.1:5447:5432"
+    command: [ "postgres", "-c", "wal_level=logical", "-c", "wal_keep_size=64MB" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U cdc_user -d cdc_db" ]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - ./init.sh:/docker-entrypoint-initdb.d/init.sh
+    networks:
+      lab:
+        ipv4_address: 10.99.0.10
+
+  mars:
+    <<: *standby
+    ports:
+      - "127.0.0.1:5448:5432"
+    command:
+      - |
+        pg_basebackup -h primary -U cdc_user -D "$$PGDATA" -R -X stream -C -S mars && chmod 700 "$$PGDATA"
+        exec postgres -c primary_conninfo='host=primary user=cdc_user password=cdc_pass application_name=mars'
+    networks:
+      lab:
+        ipv4_address: 10.99.0.11
+      lab-b:
+        ipv4_address: 10.99.1.11
+
+  venus:
+    <<: *standby
+    ports:
+      - "127.0.0.1:5449:5432"
+    command:
+      - |
+        pg_basebackup -h primary -U cdc_user -D "$$PGDATA" -R -X stream -C -S venus && chmod 700 "$$PGDATA"
+        exec postgres -c recovery_min_apply_delay=5s -c primary_conninfo='host=primary user=cdc_user password=cdc_pass application_name=venus'
+    networks:
+      lab:
+        ipv4_address: 10.99.0.12
+
+  dns:
+    image: coredns/coredns:1.12.1
+    command: [ "-conf", "/etc/coredns/Corefile" ]
+    ports:
+      - "127.0.0.1:5354:53/tcp"
+      - "127.0.0.1:5354:53/udp"
+    volumes:
+      - ./dns:/etc/coredns:ro
+    networks:
+      lab:
+        ipv4_address: 10.99.0.53
+
+  # CONFIG picks the file under ./config: connector-both.yml (default) or
+  # connector-mars.yml. lab.sh recreates the service to switch.
+  connector:
+    build:
+      context: ../..
+      dockerfile: example/replica-discovery-dns/Dockerfile
+    command: [ "/app/connector", "-config", "/config/${CONFIG:-connector-both.yml}" ]
+    depends_on:
+      primary:
+        condition: service_healthy
+      mars:
+        condition: service_healthy
+      venus:
+        condition: service_healthy
+      dns:
+        condition: service_started
+    volumes:
+      - ./config:/config:ro
+    networks:
+      lab:
+        ipv4_address: 10.99.0.20
+      lab-b:
+        ipv4_address: 10.99.1.20
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24
+  lab-b:
+    ipam:
+      config:
+        - subnet: 10.99.1.0/24

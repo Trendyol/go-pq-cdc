@@ -1,0 +1,34 @@
+host: primary
+port: 5432
+database: cdc_db
+username: cdc_user
+password: cdc_pass
+publication:
+  createIfNotExists: true
+  name: cdc_publication
+  operations:
+    - INSERT
+  tables:
+    - name: orders
+      schema: public
+      replicaIdentity: DEFAULT
+slot:
+  createIfNotExists: true
+  name: cdc_slot
+  slotActivityCheckerInterval: 3000
+visibilityGuard:
+  enabled: true
+  failMode: closed
+  timeout: 25s
+  discovery:
+    dns:
+      refreshInterval: 5s
+      port: 5432
+      nameserver: 10.99.0.53:53
+      names:
+        - replica.demo.mars.lab
+        - replica.demo.venus.lab
+metric:
+  port: 8082
+logger:
+  level: INFO

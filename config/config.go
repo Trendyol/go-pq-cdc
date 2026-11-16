@@ -1,11 +1,13 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -21,6 +23,11 @@ const defaultSchema = "public"
 // a real standby uses to acknowledge the primary. It sits well below
 // wal_sender_timeout (60s by default).
 const DefaultStatusUpdateInterval = 10 * time.Second
+
+// DefaultReplicaRefreshInterval is how long a ResolveReplicas answer is trusted
+// when VisibilityGuardConfig.RefreshInterval is unset. It is also the default
+// of discovery.dns.refreshInterval. See docs/replica-guard-design.md R16.
+const DefaultReplicaRefreshInterval = 10 * time.Second
 
 type Config struct {
 	Logger      LoggerConfig       `json:"logger" yaml:"logger"`
@@ -50,15 +57,59 @@ type Config struct {
 // transaction is visible to new snapshots on the primary. See
 // docs/visibility-gate-design.md.
 type VisibilityGuardConfig struct {
-	// Replicas lists standbys (host:port) that must have replayed the
-	// transaction's commit record before its first message is dispatched.
-	// Credentials and database come from the main config. Direct hosts only,
-	// never a pooled endpoint. See docs/replica-guard-design.md.
-	FailMode     VisibilityFailMode `json:"failMode" yaml:"failMode"`
-	Replicas     []string           `json:"replicas" yaml:"replicas"`
-	Timeout      time.Duration      `json:"timeout" yaml:"timeout"`
-	PollInterval time.Duration      `json:"pollInterval" yaml:"pollInterval"`
-	Enabled      bool               `json:"enabled" yaml:"enabled"`
+	// ResolveReplicas, when set, supplies the standbys to gate instead of
+	// Replicas (mutually exclusive). Contract: return an error if you cannot
+	// prove the cluster was reached and correctly identified. A non-nil empty
+	// slice asserts "proved, zero routable replicas" (the guard then gates on
+	// the primary only); a nil slice with a nil error is an invalid answer, not
+	// an empty set, and is rejected. Every address must be a direct host:port,
+	// listed once. See docs/replica-guard-design.md R14 and R21.
+	ResolveReplicas func(ctx context.Context) ([]ReplicaMember, error) `json:"-" yaml:"-"`
+	Discovery       VisibilityDiscoveryConfig                          `json:"discovery" yaml:"discovery"`
+	FailMode        VisibilityFailMode                                 `json:"failMode" yaml:"failMode"`
+	Replicas        []string                                           `json:"replicas" yaml:"replicas"`
+	Timeout         time.Duration                                      `json:"timeout" yaml:"timeout"`
+	PollInterval    time.Duration                                      `json:"pollInterval" yaml:"pollInterval"`
+	RefreshInterval time.Duration                                      `json:"-" yaml:"-"`
+	Enabled         bool                                               `json:"enabled" yaml:"enabled"`
+}
+
+// VisibilityDiscoveryConfig selects a source for the standbys to gate.
+type VisibilityDiscoveryConfig struct {
+	// DNS reads the members from role-tagged service DNS names. Nil when
+	// unused.
+	DNS *DNSDiscoveryConfig `json:"dns" yaml:"dns"`
+}
+
+// DNSDiscoveryConfig lists the DNS names whose addresses are gated. Each name
+// is one source (for example the replica service name of one region); an
+// address carries no port, so every address is combined with Port. See
+// docs/replica-guard-design.md R32-R40.
+type DNSDiscoveryConfig struct {
+	// Nameserver is an optional literal ip:port. When set, every query goes to
+	// it over TCP; when empty the system resolver configuration is used.
+	Nameserver string `json:"nameserver" yaml:"nameserver"`
+	// Names are the DNS names to resolve, at least one.
+	Names []string `json:"names" yaml:"names"`
+	// RefreshInterval is how long a resolved member list is trusted. Zero takes
+	// DefaultReplicaRefreshInterval.
+	RefreshInterval time.Duration `json:"refreshInterval" yaml:"refreshInterval"`
+	// Port is the PostgreSQL port of every standby. Zero takes the main
+	// connection's port.
+	Port int `json:"port" yaml:"port"`
+}
+
+// ReplicaMember is one standby a ResolveReplicas hook reports as routable.
+type ReplicaMember struct {
+	// Addr is the standby's direct host:port, never a pooled endpoint.
+	Addr string
+	// Source names where the member was found, for example the DNS name it
+	// was listed under. Logs only: membership changes are logged grouped by it.
+	Source string
+	// Timeline is the member's own timeline as the source last saw it; 0 means
+	// unknown. A known timeline that differs from the replication session's
+	// holds the gate (docs/replica-guard-design.md R19).
+	Timeline int32
 }
 
 type VisibilityFailMode string
@@ -70,14 +121,66 @@ const (
 	VisibilityFailOpen VisibilityFailMode = "open"
 )
 
+// setDefault fills the defaults; mainPort is the main connection's port, the
+// default of discovery.dns.port.
+func (v *VisibilityGuardConfig) setDefault(mainPort int) {
+	if !v.Enabled {
+		return
+	}
+	if v.FailMode == "" {
+		v.FailMode = VisibilityFailClosed
+	}
+	if v.Timeout == 0 {
+		v.Timeout = 10 * time.Second
+	}
+	if v.PollInterval == 0 {
+		v.PollInterval = 5 * time.Millisecond
+	}
+	if v.ResolveReplicas != nil && v.RefreshInterval == 0 {
+		v.RefreshInterval = DefaultReplicaRefreshInterval
+	}
+	if d := v.Discovery.DNS; d != nil {
+		if d.RefreshInterval == 0 {
+			d.RefreshInterval = DefaultReplicaRefreshInterval
+		}
+		if d.Port == 0 {
+			d.Port = mainPort
+		}
+	}
+}
+
 func (v *VisibilityGuardConfig) Validate() error {
 	if !v.Enabled {
 		if len(v.Replicas) > 0 {
 			return errors.New("visibilityGuard.replicas requires visibilityGuard.enabled: true")
 		}
+		if v.ResolveReplicas != nil {
+			return errors.New("visibilityGuard.ResolveReplicas requires visibilityGuard.enabled: true")
+		}
+		if v.Discovery.DNS != nil {
+			return errors.New("visibilityGuard.discovery.dns requires visibilityGuard.enabled: true")
+		}
 		return nil
 	}
 	var err error
+	if v.ResolveReplicas != nil && len(v.Replicas) > 0 {
+		err = errors.Join(err, errors.New("visibilityGuard.replicas and visibilityGuard.ResolveReplicas are mutually exclusive"))
+	}
+	if v.RefreshInterval < 0 {
+		err = errors.Join(err, errors.New("visibilityGuard.RefreshInterval must not be negative"))
+	}
+	if d := v.Discovery.DNS; d != nil {
+		if len(v.Replicas) > 0 {
+			err = errors.Join(err, errors.New("visibilityGuard.discovery.dns and visibilityGuard.replicas are mutually exclusive"))
+		}
+		if v.ResolveReplicas != nil {
+			err = errors.Join(err, errors.New("visibilityGuard.discovery.dns and visibilityGuard.ResolveReplicas are mutually exclusive"))
+		}
+		if v.RefreshInterval != 0 {
+			err = errors.Join(err, errors.New("visibilityGuard.discovery.dns and visibilityGuard.RefreshInterval are mutually exclusive"))
+		}
+		err = errors.Join(err, d.validate())
+	}
 	seen := make(map[string]bool, len(v.Replicas))
 	for _, r := range v.Replicas {
 		if _, _, e := net.SplitHostPort(r); e != nil {
@@ -98,6 +201,64 @@ func (v *VisibilityGuardConfig) Validate() error {
 		err = errors.Join(err, errors.New("visibilityGuard.pollInterval must be greater than 0"))
 	}
 	return err
+}
+
+// validate checks the block on its own. Its exclusions with Replicas and the
+// ResolveReplicas hook are checked by VisibilityGuardConfig.Validate. Port is
+// already defaulted to the main connection's port by SetDefault.
+func (d *DNSDiscoveryConfig) validate() error {
+	var err error
+	if len(d.Names) == 0 {
+		err = errors.Join(err, errors.New("visibilityGuard.discovery.dns.names must list at least one name"))
+	}
+	seen := make(map[string]bool, len(d.Names))
+	for _, name := range d.Names {
+		if !validDNSName(name) {
+			err = errors.Join(err, fmt.Errorf("visibilityGuard.discovery.dns.names: %q is not a valid DNS name", name))
+		}
+		key := strings.ToLower(strings.TrimSuffix(name, "."))
+		if seen[key] {
+			err = errors.Join(err, fmt.Errorf("visibilityGuard.discovery.dns.names: %q listed twice (names are compared case-insensitively, a trailing dot is ignored)", name))
+		}
+		seen[key] = true
+	}
+	if d.Port < 1 || d.Port > 65535 {
+		err = errors.Join(err, fmt.Errorf("visibilityGuard.discovery.dns.port must be in 1-65535, got %d", d.Port))
+	}
+	if d.Nameserver != "" {
+		if _, pErr := netip.ParseAddrPort(d.Nameserver); pErr != nil {
+			err = errors.Join(err, fmt.Errorf("visibilityGuard.discovery.dns.nameserver: %q must be a literal ip:port (a host name is not accepted)", d.Nameserver))
+		}
+	}
+	if d.RefreshInterval <= 0 {
+		err = errors.Join(err, errors.New("visibilityGuard.discovery.dns.refreshInterval must be greater than 0"))
+	}
+	return err
+}
+
+// validDNSName reports whether name is a DNS host name: labels of letters,
+// digits, hyphen and underscore (service names use it), 1-63 characters, no
+// leading or trailing hyphen, at most 253 characters, one optional trailing dot,
+// and not a bare IP address.
+func validDNSName(name string) bool {
+	name = strings.TrimSuffix(name, ".")
+	if name == "" || len(name) > 253 {
+		return false
+	}
+	if _, err := netip.ParseAddr(name); err == nil {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, c := range label {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 type MetricConfig struct {
@@ -178,17 +339,7 @@ func (c *Config) SetDefault() {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)
 	}
 
-	if c.VisibilityGuard.Enabled {
-		if c.VisibilityGuard.FailMode == "" {
-			c.VisibilityGuard.FailMode = VisibilityFailClosed
-		}
-		if c.VisibilityGuard.Timeout == 0 {
-			c.VisibilityGuard.Timeout = 10 * time.Second
-		}
-		if c.VisibilityGuard.PollInterval == 0 {
-			c.VisibilityGuard.PollInterval = 5 * time.Millisecond
-		}
-	}
+	c.VisibilityGuard.setDefault(c.Port)
 
 	// Set default schema names for tables
 	for tableID, table := range c.Publication.Tables {

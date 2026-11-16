@@ -424,7 +424,11 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `visibilityGuard.failMode`              |  string  |    no    | closed  | What to do when a transaction is not visible within `timeout`                                          | **closed:** restart the stream; the event is redelivered from the confirmed LSN. **open:** log a warning, count it, dispatch anyway. Guard errors (replica, failover, connection loss) restart the stream in both modes. |
 | `visibilityGuard.timeout`               | duration |    no    |  10s    | Maximum time to wait per transaction                                                                   | Must be less than half of the server's `wal_sender_timeout` (checked at startup, skipped when it is `0`). That bound matters when `statusUpdateInterval` is `0`: keepalive replies stop while the gate blocks. |
 | `visibilityGuard.pollInterval`          | duration |    no    |  5ms    | First poll interval; doubles up to 250ms with jitter                                                   |                                                                                                                                                    |
-| `visibilityGuard.replicas`              | []string |    no    |   []    | Standbys (`host:port`) that must have applied the transaction before its first event is dispatched (see [Visibility Guard](#visibility-guard)). | Requires `enabled: true`. Credentials and database come from the main config. Direct standby hosts only, never a pooled endpoint. Shares `timeout` and `failMode` with the primary check. |
+| `visibilityGuard.replicas`              | []string |    no    |   []    | Standbys (`host:port`) that must have applied the transaction before its first event is dispatched (see [Visibility Guard](#visibility-guard)). | Requires `enabled: true`. Credentials and database come from the main config. Direct standby hosts only, never a pooled endpoint. Shares `timeout` and `failMode` with the primary check. Must cover every region or cluster consumers read from. |
+| `visibilityGuard.discovery.dns.names` | []string |    no    |   -     | DNS names whose A and AAAA records are the standbys to gate, one name per region or cluster, for example `replica.<scope>.service.services.<region>.<domain>` (see [Replica discovery](#replica-discovery-dns)). | Requires `enabled: true`. Mutually exclusive with `replicas` and with the Go hook `ResolveReplicas`. At least one valid DNS name; no duplicates (case-insensitive, a trailing dot is ignored). An empty or failing answer fails the refresh. |
+| `visibilityGuard.discovery.dns.port` | int |    no    | `port` | PostgreSQL port combined with every address (a DNS record carries none). | Defaults to the main connection's `port`. 1-65535. |
+| `visibilityGuard.discovery.dns.nameserver` | string |    no    |   -     | Literal `ip:port` of a DNS server (for example a Consul agent's DNS port, usually 8600). Every query goes to it over TCP. | A host name is rejected. When unset the system resolver configuration is used and a warning is logged at startup. |
+| `visibilityGuard.discovery.dns.refreshInterval` | duration |    no    |  10s    | How long a discovered member list is trusted. A transaction is only released against a list younger than this; an older one is re-read first. | Must be greater than 0. `0` takes the default. |
 
 ### API
 
@@ -511,6 +515,85 @@ certified. A poll that passed on a replica certifies every lower `CommitLSN` for
 query (logged as `cached_age_ms`), so a busy stream costs about one poll per replica per second instead of one per
 transaction; a replica that is behind is still polled on every transaction until it passes. Design record:
 [docs/replica-guard-design.md](./docs/replica-guard-design.md).
+
+#### Replica discovery (DNS)
+
+A static `replicas` list has to be edited by hand whenever a standby is added, removed or promoted.
+`visibilityGuard.discovery.dns` reads the standbys from DNS names instead: one name per region or cluster whose A and
+AAAA records are the standbys your service registry reports as healthy, for example the Consul name
+`replica.<scope>.service.services.<region>.<domain>`. The guard looks every name up on each refresh and gates the
+addresses it gets, on `port` (default: the main connection's port).
+
+```yaml
+visibilityGuard:
+  enabled: true
+  discovery:
+    dns:
+      refreshInterval: 10s          # default; how long a member list is trusted before the next gated transaction re-reads it
+      port: 5432                    # default: the main connection's port
+      nameserver: 10.0.0.1:8600     # optional literal ip:port, queried over TCP; see below
+      names:
+        - replica.scope.service.services.region-a.example.internal
+        - replica.scope.service.services.region-b.example.internal
+```
+
+**Lookup.** Per name the guard makes three lookups with the pure-Go resolver, always for the absolute name (a trailing
+dot is added), so a resolver search list can never answer for it: A records (`ip4`), AAAA records (`ip6`), and an
+unfiltered cross-check (`ip`). A lookup error other than "no such name / no data" fails the name. The one exception is
+an AAAA lookup whose records were all IPv4-mapped (the resolver reports "no suitable address found"); the cross-check
+covers those. An address the cross-check returns that the family lookups do not explain fails the name, and so does a
+cross-check that finds nothing while a family returned records. One family being absent is fine only when the other
+returned records. Names are looked up concurrently inside the guard's one-second bound for a resolver call. An address
+repeated inside one answer counts once.
+
+**Failure handling.** An empty answer is a failure, never "zero replicas": a name that lists nobody cannot be told
+apart from a registry that lost its entries. The price is that a region with no passing standby stops the stream under
+`failMode: closed`. A failure of any name fails the whole refresh (the set is never partial), and the same `host:port`
+under two names is an error rather than a merge. A failing refresh is retried on the next gated transaction and counts
+against `timeout`; when it expires, the transaction follows `failMode`, as for a standby that is behind. A
+configuration that fails validation, or a name that cannot be resolved at startup, fails the connector start.
+
+**Nameserver.** With `nameserver` set, every query goes to that address over TCP. Point it at a Consul agent's DNS port
+to remove any forwarder from the path. Without it the system resolver configuration is used, and the guard logs one
+warning at startup: Consul cuts a UDP answer to `udp_answer_limit` (3) records when the querier does not use EDNS, which
+a forwarder in between may do, and it does so silently, so a standby can be missing from the set. Set `nameserver`, or
+confirm that your resolver path returns complete answers.
+
+**Go hook.** Authentication, timelines and sources other than DNS are not part of the block. Set
+`VisibilityGuardConfig.ResolveReplicas` in Go instead; it is mutually exclusive with the block and with `replicas`.
+Its contract is documented on the field in `config/config.go`: return an error unless the cluster was reached and
+identified; a non-nil empty slice means "proved, zero replicas", while a nil slice is an invalid answer and is rejected.
+
+**Discovery limits.** The guarantee above holds for the members the guard gates. Discovery adds these residuals:
+
+- **Timelines are unknown.** DNS carries no timeline, so every member is polled without the timeline rule. The guarantee
+  is conditional: it holds only if your routing never sends reads to a standby that sits on an orphaned history after a
+  crash failover (a standby that received WAL the new primary never had). A static list has the same gap; a Go hook that
+  supplies timelines narrows it.
+- **Promotion.** A standby promoted while the name still lists it answers "not in recovery", the re-resolve still lists
+  it, the error is fatal and the stream restarts, again and again until the name stops listing the node: typically about
+  one health-check interval. There is no hard bound if the health publisher stalls or DNS is stale, and an
+  orchestrator's restart backoff (for example CrashLoopBackOff) can stretch a few seconds of DNS lag into a minute of
+  downtime.
+- **Answer freshness.** Consul serving stale reads (`max_stale`), forwarder caches and minimum-TTL floors bound how
+  fresh an answer is. A standby that was added or removed is picked up only after the health-check interval plus up to
+  `refreshInterval`, plus those caches.
+- **Complete answers.** Without `nameserver`, a forwarder that drops EDNS makes Consul cut the answer to 3 records
+  silently (see above). Entries in `/etc/hosts` override DNS for the names they match. The standard library resolver
+  is also trusted for message integrity: it accepts a TCP answer that still carries the truncation flag and can return
+  the records parsed before a malformed tail, so a damaged answer can lack a standby without an error; the upgrade
+  path is a message-level DNS client that rejects truncated or partially parsed answers.
+- **Warning-state instances** are returned by Consul unless `only_passing` is set on the DNS configuration, so a
+  standby whose health check is only warning stays in the set (and is gated).
+- **Liveness.** With discovery configured, DNS (and the registry behind it) becomes a liveness dependency of the stream:
+  once the set is older than `refreshInterval` and a refresh has not succeeded, dispatch is held and then follows
+  `failMode`.
+- **Coverage is an operator contract.** List one name per region or cluster your consumers read from; safety needs every
+  routed standby to be gated. A `standby_leader` of a standby cluster is not under `replica.`: list its own name if
+  anything routes reads to it. The library does not verify coverage. A static `replicas` list must cover every region or
+  cluster consumers read from in the same way.
+
+Design record: [docs/replica-guard-design.md](./docs/replica-guard-design.md).
 
 **Guarantee.** Everything delivered to the handler is committed on the server (with or without the guard). With the
 guard on, a fresh snapshot taken on the same primary after the handler was called also sees the row. With `replicas`

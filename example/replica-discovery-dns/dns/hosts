@@ -1,0 +1,5 @@
+# One line per record; edit in place while the lab runs (CoreDNS reloads within ~1s).
+# 10.99.0.11 / 10.99.0.12 are mars / venus; 10.99.1.11 is a second address of mars.
+10.99.0.11 replica.demo.mars.lab
+10.99.0.12 replica.demo.venus.lab
+10.99.1.11 replica.demo.venus.lab

@@ -81,6 +81,7 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 	cfg.Print()
 
 	logger.InitLogger(cfg.Logger.Logger)
+	applyVisibilityDiscovery(&cfg)
 
 	// Snapshot-only mode: minimal setup without CDC components
 	if cfg.IsSnapshotOnlyMode() {

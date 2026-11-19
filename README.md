@@ -154,6 +154,8 @@ func Handler(ctx *replication.ListenerContext) {
 
 * [Simple](./example/simple)
 * [Simple File Config](./example/simple-file-config)
+* [Change Steps](./example/change-steps)
+* [Change Steps From Config](./example/change-steps-config)
 * [Simple With Heartbeat](./example/simple-with-heartbeat)
 * [Streaming Transactions](./example/streaming-transactions)
 * [Snapshot Mode (Initial Data Capture)](./example/snapshot-initial-mode)
@@ -513,6 +515,25 @@ change.When(change.IsOp(change.Delete), change.Exclude("email"))
 ```
 
 A step is a `func(*change.Change) bool` that edits the change in place and returns `false` to drop it, so any function with that signature can be used as a step. Steps edit the row maps they receive: run them on `Clone()` to keep the original message intact.
+
+Steps can also come from a config file. `change.Config` holds `operations`, `include`, `exclude`, `mask`, `rename` and `insertFields`, and `Steps()` validates it and builds the steps in that order:
+
+```yaml
+tables:
+  users:
+    exclude: [password]
+    mask: [email]
+    insertFields: {source_db: users-db}
+  orders:
+    operations: [INSERT, UPDATE]
+    rename: {user_id: customer_id}
+```
+
+```go
+steps, err := tableCfg.Steps() // an unknown operation or a column both included and excluded is an error
+```
+
+`change.QualifiedName("users")` returns `public.users`, matching `Change.FullName()`. See the [change steps](./example/change-steps) and [change steps from config](./example/change-steps-config) examples.
 
 A message that arrives while a streamed transaction is in flight is delivered immediately but cannot be acknowledged until that transaction resolves. Confirming the message's own position would promise the server that the transaction's earlier rows — still held in memory, not yet delivered — had been handled, and the server acts on that promise by refusing to resend them. The transaction's own end-of-transaction acknowledgement covers the message instead, so a message may be delivered twice if the process stops in the meantime. It is never skipped.
 

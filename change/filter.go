@@ -1,7 +1,5 @@
 package change
 
-import "strings"
-
 // Predicate reports whether a change matches. Filters keep the changes that match;
 // When runs its steps only on them.
 type Predicate func(c *Change) bool
@@ -22,10 +20,7 @@ func IsOp(ops ...Op) Predicate {
 func IsTable(names ...string) Predicate {
 	allowed := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		if !strings.Contains(name, ".") {
-			name = defaultSchema + "." + name
-		}
-		allowed[name] = struct{}{}
+		allowed[QualifiedName(name)] = struct{}{}
 	}
 	return func(c *Change) bool {
 		_, ok := allowed[c.FullName()]

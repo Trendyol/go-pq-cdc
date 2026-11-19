@@ -1,0 +1,40 @@
+# Connection, publication and slot: the same fields as config.Config.
+cdc:
+  host: 127.0.0.1
+  port: 5433
+  username: cdc_user
+  password: cdc_pass
+  database: cdc_db
+  publication:
+    createIfNotExists: true
+    name: cdc_publication_change_steps_config
+    operations: [INSERT, UPDATE, DELETE]
+    tables:
+      - name: users
+        schema: public
+        replicaIdentity: FULL
+      - name: orders
+        schema: public
+        replicaIdentity: FULL
+  slot:
+    createIfNotExists: true
+    name: cdc_slot_change_steps_config
+    slotActivityCheckerInterval: 3000
+  metric:
+    port: 8082
+  logger:
+    level: INFO
+
+# Steps per table, as change.Config. A table without an entry is logged unchanged.
+# The steps run in a fixed order: operations, include, exclude, mask, rename, insertFields.
+tables:
+  users:
+    exclude: [password]
+    mask: [email]
+    insertFields:
+      source_db: users-db
+  public.orders:
+    operations: [INSERT, UPDATE]
+    include: [id, user_id, status, amount]
+    rename:
+      user_id: customer_id

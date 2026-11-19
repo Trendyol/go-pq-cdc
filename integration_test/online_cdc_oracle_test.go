@@ -26,7 +26,7 @@ type onlineCDCOracle struct {
 	done   chan struct{}
 }
 
-func startCDCOracle(t *testing.T, source onlinePGFixture, publication, binding string, legacy bool, tables ...string) *onlineCDCOracle {
+func startCDCOracle(t *testing.T, source onlinePGFixture, publication, binding string, tables ...string) *onlineCDCOracle {
 	t.Helper()
 	conn := source.Connect(t)
 	startup, stopStartup := context.WithTimeout(context.Background(), 10*time.Second)
@@ -78,10 +78,6 @@ func startCDCOracle(t *testing.T, source onlinePGFixture, publication, binding s
 					oracle.err = err
 					oracle.mu.Unlock()
 					return
-				}
-				if legacy {
-					event.ID = online.CDCEventID(binding, env.CommitLSN, change.Ordinal)
-					event.Order.EndLSN = env.CommitLSN
 				}
 				oracle.mu.Lock()
 				if len(oracle.events) >= 20000 {

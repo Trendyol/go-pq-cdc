@@ -100,22 +100,24 @@ func markerFromImage(image map[string]any) (Marker, error) {
 	return marker, nil
 }
 func BusinessEvent(change replication.OnlineChange, env *replication.OnlineCommittedEnvelope, schemas []TableSchema, binding string) (Event, error) {
-	e := Event{ID: CDCEventID(binding, env.EndLSN, change.Ordinal), CommitLSN: env.CommitLSN, Order: OrderToken{EndLSN: env.EndLSN, Ordinal: change.Ordinal}}
-	var old map[string]any
+	e := Event{ID: CDCEventID(binding, env.EndLSN, change.Ordinal), CommitLSN: env.CommitLSN, TransactionID: env.XID, Order: OrderToken{EndLSN: env.EndLSN, Ordinal: change.Ordinal}}
 	switch m := change.Message.(type) {
 	case *format.Insert:
 		e.Table = Table{m.TableNamespace, m.TableName}
 		e.Operation = Insert
 		e.Image = m.Decoded
+		e.LSN, e.EventTime = m.LSN, m.MessageTime
 	case *format.Update:
 		e.Table = Table{m.TableNamespace, m.TableName}
 		e.Operation = Update
 		e.Image = m.NewDecoded
-		old = m.OldDecoded
+		e.LSN, e.EventTime = m.LSN, m.MessageTime
+		e.Before = m.OldDecoded
 	case *format.Delete:
 		e.Table = Table{m.TableNamespace, m.TableName}
 		e.Operation = Delete
-		old = m.OldDecoded
+		e.LSN, e.EventTime = m.LSN, m.MessageTime
+		e.Before = m.OldDecoded
 	default:
 		return e, ErrSchema
 	}
@@ -125,7 +127,7 @@ func BusinessEvent(change replication.OnlineChange, env *replication.OnlineCommi
 		}
 		image := e.Image
 		if e.Operation == Delete {
-			image = old
+			image = e.Before
 		}
 		if err := s.ValidateImage(image); err != nil {
 			return e, err
@@ -136,10 +138,10 @@ func BusinessEvent(change replication.OnlineChange, env *replication.OnlineCommi
 		}
 		e.Key = key
 		if e.Operation == Update {
-			if err = s.ValidateImage(old); err != nil {
+			if err = s.ValidateImage(e.Before); err != nil {
 				return e, err
 			}
-			oldKey, err := IntegerKey(old, s.Key)
+			oldKey, err := IntegerKey(e.Before, s.Key)
 			if err != nil || oldKey != key {
 				return e, fmt.Errorf("%w: primary key changed", ErrSchema)
 			}

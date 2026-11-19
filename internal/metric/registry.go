@@ -17,12 +17,18 @@ type prometheusRegistry struct {
 }
 
 func NewRegistry(m Metric) Registry {
+	return NewRegistryWithCollectors(m.PrometheusCollectors()...)
+}
+
+// NewRegistryWithCollectors shares runtime collection without adding metrics
+// from a backend that is not running.
+func NewRegistryWithCollectors(metricCollectors ...prometheus.Collector) Registry {
 	r := prometheus.NewRegistry()
 	r.MustRegister(collectors.NewBuildInfoCollector())
 	r.MustRegister(collectors.NewGoCollector(
 		collectors.WithGoCollectorRuntimeMetrics(collectors.GoRuntimeMetricsRule{Matcher: regexp.MustCompile("/.*")}),
 	))
-	r.MustRegister(m.PrometheusCollectors()...)
+	r.MustRegister(metricCollectors...)
 
 	return &prometheusRegistry{
 		registry: r,

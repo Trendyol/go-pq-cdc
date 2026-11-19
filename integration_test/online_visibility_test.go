@@ -230,7 +230,7 @@ func testOnlineRootVisibility(t *testing.T) {
 	}
 	var checkpoint, binding string
 	require.NoError(t, conn.QueryRow(context.Background(), "SELECT source_lsn::text,slot_binding::text FROM cdc_online.jobs").Scan(&checkpoint, &binding))
-	oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, false, "root_visible")
+	oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, "root_visible")
 	code, _, err := source.Container.Exec(context.Background(), []string{"sh", "-c", `printf '\nhost replication postgres all scram-sha-256\n' >> "$PGDATA/pg_hba.conf"`})
 	require.NoError(t, err)
 	require.Zero(t, code)

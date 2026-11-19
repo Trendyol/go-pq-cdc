@@ -256,7 +256,7 @@ func TestOnlineInitialRecovery(t *testing.T) {
 			}
 			// Slot consistency can wait on an open HIGH transaction. Start the
 			// oracle only after releasing that fence, before every business write.
-			oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, false, "items")
+			oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, "items")
 			cfg = onlineConfig(t, source, "items")
 			onlineExec(t, conn, "UPDATE items SET value='newer' WHERE id=1; DELETE FROM items WHERE id=2; INSERT INTO items VALUES(2,'reinsert')")
 			r := startOnline(t, cfg, func(ctx context.Context, e online.Event) error { return target.Apply(ctx, e, onlineTargetOK) })
@@ -332,7 +332,7 @@ func testOnlineDelayedREAD(t *testing.T) {
 			require.Equal(t, int64(1), old.Key)
 			var binding string
 			require.NoError(t, conn.QueryRow(context.Background(), "SELECT slot_binding::text FROM cdc_online.jobs").Scan(&binding))
-			oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, false, "delayed")
+			oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, "delayed")
 			request, cancelRequest := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancelRequest()
 			ready, release := make(chan struct{}), make(chan struct{})

@@ -74,10 +74,11 @@ func NewConnectorWithConfigFile(ctx context.Context, configFilePath string, list
 }
 
 func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
+	return NewConnectorWithOptions(ctx, cfg, WithLegacyListener(listenerFunc))
+}
+
+func newLegacyConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
 	cfg.SetDefault()
-	if cfg.Snapshot.Strategy == config.SnapshotStrategyOnline {
-		return nil, fmt.Errorf("snapshot.strategy online requires NewOnlineConnector and a synchronous durable handler")
-	}
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "config validation")
 	}

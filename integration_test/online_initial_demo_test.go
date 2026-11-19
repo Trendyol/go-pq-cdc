@@ -76,7 +76,7 @@ func TestOnlineInitialDemo(t *testing.T) {
 	waitSnapshot()
 	var binding string
 	require.NoError(t, conn.QueryRow(context.Background(), "SELECT slot_binding::text FROM cdc_online.jobs").Scan(&binding))
-	oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, false, "demo_rows")
+	oracle := startCDCOracle(t, source, cfg.Publication.Name, binding, "demo_rows")
 	onlineExec(t, conn, `UPDATE demo_rows SET value='cdc-one',payload='{"n":9007199254740995}' WHERE id=1; UPDATE demo_rows SET value='cdc-two' WHERE id=1; DELETE FROM demo_rows WHERE id=2`)
 	waitOnlineFence(t, conn)
 	stop(first)

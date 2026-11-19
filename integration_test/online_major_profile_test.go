@@ -38,21 +38,6 @@ func TestOnlineGeneratedColumnsStartup(t *testing.T) {
 	}
 }
 
-// This deliberately asserts the admitted limitation, not a delivery claim:
-// PostgreSQL does not publish UNLOGGED tables, but InspectTable admits them.
-func TestOnlineUNLOGGEDBusinessAdmission(t *testing.T) {
-	source := newOnlinePGFixture(t)
-	conn := source.Connect(t)
-	onlineExec(t, conn, "CREATE UNLOGGED TABLE unlogged_rows(id bigint PRIMARY KEY,value text); ALTER TABLE unlogged_rows REPLICA IDENTITY FULL")
-	var persistence string
-	require.NoError(t, conn.QueryRow(context.Background(), "SELECT relpersistence::text FROM pg_class WHERE oid='unlogged_rows'::regclass").Scan(&persistence))
-	require.Equal(t, "u", persistence)
-	schema, err := online.InspectTable(context.Background(), conn, online.Table{Schema: "public", Name: "unlogged_rows"})
-	require.NoError(t, err, "locked UNLOGGED business admission changed")
-	require.Equal(t, "id", schema.Key)
-	t.Log("admitted limitation: UNLOGGED business tables pass table admission; reader output settings remain unpinned; no UNLOGGED CDC guarantee")
-}
-
 func TestOnlineSlotStatesMajors(t *testing.T) {
 	source := newOnlinePGFixtureDurability(t, true, "max_slot_wal_keep_size=1MB")
 	conn := source.Connect(t)

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 )
@@ -66,7 +67,19 @@ type Event struct {
 	Key       int64
 	Operation Operation
 	Image     map[string]any
-	CommitLSN pq.LSN // Source commit LSN for CDC; zero for a synthetic READ.
+	// Before references the already-decoded FULL old image for UPDATE/DELETE.
+	// Both images remain within the reader's transaction byte budget.
+	Before map[string]any
+	// LSN is the decoded row WALStart, not the commit/checkpoint boundary.
+	// READ has no row WALStart and leaves it zero.
+	LSN           pq.LSN
+	TransactionID uint32 // Real source XID for CDC; zero/unavailable for READ.
+	// EventTime is XLogData.ServerTime, NOT PostgreSQL transaction commit time.
+	// Synthetic READ has no source clock and leaves it zero/unavailable.
+	// Sender observation time can change on replay: keep it out of whole-Event
+	// JSON used for deterministic content digests, while exposing it to Go handlers.
+	EventTime time.Time `json:"-"`
+	CommitLSN pq.LSN    // Source commit LSN for CDC; zero for a synthetic READ.
 	Order     OrderToken
 }
 type Handler func(context.Context, Event) error

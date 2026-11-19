@@ -61,6 +61,10 @@ type OnlineConnector struct {
 }
 
 func NewOnlineConnector(ctx context.Context, cfg config.Config, handler OnlineHandler, opts ...OnlineConnectorOption) (*OnlineConnector, error) {
+	return newOnlineConnector(ctx, cfg, handler, opts...)
+}
+
+func newOnlineConnector(ctx context.Context, cfg config.Config, handler OnlineHandler, opts ...OnlineConnectorOption) (*OnlineConnector, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

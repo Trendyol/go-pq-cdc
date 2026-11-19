@@ -383,7 +383,8 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 ### Online initial snapshot: capability-based admission
 
 `snapshot.strategy` selects `consistent` (the default) or `online`.
-Online mode requires `NewOnlineConnector` and a synchronous durable handler.
+Online mode requires a synchronous durable handler, through `NewOnlineConnector` or the additive `NewConnectorWithOptions` factory.
+Existing `NewConnector(ctx, cfg, listener)` calls and function values remain unchanged.
 It captures CDC between bounded snapshot windows rather than deferring all CDC until the snapshot ends.
 
 The online path requires a PostgreSQL primary with the required capabilities, protocol 1, and immutable single integer-family primary keys.
@@ -699,7 +700,9 @@ the `/metrics` endpoint.
 | go_pq_cdc_visibility_replica_checks_total           | Transactions certified per standby: `cached` (a poll under 1 s old already passed the commit) or `polled`. | slot_name, host, replica, result | Counter |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
-Online mode does not start this HTTP server automatically.
+Direct `NewOnlineConnector`/`Run` does not start this HTTP server automatically.
+The online factory path starts it through the existing `Start` lifecycle and registers online statistics.
+Use `NewConnectorWithOptions(ctx, cfg, WithOnlineHandler(handler))` for that path.
 Register `connector.MetricsCollector()` in the host application's Prometheus registry to expose `go_pq_cdc_online_*` counters and gauges.
 Use `Health().Running` with the required capture/snapshot flag for application readiness.
 Counter values reset with each connector instance. Encoded-byte gauges do not measure process RSS.

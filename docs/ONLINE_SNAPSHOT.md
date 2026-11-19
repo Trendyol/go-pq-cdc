@@ -12,6 +12,10 @@ suppresses READs for keys changed in that window, and delivers surviving READs
 before later CDC. The cursor follows the last selected key, not the last
 surviving READ.
 
+Before returning a committed envelope, the reader waits for its transaction to
+be visible on the same primary. A logical COMMIT alone is not a SQL visibility
+barrier. This prevents a later page read from reviving stale data.
+
 Source progress is committed before ACK advancement. Unresolved windows hold
 ACK at LOW. There is no single cross-table snapshot time or exactly-once
 external-effect guarantee; the sink contract below is required.
@@ -55,6 +59,17 @@ Handlers must honor their context. Go cannot terminate an arbitrary callback or 
 Delivery is at least once. A restart can repeat effects.
 CDC identities remain stable across recovery. Recovered READ identities can differ by attempt.
 An event order is `(EndLSN, phase, ordinal)`. READs use phase 1 after their HIGH watermark.
+
+Online events also preserve narrowly additive source metadata: `Before` references the already-decoded
+FULL before image for UPDATE/DELETE, `LSN` is the actual decoded row WALStart, `TransactionID` is the
+source XID, and `EventTime` is XLogData.ServerTime (sender clock, **not** transaction commit time).
+INSERT/READ have no before image. Synthetic READ has no row WALStart, XID or source clock and leaves
+those fields zero/unavailable; its snapshot boundary is `Order.EndLSN`. The Kafka existing-Handler
+adapter uses that HIGH boundary as legacy snapshot `Message.LSN`. Retained old/new source maps are
+not duplicated solely for metadata and remain covered by the original encoded transaction limits.
+`EventTime` is volatile observation metadata and deliberately excluded from whole-Event JSON so a
+replayed event can retain its stable content digest. It remains available to Go handlers. Do not
+use source sender observation time to define deterministic replay payloads or identity.
 
 The sink must reject inconsistent identity reuse and stale per-key orders.
 DELETE effects require retained versioned tombstones. Old READs and CDC events must not resurrect deleted rows.
@@ -119,7 +134,29 @@ snapshot:
     markerInterval: 5s
 ```
 
-Use `NewOnlineConnector`, not the legacy `NewConnector`, for this strategy.
+Existing `NewConnector(ctx, cfg, listener)` and config-file calls remain unchanged.
+Use the typed factory for strategy selection, or keep the direct online API:
+
+```go
+// Legacy factory path: the existing callback and Ack contract.
+connector, err := cdc.NewConnectorWithOptions(ctx, cfg,
+    cdc.WithLegacyListener(listener))
+```
+
+```go
+// Online factory path: handler must certify durable destination completion.
+connector, err := cdc.NewConnectorWithOptions(ctx, cfg,
+    cdc.WithOnlineHandler(durableHandler))
+// Check err before use. The existing Connector lifecycle is available.
+go connector.Start(ctx)
+// For online mode, inspect terminal state and snapshot completion through:
+status := connector.(cdc.OnlineConnectorLifecycle)
+// status.Done(), status.Err(), status.WaitUntilSnapshotComplete(ctx)
+```
+
+The examples assume `cfg` selects the corresponding strategy and the callbacks already exist.
+Handler options are mutually exclusive. An online strategy without a durable handler fails construction.
+`WithOnlineHandler` also accepts existing `WithOnlineObserver` options.
 The default strategy remains `consistent` for compatibility.
 A row-count limit and an encoded-byte limit both apply to a chunk.
 A larger chunk can exceed `chunkBytes` even with a supported schema.
@@ -141,7 +178,11 @@ It does not certify a deployment, an arbitrary handler, or current sink freshnes
 `Health()` exposes `Running`, `CaptureReady`, and `SnapshotComplete` without a network query.
 A host readiness endpoint must require `Running` and the readiness flag appropriate to its service.
 A stopped instance retains its notification flags. Notification flags alone are not health checks.
-The online connector does not start an HTTP listener automatically.
+Direct `NewOnlineConnector`/`Run` does not start an HTTP listener.
+The factory's online `Start` starts the standard metrics HTTP server on `metric.port`.
+It registers online statistics and additional `SetMetricCollectors` values. Its `/slot` returns 503 because no legacy slot-info provider exists.
+Factory `Close` cancels owned work and waits up to five seconds. Handlers must honor cancellation.
+Its `GetConfig` returns an owned snapshot, not mutable runtime configuration.
 
 The legacy `GET /status` endpoint returns a fixed `OK` body.
 It proves HTTP reachability, not PostgreSQL connectivity, CDC readiness, snapshot completion or sink freshness.

@@ -260,8 +260,8 @@ keepalive messages, the way PostgreSQL's own subscriber does. The integration su
 and 17. It only works if the listener acks every message it is given, including `Relation`, `Truncate` and logical
 decoding messages, not just inserts, updates and deletes: a listener that skips any of them, or acks only the last
 message of a batch, keeps the stream busy and the slot never advances this way. Heartbeat is still recommended for
-end-to-end liveness, and it is still the way to keep WAL bounded for such listeners and on server versions where this
-has not been verified.
+end-to-end liveness. It also works for listeners that skip `Relation` messages or ack only the last message of a
+batch, and on server versions where this has not been verified.
 
 go-pq-cdc provides a **table-based heartbeat mechanism** for this scenario.
 When `heartbeat.table.name` is configured, the connector:
@@ -269,16 +269,20 @@ When `heartbeat.table.name` is configured, the connector:
 - Creates the heartbeat table automatically (if missing).
 - Ensures a single row exists.
 - Periodically runs an internal `UPDATE` to generate small committed WAL records.
-- Auto-acknowledges heartbeat events internally.
+- Auto-acknowledges heartbeat events internally. An `Ack` tells go-pq-cdc that its message and everything delivered
+  before it is durable; a heartbeat advances the slot only when the most recently delivered message is covered that
+  way (`Relation` messages need no ack of their own). A later `Ack` therefore releases earlier messages whether or not
+  they were acked individually.
 - Does not forward heartbeat events to your listener.
 
 Each heartbeat:
 
 - Produces a real transaction and COMMIT in the CDC database.
 - Is decoded and acknowledged by go-pq-cdc via the replication stream.
-- Advances the slot's `confirmed_flush_lsn` and, over time, `restart_lsn`, allowing PostgreSQL to safely recycle old WAL.
+- Advances the slot's `confirmed_flush_lsn` and, over time, `restart_lsn` under that condition, allowing PostgreSQL to
+  safely recycle old WAL.
 
-This makes WAL retention **predictable** even when application traffic on the CDC database is very low, while other
+While your listener keeps acking, this makes WAL retention **predictable** even when application traffic on the CDC database is very low, while other
 databases on the same instance are generating heavy write load.
 
 > **Heartbeat only cleans WAL when its writes flow through the replication slot.**

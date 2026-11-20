@@ -856,6 +856,10 @@ func (s *stream) processLoop(ctx context.Context) error {
 		xid       uint32
 		gated     bool
 	}
+	// delivered numbers the messages handed to the listener, Relations aside;
+	// ackedThrough is the highest of those numbers acked. See ackHeartbeat.
+	var delivered uint64
+	var ackedThrough atomic.Uint64
 
 	for {
 		select {
@@ -871,6 +875,20 @@ func (s *stream) processLoop(ctx context.Context) error {
 				continue
 			}
 
+			if s.isHeartbeatMessage(msg.message) {
+				s.ackHeartbeat(ctx, msg, ackedThrough.Load() >= delivered)
+				continue
+			}
+
+			// A Relation carries no rows and every new walsender session sends it
+			// again, so it needs no ack of its own (listeners often skip it), but
+			// its Ack covers everything delivered before it. Numbered before the
+			// gate: a message the gate stops ends the loop.
+			if _, ok := msg.message.(*format.Relation); !ok {
+				delivered++
+			}
+			seq := delivered
+
 			// Ack only advances the confirmed position in memory; the standby
 			// status update is flushed to Postgres by the sink loop (idle-timeout
 			// and keepalive-reply paths) and by the periodic statusUpdateLoop.
@@ -880,18 +898,12 @@ func (s *stream) processLoop(ctx context.Context) error {
 			var done atomic.Bool
 			ackFunc := func() error {
 				s.UpdateConfirmedXLogPos(pq.LSN(msg.walStart))
+				storeMax(&ackedThrough, seq)
 				// First Ack only: a repeat must not make a later message look acked.
 				if done.CompareAndSwap(false, true) {
 					s.acked.Add(1)
 				}
 				return nil
-			}
-
-			if s.isHeartbeatMessage(msg.message) {
-				if err := ackFunc(); err != nil {
-					logger.Error("heartbeat auto-ack failed", "error", err)
-				}
-				continue
 			}
 
 			// Gate once per transaction, on its first message.
@@ -963,6 +975,39 @@ func (s *stream) gate(ctx context.Context, xid uint32, commitLSN pq.LSN) error {
 		return nil
 	default:
 		return fmt.Errorf("%w: %w", ErrVisibilityGuard, err)
+	}
+}
+
+// ackHeartbeat stands in for the listener's Ack on a heartbeat message, which
+// is never delivered. It always counts the message as acked, so the keepalive's
+// sent == acked check stays balanced, but it confirms the heartbeat's position
+// only when covered, so that a restart never makes the server skip messages the
+// listener still holds, such as a bulk connector's unflushed batch. Covered
+// means the most recently delivered message, Relations aside, has been acked,
+// directly or through a later Ack, which by contract covers everything
+// delivered before it. The rule follows delivery order, not positions: an Ack
+// moves the confirmed position only to its own message's walStart, and not at
+// all for a message delivered with walStart 0.
+//
+// covered cannot go stale: delivered only changes on this goroutine, which is
+// here, and ackedThrough only grows. A sink send that gives up on a cancelled
+// ctx drops its message without a trace, so a heartbeat taken after the
+// cancellation does not confirm. If ctx is still live here, everything before
+// the heartbeat was sent before any later cancellation.
+func (s *stream) ackHeartbeat(ctx context.Context, msg *Message, covered bool) {
+	if covered && ctx.Err() == nil {
+		s.UpdateConfirmedXLogPos(pq.LSN(msg.walStart))
+	}
+	s.acked.Add(1)
+}
+
+// storeMax raises v to n unless it already holds n or more.
+func storeMax(v *atomic.Uint64, n uint64) {
+	for {
+		cur := v.Load()
+		if cur >= n || v.CompareAndSwap(cur, n) {
+			return
+		}
 	}
 }
 

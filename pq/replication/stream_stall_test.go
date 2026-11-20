@@ -2,7 +2,6 @@ package replication
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -20,8 +19,8 @@ const stallTestInterval = 5 * time.Millisecond
 
 // recordingLogger keeps the sink's own log calls so a test can assert on them.
 // logger.InitLogger keeps only the first logger it receives in the test binary,
-// so this one is installed from init, before any test runs. Every call is
-// forwarded to the logger the other tests in this package already use.
+// so this one is installed from init, before any test runs. Calls are forwarded
+// to the shared capture logger `logs` in main_test.go.
 type recordingLogger struct {
 	delegate logger.Logger
 	mu       sync.Mutex
@@ -34,7 +33,7 @@ type loggedCall struct {
 	args  []any
 }
 
-var stallLog = &recordingLogger{delegate: logger.NewSlog(slog.LevelError)}
+var stallLog = &recordingLogger{delegate: logs}
 
 // Package-level initialization runs before any test.
 var _ = installStallLog()

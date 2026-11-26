@@ -90,6 +90,10 @@ func NewConnector(ctx context.Context, cfg config.Config, listenerFunc replicati
 		return newSnapshotOnlyConnector(ctx, cfg, listenerFunc)
 	}
 
+	if cfg.IsOnlineSnapshotMode() {
+		newOnlineSnapshotConnector(ctx, cfg, listenerFunc)
+	}
+
 	// Normal CDC mode: full setup with publication, slot, stream
 	// Normal connection for publication setup
 	// This uses regular DSN (no replication parameter) to avoid consuming max_wal_senders limit
@@ -178,6 +182,10 @@ func newSnapshotOnlyConnector(ctx context.Context, cfg config.Config, listenerFu
 	}, nil
 }
 
+func newOnlineSnapshotConnector(ctx context.Context, cfg config.Config, listenerFunc replication.ListenerFunc) (Connector, error) {
+	return nil, nil
+}
+
 func setupHeartbeatAndPublication(ctx context.Context, cfg config.Config, conn pq.Connection) (*heartbeat.Heartbeat, *publication.Config, error) {
 	var hb *heartbeat.Heartbeat
 	if cfg.IsHeartbeatEnabled() {
@@ -260,6 +268,14 @@ func (c *connector) Start(ctx context.Context) {
 			return
 		}
 		logger.Info("snapshot-only completed successfully, exiting")
+		return
+	}
+
+	// incremental snapshot mode
+	if c.cfg.IsOnlineSnapshotMode() {
+		// TODO: setup online snapshot + CDC
+		// skips snapshot.Enabled check since it's reserved for snapshotting before CDC stream starts
+
 		return
 	}
 

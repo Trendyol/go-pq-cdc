@@ -1,0 +1,77 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/11/05 13:59:21 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.1.4
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 4fed0d5c57efcf5d6650396f98a4981744fa6e1bc676d09df4fb5bf3e5a8a6f0
+  Test ProcessID: 0604a9c5-9d12-4021-bbbe-1c96667dd22c
+2026/11/05 13:59:21 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/05 13:59:21 ✅ Container created: 42ba245fedac
+2026/11/05 13:59:21 🐳 Starting container: 42ba245fedac
+2026/11/05 13:59:21 ✅ Container started: 42ba245fedac
+2026/11/05 13:59:21 🚧 Waiting for container id 42ba245fedac image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0x2993eb4e8530 Strategies:[0x2993eb48dcc0]}
+2026/11/05 13:59:22 🔔 Container is ready: 42ba245fedac
+=== RUN   TestOnlineInitialSnapshot10MComparison
+=== RUN   TestOnlineInitialSnapshot10MComparison/consistent
+2026/11/05 13:59:22 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/05 13:59:22 ✅ Container created: ee15f0d276cb
+2026/11/05 13:59:22 🐳 Starting container: ee15f0d276cb
+2026/11/05 13:59:22 ✅ Container started: ee15f0d276cb
+2026/11/05 13:59:22 🚧 Waiting for container id ee15f0d276cb image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0x2993eb4e8460 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10293fc00 ResponseMatcher:0x102a21160 PollInterval:100ms}
+2026/11/05 13:59:23 🔔 Container is ready: ee15f0d276cb
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"postgres","password":"*******","database":"online_poc","publication":{"name":"online_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"online_slot","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":120000000000,"deliveryTimeout":120000000000,"chunkBytes":8388608,"transactionBytes":16777216,"queueBytes":33554432,"checkpointInterval":20000000,"markerInterval":50000000},"mode":"initial","instanceId":"","id":"","tables":null,"chunkSize":5000,"claimTimeout":30000000000,"heartbeatInterval":5000000000,"enabled":true,"resnapshot":false},"port":41213,"metric":{"port":51086},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-11-05T13:59:28.902527+03:00","level":"INFO","msg":"publication created","name":"online_pub"}
+{"time":"2026-11-05T13:59:28.90255+03:00","level":"INFO","msg":"publication","info":{"name":"online_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-11-05T13:59:28.916181+03:00","level":"INFO","msg":"[snapshot-connection-pool] creating connection pool","size":5}
+{"time":"2026-11-05T13:59:28.957553+03:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool ready","size":5}
+{"time":"2026-11-05T13:59:28.9584+03:00","level":"INFO","msg":"server starting on port :51086"}
+{"time":"2026-11-05T13:59:28.982807+03:00","level":"INFO","msg":"replication slot created","name":"online_slot","failover":false}
+{"time":"2026-11-05T13:59:29.016856+03:00","level":"INFO","msg":"[coordinator] exporting snapshot"}
+{"time":"2026-11-05T13:59:29.018832+03:00","level":"INFO","msg":"[coordinator] snapshot exported","snapshotID":"0000000C-00000009-1"}
+{"time":"2026-11-05T13:59:29.018838+03:00","level":"INFO","msg":"[coordinator] snapshot transaction ready for workers"}
+{"time":"2026-11-05T13:59:29.01884+03:00","level":"INFO","msg":"[coordinator] creating metadata and chunks"}
+{"time":"2026-11-05T13:59:29.021929+03:00","level":"INFO","msg":"[chunk] range chunks created","table":"workload","chunkSize":5000,"numChunks":2000,"rangeMin":1,"rangeMax":10000000}
+{"time":"2026-11-05T13:59:29.540643+03:00","level":"INFO","msg":"[coordinator] chunks created","table":"public.workload","chunks":2000}
+{"time":"2026-11-05T13:59:29.541393+03:00","level":"INFO","msg":"[coordinator] metadata committed","totalChunks":2000,"lsn":"0/542D9C38"}
+{"time":"2026-11-05T13:59:43.289981+03:00","level":"INFO","msg":"[snapshot] all chunks completed, finalizing snapshot"}
+{"time":"2026-11-05T13:59:43.290646+03:00","level":"INFO","msg":"[metadata] job marked as completed","slotName":"online_slot"}
+{"time":"2026-11-05T13:59:43.290653+03:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-11-05T13:59:43.290658+03:00","level":"INFO","msg":"[coordinator] committing and closing snapshot export connection"}
+{"time":"2026-11-05T13:59:43.291208+03:00","level":"INFO","msg":"[snapshot-connection-pool] closing all connections","count":5}
+{"time":"2026-11-05T13:59:43.291321+03:00","level":"INFO","msg":"[snapshot-connection-pool] connection pool closed"}
+{"time":"2026-11-05T13:59:43.291368+03:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-11-05T13:59:43.29137+03:00","level":"INFO","msg":"[snapshot] execution completed","instanceID":"PY7W2WPH7R-55371","duration":13750003250}
+{"time":"2026-11-05T13:59:43.291372+03:00","level":"INFO","msg":"snapshot completed successfully"}
+{"time":"2026-11-05T13:59:43.308857+03:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-11-05T13:59:43.773015+03:00","level":"INFO","msg":"[snapshot] closing all connections"}
+{"time":"2026-11-05T13:59:43.773042+03:00","level":"INFO","msg":"[snapshot] all connections closed"}
+{"time":"2026-11-05T13:59:43.773399+03:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-11-05T13:59:43.773423+03:00","level":"INFO","msg":"[connector] connector closed successfully"}
+    online_snapshot_benchmark_test.go:155: SNAPSHOT_10M {"chunkRows":5000,"durationSeconds":14.892958458,"keyChecksum":50000005000000,"maxSourceReadExecutionMS":111.314963,"onlineStats":{"PeakChunkRawBytes":0,"PeakReadLatency":0,"ReadQueries":0,"PeakTransactionEncodedBytes":0,"PeakQueueAndAssemblyEncodedBytes":0,"PeakRelationEncodedBytes":0,"BufferedEncodedBytes":0,"SafeACK":0,"FeedbackWrites":0,"LastFeedback":"0001-01-01T00:00:00Z"},"peakConfirmedLagBytes":4069008,"peakFeedbackAgeSeconds":0,"peakMainSlotRetainedWALBytes":4069064,"peakWholeProcessHeapBytes":4912744,"peakWholeProcessRSSBytes":35356672,"rows":10000000,"rowsPerSecond":671458.2618491313,"snapshotRows":10000000,"sourceContainer":"ee15f0d276cb56fefbee7dbda260548aed982dd99cb974116c00e5de596ff5b0","sourceReadQueries":2000,"strategy":"consistent"}
+2026/11/05 13:59:43 🐳 Terminating container: ee15f0d276cb
+2026/11/05 13:59:44 🚫 Container terminated: ee15f0d276cb
+=== RUN   TestOnlineInitialSnapshot10MComparison/online
+2026/11/05 13:59:44 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/05 13:59:44 ✅ Container created: b5ceda33b4c5
+2026/11/05 13:59:44 🐳 Starting container: b5ceda33b4c5
+2026/11/05 13:59:44 ✅ Container started: b5ceda33b4c5
+2026/11/05 13:59:44 🚧 Waiting for container id b5ceda33b4c5 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0x2993eb498008 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x10293fc00 ResponseMatcher:0x102a21160 PollInterval:100ms}
+2026/11/05 13:59:44 🔔 Container is ready: b5ceda33b4c5
+{"time":"2026-11-05T13:59:48.313047+03:00","level":"ERROR","msg":"stream connection failed","error":"source=(*stream).Connect: /Users/ahmet.hatipoglu/workspace/go-pq-cdc/pq/replication/stream.go:125 stream connection\nsource=(*connection).Connect: /Users/ahmet.hatipoglu/workspace/go-pq-cdc/pq/connection.go:47 postgres connection\nsource=connect: /Users/ahmet.hatipoglu/workspace/go-pq-cdc/pq/connection.go:73 postgres connection: failed to connect to `user=postgres database=online_poc`:\n\thostname resolving error: lookup localhost: operation was canceled\n\tlookup localhost: operation was canceled"}
+    online_snapshot_benchmark_test.go:155: SNAPSHOT_10M {"chunkRows":5000,"durationSeconds":82.199644833,"keyChecksum":50000005000000,"maxSourceReadExecutionMS":5.5059949999999995,"onlineStats":{"PeakChunkRawBytes":75001,"PeakReadLatency":6052458,"ReadQueries":2000,"PeakTransactionEncodedBytes":557,"PeakQueueAndAssemblyEncodedBytes":721,"PeakRelationEncodedBytes":142,"BufferedEncodedBytes":0,"SafeACK":1425976112,"FeedbackWrites":83,"LastFeedback":"2026-11-05T14:01:12.885175+03:00"},"peakConfirmedLagBytes":530472,"peakFeedbackAgeSeconds":1.129971,"peakMainSlotRetainedWALBytes":7465336,"peakWholeProcessHeapBytes":9276528,"peakWholeProcessRSSBytes":42057728,"rows":10000000,"rowsPerSecond":121655.02685950031,"snapshotRows":10000000,"sourceContainer":"b5ceda33b4c54015f8aa8aa4f345424e4596993e2951fad72f1ed3bbc92fd46c","sourceReadQueries":2000,"strategy":"online"}
+2026/11/05 14:01:12 🐳 Terminating container: b5ceda33b4c5
+2026/11/05 14:01:13 🚫 Container terminated: b5ceda33b4c5
+--- PASS: TestOnlineInitialSnapshot10MComparison (110.89s)
+    --- PASS: TestOnlineInitialSnapshot10MComparison/consistent (21.73s)
+    --- PASS: TestOnlineInitialSnapshot10MComparison/online (89.16s)
+PASS
+2026/11/05 14:01:13 🐳 Terminating container: 42ba245fedac
+2026/11/05 14:01:13 🚫 Container terminated: 42ba245fedac
+ok  	github.com/Trendyol/go-pq-cdc/integration	112.311s

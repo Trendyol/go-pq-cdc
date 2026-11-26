@@ -465,6 +465,10 @@ Streaming behavior for `proto_version: 2`:
 
 ### Visibility Guard
 
+**Online visibility policy.** `visibilityGuard.enabled` controls transaction visibility checks during both online snapshot and CDC tailing. With the guard disabled (default), source identity is validated at startup/restart only; no per-transaction visibility SQL runs. **Disabling the guard removes SQL-visible LOW/HIGH fence guarantees and can compromise snapshot reconciliation if WAL commit delivery precedes SQL visibility.** Enable the guard to retain those guarantees. Committed-envelope delivery, watermark/conflict processing, and durable checkpoint-before-ACK remain unchanged. Online still rejects replica guards and `failMode: open`.
+
+**Online schema policy.** Publication, table profile, columns and primary key are catalog-validated at startup/restart only. During snapshot, processing uses that captured schema without repeated catalog queries. Keep DDL/publication changes frozen during snapshot: catalog-only changes are not proactively detected, and row-level validation alone does not preserve the former schema-freeze guarantee. After durable completion, CDC uses each change's pgoutput Relation descriptor without per-envelope publication/schema SQL. Compatible non-key column additions, removals, and renames follow incoming row images. Online retains FULL-image, supported-type, startup integer-key, and row-level key-mutation restrictions. Primary-key-only DDL and publication removal are not proactively detected during tailing. Startup/restart still validates the persisted configuration/schema fingerprint; an evolved schema can therefore require explicit reconciliation before restart. Target schema migration is the handler's responsibility.
+
 **Mechanism.** The logical walsender streams a transaction as soon as its commit record is flushed to WAL. The rows
 become visible to new snapshots only later, when the committing backend finishes (`ProcArrayEndTransaction`), and with
 `synchronous_standby_names` set (Patroni `synchronous_mode`) that step first waits for the synchronous standby's

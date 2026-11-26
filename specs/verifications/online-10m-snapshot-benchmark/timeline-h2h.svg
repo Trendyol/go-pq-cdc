@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="470" viewBox="0 0 1240 470" role="img" aria-labelledby="t d">
+<title id="t">H2H timeline: snapshot finish marks and sentinel stop points</title>
+<desc id="d">Legacy snapshot finished at 21.9s; writers and sentinel committed at 300s; online snapshot finished at 1143.7s (19m03.7s) exactly when it delivered the sentinel.</desc>
+<rect width="1240" height="470" fill="#ffffff"/>
+<style><![CDATA[text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;fill:#111827}.title{font-size:24px;font-weight:750}.sub{font-size:13.5px;fill:#4b5563}.lane{font-size:16px;font-weight:700}.tick{font-size:12px;fill:#6b7280}.m{font-size:13px;font-weight:650}.ms{font-size:12px;fill:#4b5563}.note{font-size:13px;fill:#374151}]]></style>
+<text x="36" y="38" class="title">Snapshot finish time marks — 10M rows, 1000 updates/s, sentinel stop</text>
+<text x="36" y="62" class="sub">legacy snapshot done <tspan font-weight="700">@ 21.9s</tspan> · sentinel committed <tspan font-weight="700">@ 300.0s</tspan> · online snapshot done <tspan font-weight="700">@ 1143.7s = 19m03s</tspan></text>
+<line x1="200.0" y1="396" x2="200.0" y2="402" stroke="#9ca3af"/>
+<text x="200.0" y="417" class="tick" text-anchor="middle">0m</text>
+<line x1="299.0" y1="396" x2="299.0" y2="402" stroke="#9ca3af"/>
+<text x="299.0" y="417" class="tick" text-anchor="middle">2m</text>
+<line x1="398.0" y1="396" x2="398.0" y2="402" stroke="#9ca3af"/>
+<text x="398.0" y="417" class="tick" text-anchor="middle">4m</text>
+<line x1="497.0" y1="396" x2="497.0" y2="402" stroke="#9ca3af"/>
+<text x="497.0" y="417" class="tick" text-anchor="middle">6m</text>
+<line x1="596.0" y1="396" x2="596.0" y2="402" stroke="#9ca3af"/>
+<text x="596.0" y="417" class="tick" text-anchor="middle">8m</text>
+<line x1="695.0" y1="396" x2="695.0" y2="402" stroke="#9ca3af"/>
+<text x="695.0" y="417" class="tick" text-anchor="middle">10m</text>
+<line x1="794.0" y1="396" x2="794.0" y2="402" stroke="#9ca3af"/>
+<text x="794.0" y="417" class="tick" text-anchor="middle">12m</text>
+<line x1="893.0" y1="396" x2="893.0" y2="402" stroke="#9ca3af"/>
+<text x="893.0" y="417" class="tick" text-anchor="middle">14m</text>
+<line x1="992.0" y1="396" x2="992.0" y2="402" stroke="#9ca3af"/>
+<text x="992.0" y="417" class="tick" text-anchor="middle">16m</text>
+<line x1="1091.0" y1="396" x2="1091.0" y2="402" stroke="#9ca3af"/>
+<text x="1091.0" y="417" class="tick" text-anchor="middle">18m</text>
+<line x1="1190.0" y1="396" x2="1190.0" y2="402" stroke="#9ca3af"/>
+<text x="1190.0" y="417" class="tick" text-anchor="middle">20m</text>
+<line x1="200" y1="396" x2="1190" y2="396" stroke="#9ca3af"/>
+<rect x="200.0" y="387" width="247.5" height="9" fill="#dbeafe"/>
+<text x="323.8" y="381" class="ms" text-anchor="middle">writers active: 1000 tx/s</text>
+<line x1="447.5" y1="86" x2="447.5" y2="396" stroke="#2563eb" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="439.5" y="100" class="m" fill="#1d4ed8" text-anchor="end">t = 300.0s · writers stop + sentinel COMMITTED (LSN 0/5ABE9D78)</text>
+<text x="36" y="162" class="lane">legacy</text>
+<text x="36" y="179" class="ms">consistent</text>
+<rect x="200.0" y="150" width="18.1" height="30" rx="4" fill="#111827"/>
+<rect x="218.1" y="150" width="229.5" height="30" fill="#374151"/>
+<text x="224.1" y="143" class="m">snapshot done @ 21.9s</text>
+<text x="315.5" y="170" class="ms" fill="#ffffff">live CDC, 278s at head</text>
+<path d="M 447.5 137 l 9 9 l -9 9 l -9 -9 z" fill="#047857"/>
+<text x="461.5" y="196" class="m" fill="#047857">STOP @ 300.0s — delivered sentinel</text>
+<text x="36" y="280" class="lane">online</text>
+<text x="36" y="297" class="ms">stream absorbed by snapshot</text>
+<rect x="200.0" y="268" width="247.5" height="30" rx="4" fill="#dc2626"/>
+<rect x="447.5" y="268" width="696.1" height="30" fill="#f87171"/>
+<text x="299.0" y="288" class="ms" fill="#ffffff">snapshot windows + draining 300k live CDC events</text>
+<text x="728.0" y="288" class="ms" fill="#7f1d1d">still snapshotting — writers already stopped, source unloaded</text>
+<path d="M 1143.6 255 l 9 9 l -9 9 l -9 -9 z" fill="#047857"/>
+<text x="1143.6" y="324" class="m" fill="#047857" text-anchor="end">snapshot done = STOP @ 1143.7s (19m03s) — same sentinel, same LSN</text>
+<text x="36" y="345" class="note">legacy snapshot: 21.882s · online snapshot: 1143.729s → online took 52x longer and ended 844s after writers stopped.</text>
+<text x="36" y="365" class="note">Fairness: both STOP marks are the same CDC message — commit LSN 0/5ABE9D78 recorded identically by both arms.</text>
+<rect x="36" y="418" width="1168" height="34" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
+<text x="52" y="440" class="note">Source: evidence/h2h.json — snapshotDoneSeconds, sentinelCommitSeconds, stopAtSentinelSeconds (matches the test timing log).</text>
+</svg>

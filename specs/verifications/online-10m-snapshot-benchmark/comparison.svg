@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="910" viewBox="0 0 1240 910" role="img" aria-labelledby="title desc">
+<title id="title">10M-row steady-update snapshot comparison</title>
+<desc id="desc">Bar chart comparing legacy consistent and online snapshot strategies while 120 updates per second run for 60 seconds.</desc>
+<rect width="1240" height="910" fill="#ffffff"/>
+<style><![CDATA[text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;fill:#111827}.title{font-size:30px;font-weight:750}.subtitle{font-size:15px;fill:#4b5563}.label{font-size:17px;font-weight:650}.small{font-size:13px;fill:#4b5563}.value{font-size:14px;font-weight:650}.axis{stroke:#e5e7eb;stroke-width:1}.legacy{fill:#111827}.online{fill:#dc2626}.note{font-size:14px;fill:#374151}.ok{fill:#047857}.warn{fill:#b45309}]]></style>
+<text x="60" y="58" class="title">10M-row snapshot comparison with steady updates</text>
+<text x="60" y="86" class="subtitle">Legacy consistent vs online · chunk size 5,000 · PostgreSQL 16-alpine · 120 requested updates/s for 60s</text>
+<text x="60" y="114" class="subtitle">Writes: consistent 7,199, online 7,200. Both drained all CDC deliveries.</text>
+<text x="60" y="142" class="subtitle">READ rows: consistent 10,000,000; online 9,999,996 because updated keys are represented by CDC instead of duplicate READs.</text>
+<rect x="60" y="165" width="18" height="18" rx="3" class="legacy"/><text x="88" y="179" class="small">legacy consistent</text>
+<rect x="240" y="165" width="18" height="18" rx="3" class="online"/><text x="268" y="179" class="small">online</text>
+<line x1="275" y1="194" x2="915" y2="194" class="axis"/>
+<text x="60" y="232" class="label">Snapshot duration</text>
+<text x="60" y="253" class="small">seconds · lower</text>
+<rect x="275" y="210" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="220" width="87.2" height="24" rx="4" class="legacy"/>
+<rect x="275" y="254" width="640.0" height="24" rx="4" class="online"/>
+<text x="372.2" y="238" class="value">15.531 seconds</text>
+<text x="925.0" y="272" class="value">113.965 seconds</text>
+<text x="945" y="253" class="small">online / legacy = 7.34×</text>
+<text x="60" y="314" class="label">Snapshot throughput</text>
+<text x="60" y="335" class="small">rows/s · higher</text>
+<rect x="275" y="292" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="302" width="640.0" height="24" rx="4" class="legacy"/>
+<rect x="275" y="336" width="87.2" height="24" rx="4" class="online"/>
+<text x="925.0" y="320" class="value">643,869 rows/s</text>
+<text x="372.2" y="354" class="value">87,747 rows/s</text>
+<text x="945" y="335" class="small">online is 0.14× legacy</text>
+<text x="60" y="396" class="label">Actual update rate</text>
+<text x="60" y="417" class="small">tx/s · target 120</text>
+<rect x="275" y="374" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="384" width="639.9" height="24" rx="4" class="legacy"/>
+<rect x="275" y="418" width="640.0" height="24" rx="4" class="online"/>
+<text x="924.9" y="402" class="value">119.983 tx/s</text>
+<text x="925.0" y="436" class="value">120.000 tx/s</text>
+<text x="945" y="417" class="small">both met 120/s target</text>
+<text x="60" y="478" class="label">Retained WAL</text>
+<text x="60" y="499" class="small">MB · lower</text>
+<rect x="275" y="456" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="466" width="640.0" height="24" rx="4" class="legacy"/>
+<rect x="275" y="500" width="421.8" height="24" rx="4" class="online"/>
+<text x="925.0" y="484" class="value">7.47 MB</text>
+<text x="706.8" y="518" class="value">4.92 MB</text>
+<text x="945" y="499" class="small">online / legacy = 0.66×</text>
+<text x="60" y="560" class="label">Confirmed lag</text>
+<text x="60" y="581" class="small">MB · lower</text>
+<rect x="275" y="538" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="548" width="640.0" height="24" rx="4" class="legacy"/>
+<rect x="275" y="582" width="103.9" height="24" rx="4" class="online"/>
+<text x="925.0" y="566" class="value">4.69 MB</text>
+<text x="388.9" y="600" class="value">0.76 MB</text>
+<text x="945" y="581" class="small">online / legacy = 0.16×</text>
+<text x="60" y="642" class="label">Peak RSS</text>
+<text x="60" y="663" class="small">MB · lower</text>
+<rect x="275" y="620" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="630" width="522.0" height="24" rx="4" class="legacy"/>
+<rect x="275" y="664" width="640.0" height="24" rx="4" class="online"/>
+<text x="807.0" y="648" class="value">35.73 MB</text>
+<text x="925.0" y="682" class="value">43.81 MB</text>
+<text x="945" y="663" class="small">online / legacy = 1.23×</text>
+<text x="60" y="724" class="label">CDC deliveries</text>
+<text x="60" y="745" class="small">events · match writes</text>
+<rect x="275" y="702" width="640" height="1" fill="#f3f4f6"/>
+<rect x="275" y="712" width="639.9" height="24" rx="4" class="legacy"/>
+<rect x="275" y="746" width="640.0" height="24" rx="4" class="online"/>
+<text x="924.9" y="730" class="value">7,199 events</text>
+<text x="925.0" y="764" class="value">7,200 events</text>
+<text x="945" y="745" class="small">online / legacy = 1.00×</text>
+<rect x="60" y="812" width="1120" height="112" rx="14" fill="#f9fafb" stroke="#e5e7eb"/>
+<text x="86" y="842" class="note">Throughput: legacy consistent delivered snapshot rows ~7.3× faster.</text>
+<text x="86" y="867" class="note">WAL: online retained less main-slot WAL at peak (4.92 MB vs 7.47 MB) and lower confirmed lag (0.76 MB vs 4.69 MB).</text>
+<text x="86" y="892" class="note">Correctness shape: online READ rows can be lower because updated keys are conflict-elided and delivered by CDC.</text>
+<text x="86" y="915" class="note">Caveat: no durable target sink; local single run, not a production SLO.</text>
+</svg>

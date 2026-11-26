@@ -1,0 +1,68 @@
+
+**********************************************************************************************
+Ryuk has been disabled for the current execution. This can cause unexpected behavior in your environment.
+More on this: https://golang.testcontainers.org/features/garbage_collector/
+**********************************************************************************************
+2026/11/15 20:33:01 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 6.1.4
+  API Version: 1.44
+  Operating System: fedora
+  Total Memory: 5891 MB
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 5bdc2ac52a13a657414d902f971fd154bd45d9e9bc50fee44b4568b4b17f75af
+  Test ProcessID: 19357620-f85d-4c36-8b02-ed864706fd0b
+2026/11/15 20:33:01 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/15 20:33:01 ✅ Container created: eacf67a2babc
+2026/11/15 20:33:01 🐳 Starting container: eacf67a2babc
+2026/11/15 20:33:01 ✅ Container started: eacf67a2babc
+2026/11/15 20:33:01 🚧 Waiting for container id eacf67a2babc image: docker.io/postgres:16-alpine. Waiting for: &{timeout:<nil> deadline:0x5d6e1d6a5a60 Strategies:[0x5d6e1d536140]}
+2026/11/15 20:33:01 🔔 Container is ready: eacf67a2babc
+=== RUN   TestOnlineCDCOnlyHeadToHead
+2026/11/15 20:33:02 🐳 Creating container for image docker.io/postgres:16-alpine
+2026/11/15 20:33:02 ✅ Container created: c6f42979c7b3
+2026/11/15 20:33:02 🐳 Starting container: c6f42979c7b3
+2026/11/15 20:33:02 ✅ Container started: c6f42979c7b3
+2026/11/15 20:33:02 🚧 Waiting for container id c6f42979c7b3 image: docker.io/postgres:16-alpine. Waiting for: &{timeout:0x5d6e1d2b4028 cmd:[pg_isready -h 127.0.0.1 -U postgres -d online_poc] ExitCodeMatcher:0x1028e91d0 ResponseMatcher:0x1029d61c0 PollInterval:100ms}
+2026/11/15 20:33:02 🔔 Container is ready: c6f42979c7b3
+used config: {"logger":{"level":"INFO"},"host":"localhost","username":"postgres","password":"*******","database":"online_poc","publication":{"name":"bench_legacy_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true},"heartbeat":{"table":{"name":"","replicaIdentity":""},"interval":0},"slot":{"name":"bench_legacy_slot","slotActivityCheckerInterval":1000,"protoVersion":1,"createIfNotExists":true,"failover":false},"visibilityGuard":{"failMode":"","replicas":null,"timeout":0,"pollInterval":0,"enabled":false},"snapshot":{"strategy":"consistent","online":{"queryTimeout":3000000000,"deliveryTimeout":3000000000,"chunkBytes":4194304,"transactionBytes":16777216,"queueBytes":33554432,"checkpointInterval":20000000,"markerInterval":50000000},"mode":"initial","instanceId":"","id":"","tables":null,"chunkSize":2,"claimTimeout":30000000000,"heartbeatInterval":5000000000,"enabled":false,"resnapshot":false},"port":42237,"metric":{"port":60330},"debugMode":false,"extensionSupport":{"enableTimeScaleDB":false}}
+{"time":"2026-11-15T20:33:02.926629+03:00","level":"INFO","msg":"publication created","name":"bench_legacy_pub"}
+{"time":"2026-11-15T20:33:02.926638+03:00","level":"INFO","msg":"publication","info":{"name":"bench_legacy_pub","operations":["INSERT","UPDATE","DELETE","TRUNCATE"],"tables":[{"name":"workload","replicaIdentity":"FULL","schema":"public"}],"createIfNotExists":true}}
+{"time":"2026-11-15T20:33:02.927022+03:00","level":"INFO","msg":"creating replication slot for CDC"}
+{"time":"2026-11-15T20:33:02.927051+03:00","level":"INFO","msg":"server starting on port :60330"}
+{"time":"2026-11-15T20:33:02.959828+03:00","level":"INFO","msg":"replication slot created","name":"bench_legacy_slot","failover":false}
+{"time":"2026-11-15T20:33:02.960599+03:00","level":"INFO","msg":"slot info","info":{"name":"bench_legacy_slot","type":"logical","walStatus":"reserved","restartLSN":26751144,"confirmedFlushLSN":26751200,"currentLSN":26751200,"retainedWALSize":56,"lag":0,"activePID":0,"active":false}}
+{"time":"2026-11-15T20:33:02.967074+03:00","level":"INFO","msg":"slot capturing..."}
+{"time":"2026-11-15T20:33:03.980478+03:00","level":"INFO","msg":"system identification","systemID":"7708452607535013917","timeline":1,"xLogPos":26771296,"database:":"online_poc"}
+{"time":"2026-11-15T20:33:03.981194+03:00","level":"INFO","msg":"replication started from confirmed_flush_lsn","slot":"bench_legacy_slot"}
+{"time":"2026-11-15T20:33:03.981208+03:00","level":"INFO","msg":"cdc stream started"}
+{"time":"2026-11-15T20:33:03.981211+03:00","level":"INFO","msg":"slot captured"}
+{"time":"2026-11-15T20:33:03.981296+03:00","level":"INFO","msg":"postgres message process started"}
+{"time":"2026-11-15T20:33:03.981307+03:00","level":"INFO","msg":"postgres message sink started"}
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=30007/30008 sentinels=0 legacy cdc=30008/30008 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=60007/60009 sentinels=0 legacy cdc=60010/60009 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=92010/92010 sentinels=0 legacy cdc=92010/92010 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=124010/124010 sentinels=0 legacy cdc=124010/124010 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=154010/154010 sentinels=0 legacy cdc=154010/154010 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=186007/186009 sentinels=0 legacy cdc=186009/186009 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=216009/216009 sentinels=0 legacy cdc=216009/216009 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=246009/246009 sentinels=0 legacy cdc=246009/246009 sentinels=0
+    online_cdc_only_benchmark_test.go:297: progress: online cdc=278007/278009 sentinels=0 legacy cdc=278010/278009 sentinels=0
+{"time":"2026-11-15T20:38:04.049718+03:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-11-15T20:38:04.080741+03:00","level":"INFO","msg":"postgres connection closed"}
+{"time":"2026-11-15T20:38:04.080758+03:00","level":"INFO","msg":"stream stopped"}
+{"time":"2026-11-15T20:38:04.080762+03:00","level":"INFO","msg":"postgres message sink stopped"}
+{"time":"2026-11-15T20:38:04.080764+03:00","level":"INFO","msg":"postgres message process stopped"}
+{"time":"2026-11-15T20:38:04.080805+03:00","level":"INFO","msg":"server stopped"}
+{"time":"2026-11-15T20:38:04.080818+03:00","level":"INFO","msg":"[connector] connector closed successfully"}
+    online_cdc_only_benchmark_test.go:288: legacy arm stopped at sentinel after 5m0.050956959s
+    online_cdc_only_benchmark_test.go:290: online arm stopped at sentinel after 5m0.05098375s
+    online_cdc_only_benchmark_test.go:330: timing: writers ran 300s, sentinel committed at 300.00195775s, legacy stopped at 300.019725667s, online stopped at 300.019759459s
+    online_cdc_only_benchmark_test.go:375: CDC_ONLY {"actualSourceTransactionsPerSecond":1000,"legacy":{"cdcDeliveries":300001,"cdcDeliveriesPerSecond":999.937585213911,"peakConfirmedLagBytes":6237544,"peakFeedbackAgeSeconds":28.083967,"peakSlotRetainedWAL":12669336,"slotName":"bench_legacy_slot","stopAtSentinelSeconds":300.019725667},"mode":"cdc-only","online":{"cdcDeliveries":300001,"cdcDeliveriesPerSecond":999.9374725883595,"onlineStats":{"PeakChunkRawBytes":0,"PeakReadLatency":872583,"ReadQueries":1,"PeakTransactionEncodedBytes":488,"PeakQueueAndAssemblyEncodedBytes":885,"PeakRelationEncodedBytes":193,"BufferedEncodedBytes":0,"SafeACK":90983488,"FeedbackWrites":302,"LastFeedback":"2026-11-15T20:38:04.039541+03:00"},"peakConfirmedLagBytes":217416,"peakFeedbackAgeSeconds":1.021165,"peakSlotRetainedWAL":3416056,"slotName":"bench_online_slot","stopAtSentinelSeconds":300.019759459},"ratioOnlineOverLegacyStopAtSentinel":1.0000001126325941,"requestedUpdatesPerSecond":1000,"sentinel":{"id":1000000001,"legacyCommitLSN":"0/56C4958","onlineCommitLSN":"0/56C4958","sameCommitLSN":true,"value":9000000007,"writerPostLSN":"0/56C4988","writerPreLSN":"0/56C48D0"},"sentinelCommitSeconds":300.00195775,"sharedProcessPeakHeapBytes":4357248,"sharedProcessPeakRSSBytes":36192256,"sourceContainer":"c6f42979c7b3063ff86683c3fb503663633559771d7e54f1d79510a7427e9e4a","writersDurationSeconds":300,"writes":300000}
+2026/11/15 20:38:04 🐳 Terminating container: c6f42979c7b3
+2026/11/15 20:38:04 🚫 Container terminated: c6f42979c7b3
+--- PASS: TestOnlineCDCOnlyHeadToHead (302.22s)
+PASS
+2026/11/15 20:38:04 🐳 Terminating container: eacf67a2babc
+2026/11/15 20:38:04 🚫 Container terminated: eacf67a2babc
+ok  	github.com/Trendyol/go-pq-cdc/integration	303.566s

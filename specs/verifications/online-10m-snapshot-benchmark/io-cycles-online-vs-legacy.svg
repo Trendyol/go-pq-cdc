@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2160" viewBox="0 0 1800 2160" role="img" aria-labelledby="title desc">
+<title id="title">Current implementation I/O cycles: online versus legacy snapshot and CDC</title>
+<desc id="desc">Four panels compare one online snapshot window, one online CDC transaction, one legacy snapshot chunk, and one legacy CDC transaction. SQL, WAL transport, handler-dependent I/O, and memory operations are distinguished. Periodic operations are not counted as per-transaction operations.</desc>
+<rect width="1800" height="2160" fill="#f3f5f8"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#172033}.title{font-size:32px;font-weight:700}.sub{font-size:17px;fill:#526079}.heading{font-size:24px;font-weight:700}.label{font-size:17px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#526079}.badge{font-size:12px;font-weight:700;letter-spacing:.4px}</style>
+<text x="48" y="55" class="title">I/O per cycle — online vs legacy</text>
+<text x="48" y="85" class="sub">Current code: visibilityGuard.enabled controls both online phases. Snapshot cycle = one chunk; CDC cycle = one transaction.</text>
+<rect x="48" y="108" width="150" height="30" rx="6" fill="#eaf1ff"/>
+<text x="60" y="128" class="badge" style="fill:#245bbd">SQL</text>
+<rect x="212" y="108" width="150" height="30" rx="6" fill="#e6f6ee"/>
+<text x="224" y="128" class="badge" style="fill:#18794e">WAL</text>
+<rect x="376" y="108" width="150" height="30" rx="6" fill="#fff3dd"/>
+<text x="388" y="128" class="badge" style="fill:#926000">HANDLER</text>
+<rect x="540" y="108" width="150" height="30" rx="6" fill="#eceef3"/>
+<text x="552" y="128" class="badge" style="fill:#566078">MEMORY</text>
+<rect x="704" y="108" width="150" height="30" rx="6" fill="#f2eaff"/>
+<text x="716" y="128" class="badge" style="fill:#7843aa">MIXED</text>
+<text x="885" y="128" class="small">SQL = source round-trips · WAL = replication socket · handler = target-dependent</text>
+<rect x="48" y="164" width="828" height="930" rx="16" fill="white" stroke="#d9dfe9"/>
+<text x="72" y="202" class="heading">01  ONLINE SNAPSHOT</text>
+<text x="72" y="229" class="small">One LOW → SELECT → HIGH window; includes transactions consumed through markers.</text>
+<rect x="72" y="252" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="273" class="badge" style="fill:#245bbd">01  SQL</text>
+<text x="212" y="273" class="label">Register attempt</text>
+<text x="212" y="295" class="small">Metadata transaction: validate ownership/progress; insert window.</text>
+<rect x="72" y="316" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="337" class="badge" style="fill:#245bbd">02  SQL</text>
+<text x="212" y="337" class="label">Emit LOW</text>
+<text x="212" y="359" class="small">Owner ping + separate transaction: watermark and emission writes.</text>
+<rect x="72" y="380" width="780" height="57" rx="7" fill="#f2eaff"/>
+<text x="84" y="401" class="badge" style="fill:#7843aa">03  MIXED</text>
+<text x="212" y="401" class="label">Consume WAL through LOW</text>
+<text x="212" y="423" class="small">Per envelope: row validation + handler; visibility SQL only if guard enabled.</text>
+<rect x="72" y="444" width="780" height="57" rx="7" fill="#f2eaff"/>
+<text x="84" y="465" class="badge" style="fill:#7843aa">04  MIXED</text>
+<text x="212" y="465" class="label">Record LOW → safe ACK</text>
+<text x="212" y="487" class="small">Metadata transaction persists LOW/checkpoint; ACK advances in memory.</text>
+<rect x="72" y="508" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="529" class="badge" style="fill:#245bbd">05  SQL</text>
+<text x="212" y="529" class="label">SELECT chunk using startup schema</text>
+<text x="212" y="551" class="small">One bounded business-table SELECT. No repeated schema/key catalog SQL.</text>
+<rect x="72" y="572" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="593" class="badge" style="fill:#245bbd">06  SQL</text>
+<text x="212" y="593" class="label">Emit HIGH</text>
+<text x="212" y="615" class="small">Owner ping + separate transaction: watermark and emission writes.</text>
+<rect x="72" y="636" width="780" height="57" rx="7" fill="#f2eaff"/>
+<text x="84" y="657" class="badge" style="fill:#7843aa">07  MIXED</text>
+<text x="212" y="657" class="label">Consume WAL through HIGH</text>
+<text x="212" y="679" class="small">CDC delivery + in-memory conflict map; optional visibility SQL. No catalog SQL.</text>
+<rect x="72" y="700" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="721" class="badge" style="fill:#245bbd">08  SQL</text>
+<text x="212" y="721" class="label">Record HIGH boundary</text>
+<text x="212" y="743" class="small">Metadata transaction validates attempt/progress; no schema catalog queries.</text>
+<rect x="72" y="764" width="780" height="57" rx="7" fill="#fff3dd"/>
+<text x="84" y="785" class="badge" style="fill:#926000">09  HANDLER</text>
+<text x="212" y="785" class="label">Deliver surviving READs</text>
+<text x="212" y="807" class="small">Synchronous calls; target-dependent I/O. No source SELECT per row.</text>
+<rect x="72" y="828" width="780" height="57" rx="7" fill="#f2eaff"/>
+<text x="84" y="849" class="badge" style="fill:#7843aa">10  MIXED</text>
+<text x="212" y="849" class="label">Complete → ACK → reload progress</text>
+<text x="212" y="871" class="small">Metadata transaction, in-memory ACK, then metadata progress read.</text>
+<text x="72" y="899" class="label">Alongside / conditional I/O</text>
+<text x="72" y="923" class="small">Periodic safe-WAL feedback and source-owner monitoring continue.</text>
+<text x="72" y="946" class="small">Six write-bearing metadata/control transactions per window, plus progress read.</text>
+<text x="72" y="969" class="small">Each transaction includes BEGIN, SET LOCAL, checks/writes, COMMIT.</text>
+<text x="72" y="994" class="small">Schema/publication/PK catalogs: startup/restart only. Keep snapshot DDL frozen.</text>
+<text x="72" y="1018" class="small" style="fill:#a12622">Guard false: no SQL-visible LOW/HIGH guarantee; reconciliation risk remains.</text>
+<line x1="72" y1="1037" x2="852" y2="1037" stroke="#d9dfe9"/>
+<text x="72" y="1064" class="small">No transport ACK for receiving WAL; HIGH ACK waits for READs + durable completion.</text>
+<rect x="924" y="164" width="828" height="930" rx="16" fill="white" stroke="#d9dfe9"/>
+<text x="948" y="202" class="heading">02  ONLINE CDC AFTER SNAPSHOT</text>
+<text x="948" y="229" class="small">One committed transaction envelope. No LOW/HIGH windows or snapshot READs.</text>
+<rect x="948" y="252" width="780" height="57" rx="7" fill="#e6f6ee"/>
+<text x="960" y="273" class="badge" style="fill:#18794e">01  WAL</text>
+<text x="1088" y="273" class="label">Receive and assemble B…C</text>
+<text x="1088" y="295" class="small">Independent reader consumes WAL; releases only complete transactions.</text>
+<rect x="948" y="316" width="780" height="57" rx="7" fill="#f8fafc" stroke="#245bbd" stroke-dasharray="6 4"/>
+<text x="960" y="337" class="badge" style="fill:#245bbd">02  OPTIONAL</text>
+<text x="1088" y="337" class="label">Visibility + identity SQL — guard only</text>
+<text x="1088" y="359" class="small">Guard false (default): SKIPPED. Guard true: fresh query / visibility polls.</text>
+<rect x="948" y="380" width="780" height="57" rx="7" fill="#eceef3"/>
+<text x="960" y="401" class="badge" style="fill:#566078">03  MEMORY</text>
+<text x="1088" y="401" class="label">Follow per-change Relation metadata</text>
+<text x="1088" y="423" class="small">No catalog SQL. Compatible columns evolve; startup event key retained.</text>
+<rect x="948" y="444" width="780" height="57" rx="7" fill="#eceef3"/>
+<text x="960" y="465" class="badge" style="fill:#566078">04  MEMORY</text>
+<text x="1088" y="465" class="label">Validate entire envelope</text>
+<text x="1088" y="487" class="small">Check controls, keys, full images, IDs and ordinals before delivery.</text>
+<rect x="948" y="508" width="780" height="57" rx="7" fill="#fff3dd"/>
+<text x="960" y="529" class="badge" style="fill:#926000">05  HANDLER</text>
+<text x="1088" y="529" class="label">Deliver business events in order</text>
+<text x="1088" y="551" class="small">One synchronous call per event; errors halt processing.</text>
+<rect x="948" y="572" width="780" height="57" rx="7" fill="#eceef3"/>
+<text x="960" y="593" class="badge" style="fill:#566078">06  MEMORY</text>
+<text x="1088" y="593" class="label">Advance delivery frontier</text>
+<text x="1088" y="615" class="small">Record envelope EndLSN; request next envelope through a channel.</text>
+<text x="948" y="674" class="label">Removed from steady-state critical path</text>
+<text x="948" y="700" class="small">No per-envelope publication, schema or primary-key catalog queries.</text>
+<text x="948" y="724" class="small">Guard false: no per-envelope visibility SQL either. Startup checks remain.</text>
+<text x="948" y="748" class="small">FULL images, supported types, integer event keys and key-mutation checks remain.</text>
+<text x="948" y="920" class="label">Alongside / conditional I/O</text>
+<text x="948" y="944" class="small">Checkpoint tick: metadata transaction → safe ACK in memory (if frontier advances).</text>
+<text x="948" y="967" class="small">Heartbeat tick: owner ping + source watermark transaction; generates WAL.</text>
+<text x="948" y="990" class="small">Feedback tick: send certified safe ACK on replication socket; monitor owner.</text>
+<text x="948" y="1015" class="small">Startup/restart validates catalogs; tailing cannot detect PK-only DDL or removals.</text>
+<line x1="948" y1="1037" x2="1728" y2="1037" stroke="#d9dfe9"/>
+<text x="948" y="1064" class="small">Checkpoint/heartbeat/feedback are periodic, NOT necessarily once per envelope.</text>
+<rect x="48" y="1120" width="828" height="930" rx="16" fill="white" stroke="#d9dfe9"/>
+<text x="72" y="1158" class="heading">03  LEGACY CONSISTENT SNAPSHOT</text>
+<text x="72" y="1185" class="small">One worker chunk; slot, exported snapshot and chunks already initialized.</text>
+<rect x="72" y="1208" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="1229" class="badge" style="fill:#245bbd">01  SQL</text>
+<text x="212" y="1229" class="label">Claim next chunk</text>
+<text x="212" y="1251" class="small">Metadata CTE: SELECT FOR UPDATE SKIP LOCKED + UPDATE RETURNING.</text>
+<rect x="72" y="1272" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="1293" class="badge" style="fill:#245bbd">02  SQL</text>
+<text x="212" y="1293" class="label">Begin chunk transaction</text>
+<text x="212" y="1315" class="small">Pooled connection: BEGIN REPEATABLE READ; SET TRANSACTION SNAPSHOT.</text>
+<rect x="72" y="1336" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="1357" class="badge" style="fill:#245bbd">03  SQL</text>
+<text x="212" y="1357" class="label">SELECT business-table chunk</text>
+<text x="212" y="1379" class="small">Range / offset / CTID strategy; key/order catalog lookup may be cached.</text>
+<rect x="72" y="1400" width="780" height="57" rx="7" fill="#fff3dd"/>
+<text x="84" y="1421" class="badge" style="fill:#926000">04  HANDLER</text>
+<text x="212" y="1421" class="label">Decode and deliver snapshot rows</text>
+<text x="212" y="1443" class="small">Handler called while SELECT results are consumed; target I/O is conditional.</text>
+<rect x="72" y="1464" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="1485" class="badge" style="fill:#245bbd">05  SQL</text>
+<text x="212" y="1485" class="label">Commit chunk read transaction</text>
+<text x="212" y="1507" class="small">COMMIT after row processing succeeds; rollback/retry on failure.</text>
+<rect x="72" y="1528" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="1549" class="badge" style="fill:#245bbd">06  SQL</text>
+<text x="212" y="1549" class="label">Persist chunk completion</text>
+<text x="212" y="1571" class="small">Separate metadata UPDATE for chunk status and UPDATE for job counter.</text>
+<rect x="72" y="1592" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="84" y="1613" class="badge" style="fill:#245bbd">07  SQL</text>
+<text x="212" y="1613" class="label">Reload job for progress metrics</text>
+<text x="212" y="1635" class="small">Metadata SELECT after successful completion update.</text>
+<text x="72" y="1876" class="label">Alongside / conditional I/O</text>
+<text x="72" y="1900" class="small">Periodic worker heartbeat updates chunk metadata; exporter keepalive SELECT 1.</text>
+<text x="72" y="1923" class="small">Snapshot export, slot creation, chunk planning and job-finalization are outside cycle.</text>
+<text x="72" y="1946" class="small">No LOW/HIGH markers. Business WAL retained by slot; CDC stream opens afterward.</text>
+<line x1="72" y1="1993" x2="852" y2="1993" stroke="#d9dfe9"/>
+<text x="72" y="2020" class="small">One cycle is per worker; multiple chunk workers may run concurrently.</text>
+<rect x="924" y="1120" width="828" height="930" rx="16" fill="white" stroke="#d9dfe9"/>
+<text x="948" y="1158" class="heading">04  LEGACY CDC AFTER SNAPSHOT</text>
+<text x="948" y="1185" class="small">One transaction / its row callbacks. Visibility guard is optional configuration.</text>
+<rect x="948" y="1208" width="780" height="57" rx="7" fill="#e6f6ee"/>
+<text x="960" y="1229" class="badge" style="fill:#18794e">01  WAL</text>
+<text x="1088" y="1229" class="label">Receive pgoutput WAL</text>
+<text x="1088" y="1251" class="small">Sink reads independently; parses frames and updates received position.</text>
+<rect x="948" y="1272" width="780" height="57" rx="7" fill="#eceef3"/>
+<text x="960" y="1293" class="badge" style="fill:#566078">02  MEMORY</text>
+<text x="1088" y="1293" class="label">Decode + buffer messages</text>
+<text x="1088" y="1315" class="small">Protocol 1: one-row look-ahead; protocol 2: pending per-XID buffers.</text>
+<rect x="948" y="1336" width="780" height="57" rx="7" fill="#eaf1ff"/>
+<text x="960" y="1357" class="badge" style="fill:#245bbd">03  SQL</text>
+<text x="1088" y="1357" class="label">Optional transaction visibility gate</text>
+<text x="1088" y="1379" class="small">If enabled: cached pass or SQL polling on first message; replicas optional.</text>
+<rect x="948" y="1400" width="780" height="57" rx="7" fill="#fff3dd"/>
+<text x="960" y="1421" class="badge" style="fill:#926000">04  HANDLER</text>
+<text x="1088" y="1421" class="label">Invoke listener per message</text>
+<text x="1088" y="1443" class="small">Direct synchronous callback; application chooses when/how to ACK.</text>
+<rect x="948" y="1464" width="780" height="57" rx="7" fill="#eceef3"/>
+<text x="960" y="1485" class="badge" style="fill:#566078">05  MEMORY</text>
+<text x="1088" y="1485" class="label">Caller ACK updates confirmation</text>
+<text x="1088" y="1507" class="small">In-memory confirmed position; final message uses transaction-end LSN.</text>
+<text x="948" y="1876" class="label">Alongside / conditional I/O</text>
+<text x="948" y="1900" class="small">Feedback on idle timeout / requested keepalive; final certified-position flush on close.</text>
+<text x="948" y="1923" class="small">Configured business heartbeat writes + slot metrics polling can run alongside.</text>
+<text x="948" y="1946" class="small">No per-envelope online schema SQL or cdc_online checkpoint transaction.</text>
+<line x1="948" y1="1993" x2="1728" y2="1993" stroke="#d9dfe9"/>
+<text x="948" y="2020" class="small">Heartbeat auto-ACK/bypass and permissive decoding differ from strict online behavior.</text>
+<text x="48" y="2090" class="label">READ THIS AS LOGICAL I/O, NOT AN EXACT DISK-I/O OR NETWORK-ROUND-TRIP COUNT.</text>
+<text x="48" y="2115" class="small">One SQL box can contain several statements. Cache hits, retries, visibility polls, worker concurrency and group WAL flushes change physical costs.</text>
+<text x="48" y="2140" class="small">Sources: pq/snapshot/online/{coordinator,store}.go · pq/replication/{online,online_visibility,stream}.go · pq/snapshot/{worker,coordinator}.go</text>
+</svg>

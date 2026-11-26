@@ -137,6 +137,10 @@ func (s *stream) Connect(ctx context.Context) error {
 }
 
 func (s *stream) Open(ctx context.Context) error {
+	return s.open(ctx, s.runDirect)
+}
+
+func (s *stream) open(ctx context.Context, run streamRunner) error {
 	if s.conn.IsClosed() {
 		return ErrorNotConnected
 	}
@@ -177,17 +181,23 @@ func (s *stream) Open(ctx context.Context) error {
 		}
 	}
 
-	s.sinkStarted.Store(true)
-	s.processStarted.Store(true)
+	run(ctx)
+	return nil
+}
+
+func (s *stream) runDirect(ctx context.Context) {
 	runCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
+
+	// Track this whole pipeline as one lifecycle operation.
+	// Close must cancel it and wait for its completion.
+	s.sinkStarted.Store(true)
+	s.processStarted.Store(true)
 
 	go s.sink(runCtx)
 	go s.process(runCtx)
 
 	logger.Info("cdc stream started")
-
-	return nil
 }
 
 func (s *stream) setup(ctx context.Context) error {
@@ -431,69 +441,88 @@ func (s *stream) sink(ctx context.Context) {
 	}
 }
 
+func (s *stream) receiveMessage(ctx context.Context) (rawMsg pgproto3.BackendMessage, ok bool, corrupted bool) {
+	msgCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), time.Now().Add(300*time.Millisecond))
+	// Hold connMu only for the read itself. ReceiveMessage's deferred Unwatch
+	// (which clears the socket deadline) has run by the time it returns, so the
+	// deadline-toggle window is fully contained here; releasing before the
+	// channel sends in handleXLogData keeps acks from blocking the sink and
+	// vice versa.
+	s.connMu.Lock()
+	rawMsg, err := s.conn.ReceiveMessage(msgCtx)
+	s.connMu.Unlock()
+	cancel()
+
+	if err != nil {
+		if s.closed.Load() {
+			logger.Info("stream stopped")
+			return nil, true, false
+		}
+		if handleReplicationConnectionTermination(err) {
+			// Connection is gone while we are still running. Close and panic
+			// so the process restarts with a fresh replication connection.
+			return nil, true, true
+		}
+		if pgconn.Timeout(err) {
+			if s.LoadXLogPos() > 0 {
+				if err = s.sendStandbyStatusUpdate(ctx); err != nil {
+					if !handleReplicationConnectionTermination(err) {
+						logger.Error("send stand by status update", "error", err)
+					}
+					return nil, true, true
+				}
+				logger.Debug("send stand by status update")
+			}
+			return nil, false, false
+		}
+		logger.Error("receive message error", "error", err)
+		return nil, true, true
+	}
+
+	return rawMsg, true, false
+}
+
 // sinkLoop reads raw replication messages and dispatches them until the
 // connection is closed or a fatal error occurs. It returns true when the
 // connection is in a corrupted state and the caller should panic.
 func (s *stream) sinkLoop(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer) (corrupted bool) {
 	for {
-		msgCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), time.Now().Add(300*time.Millisecond))
-		// Hold connMu only for the read itself. ReceiveMessage's deferred Unwatch
-		// (which clears the socket deadline) has run by the time it returns, so the
-		// deadline-toggle window is fully contained here; releasing before the
-		// channel sends in handleXLogData keeps acks from blocking the sink and
-		// vice versa.
-		s.connMu.Lock()
-		rawMsg, err := s.conn.ReceiveMessage(msgCtx)
-		s.connMu.Unlock()
-		cancel()
-
-		if err != nil {
-			if s.closed.Load() {
-				logger.Info("stream stopped")
-				return false
-			}
-			if handleReplicationConnectionTermination(err) {
-				// Connection is gone while we are still running. Close and panic
-				// so the process restarts with a fresh replication connection.
-				return true
-			}
-			if pgconn.Timeout(err) {
-				if s.LoadXLogPos() > 0 {
-					if err = s.sendStandbyStatusUpdate(ctx); err != nil {
-						if !handleReplicationConnectionTermination(err) {
-							logger.Error("send stand by status update", "error", err)
-						}
-						return true
-					}
-					logger.Debug("send stand by status update")
-				}
-				continue
-			}
-			logger.Error("receive message error", "error", err)
-			return true
+		rawMsg, ok, corrupted := s.receiveMessage(ctx)
+		if !ok {
+			continue
+		}
+		if rawMsg == nil {
+			return corrupted
 		}
 
-		copyData, ok := s.extractCopyData(rawMsg)
+		payload, ok := s.extractPayload(rawMsg)
 		if !ok {
 			continue
 		}
 
-		switch copyData.Data[0] {
-		case message.PrimaryKeepaliveMessageByteID:
-			if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
-				handleReplicationConnectionTermination(err)
-				return true
-			}
-		case message.XLogDataByteID:
-			s.handleXLogData(copyData.Data[1:], buf, streamBuf)
+		if ok := s.handlePayload(ctx, buf, streamBuf, payload); !ok {
+			return true
 		}
 	}
 }
 
-// extractCopyData validates a raw backend message. It returns the CopyData
+func (s *stream) handlePayload(ctx context.Context, buf *messageBuffer, streamBuf *streamTxBuffer, copyData *pgproto3.CopyData) (ok bool) {
+	switch copyData.Data[0] {
+	case message.PrimaryKeepaliveMessageByteID:
+		if err := s.handleKeepalive(ctx, copyData.Data[1:]); err != nil {
+			handleReplicationConnectionTermination(err)
+			return false
+		}
+	case message.XLogDataByteID:
+		s.handleXLogData(copyData.Data[1:], buf, streamBuf)
+	}
+	return true
+}
+
+// extractPayload validates a raw backend message. It returns the CopyData
 // payload and true on success, or (nil, false) for protocol-level errors and
 // unexpected message types which are logged and skipped.
-func (s *stream) extractCopyData(rawMsg pgproto3.BackendMessage) (*pgproto3.CopyData, bool) {
+func (s *stream) extractPayload(rawMsg pgproto3.BackendMessage) (*pgproto3.CopyData, bool) {
 	if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
 		res, _ := errMsg.MarshalJSON()
 		logger.Error("receive postgres wal error: " + string(res))

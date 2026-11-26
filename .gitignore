@@ -2,3 +2,6 @@
 .claude
 vendor
 .DS_Store
+go.work
+go.work.sum
+integration_test/testdata/tmp/

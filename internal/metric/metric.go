@@ -59,6 +59,14 @@ type Metric interface {
 	// sampled on the message path.
 	SetMessageBufferSource(length func() int)
 
+	// Streaming transaction buffer & disk spill metrics
+	SetStreamingActiveTransactions(count int)
+	SetStreamingBufferBytes(bytes int64)
+	SetStreamingSpilledBytes(bytes int64)
+	StreamingSpillBytesAdd(bytes int64)
+	StreamingSpillTransactionsIncrement()
+	StreamingAbortedTransactionsIncrement()
+
 	PrometheusCollectors() []prometheus.Collector
 }
 
@@ -101,6 +109,14 @@ type metric struct {
 	// Message buffer metric
 	messageBufferLength prometheus.GaugeFunc
 	messageBufferSource atomic.Pointer[func() int]
+
+	// Streaming transaction buffer & disk spill metrics
+	streamingActiveTransactions prometheus.Gauge
+	streamingBufferBytes        prometheus.Gauge
+	streamingSpilledBytes       prometheus.Gauge
+	streamingSpillBytesTotal    prometheus.Counter
+	streamingSpillTxnsTotal     prometheus.Counter
+	streamingAbortedTxnsTotal   prometheus.Counter
 }
 
 //nolint:funlen
@@ -368,6 +384,66 @@ func NewMetric(slotName string) Metric {
 				"host":      hostname,
 			},
 		}, []string{"replica", "result"}),
+		streamingActiveTransactions: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "streaming",
+			Name:      "active_transactions",
+			Help:      "current number of open streamed transactions",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		streamingBufferBytes: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "streaming",
+			Name:      "buffer_bytes",
+			Help:      "current in-memory bytes held across open streamed transactions",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		streamingSpilledBytes: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "streaming",
+			Name:      "spilled_bytes",
+			Help:      "current on-disk bytes held across spilled streamed transactions",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		streamingSpillBytesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "streaming",
+			Name:      "spill_bytes_total",
+			Help:      "total bytes written to streaming transaction spill files",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		streamingSpillTxnsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "streaming",
+			Name:      "spill_transactions_total",
+			Help:      "total number of streamed transactions spilled to disk",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
+		streamingAbortedTxnsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: cdcNamespace,
+			Subsystem: "streaming",
+			Name:      "aborted_transactions_total",
+			Help:      "total number of top-level streamed transactions discarded on STREAM ABORT",
+			ConstLabels: prometheus.Labels{
+				"slot_name": slotName,
+				"host":      hostname,
+			},
+		}),
 	}
 	m.messageBufferLength = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: cdcNamespace,
@@ -422,6 +498,12 @@ func (m *metric) PrometheusCollectors() []prometheus.Collector {
 		m.visibilityReplicaLagBytes,
 		m.visibilityReplicaChecks,
 		m.messageBufferLength,
+		m.streamingActiveTransactions,
+		m.streamingBufferBytes,
+		m.streamingSpilledBytes,
+		m.streamingSpillBytesTotal,
+		m.streamingSpillTxnsTotal,
+		m.streamingAbortedTxnsTotal,
 	}
 }
 
@@ -543,4 +625,30 @@ func (m *metric) VisibilityReplicaCheck(replica string, cached bool) {
 
 func (m *metric) SetMessageBufferSource(length func() int) {
 	m.messageBufferSource.Store(&length)
+}
+
+func (m *metric) SetStreamingActiveTransactions(count int) {
+	m.streamingActiveTransactions.Set(float64(count))
+}
+
+func (m *metric) SetStreamingBufferBytes(bytes int64) {
+	m.streamingBufferBytes.Set(float64(bytes))
+}
+
+func (m *metric) SetStreamingSpilledBytes(bytes int64) {
+	m.streamingSpilledBytes.Set(float64(bytes))
+}
+
+func (m *metric) StreamingSpillBytesAdd(bytes int64) {
+	if bytes > 0 {
+		m.streamingSpillBytesTotal.Add(float64(bytes))
+	}
+}
+
+func (m *metric) StreamingSpillTransactionsIncrement() {
+	m.streamingSpillTxnsTotal.Inc()
+}
+
+func (m *metric) StreamingAbortedTransactionsIncrement() {
+	m.streamingAbortedTxnsTotal.Inc()
 }

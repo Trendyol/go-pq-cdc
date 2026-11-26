@@ -10,6 +10,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleXLogDataUpdatesReceivedPosition(t *testing.T) {
@@ -22,7 +23,7 @@ func TestHandleXLogDataUpdatesReceivedPosition(t *testing.T) {
 	binary.BigEndian.PutUint64(data[16:], 0)                // server time
 	data[24] = 'Z'                                          // unsupported logical message, enough to decode XLogData
 
-	stream.handleXLogData(data, &messageBuffer{outCh: make(chan *Message, 1)}, &streamTxBuffer{})
+	require.NoError(t, stream.handleXLogData(data, &messageBuffer{outCh: make(chan *Message, 1)}, &streamTxBuffer{}))
 
 	assert.Equal(t, walEnd, stream.LoadXLogPos())
 }

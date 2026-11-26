@@ -125,3 +125,36 @@ Recommended migration path:
 2. Set `protoVersion: 1` explicitly if your PostgreSQL is older.
 3. Run your CDC integration tests with both versions if you support mixed environments.
 
+## Memory Bounds & Disk Spilling
+
+When `protoVersion: 2` is active, PostgreSQL streams in-progress transactions exceeding `logical_decoding_work_mem` (default 64 MiB) in interleaved `STREAM START` / `STREAM STOP` chunks before `STREAM COMMIT` or `STREAM ABORT`.
+
+### Lazy Raw-Frame Buffering (Always On)
+
+Streamed chunks are buffered as raw `pgoutput` WAL bytes in a flat, pointer-free byte slice per transaction and decoded lazily only on `STREAM COMMIT`. This eliminates Go heap amplification and GC pointer scanning while transactions are in flight, and avoids tuple-decoding CPU entirely when a streamed transaction aborts (`STREAM ABORT`).
+
+### Opt-In Disk Spilling (`slot.spill.*`)
+
+To enforce a strict memory ceiling across all concurrent streamed transactions, enable disk spilling under `slot.spill`:
+
+```yaml
+slot:
+  name: cdc_slot
+  protoVersion: 2
+  spill:
+    enabled: true
+    maxMemoryBytes: 67108864 # 64 MiB global in-memory budget across open streamed TXs
+    spillDir: ""             # empty defaults to os.TempDir()
+    maxDiskBytes: 0          # 0 = unlimited; when > 0, must be >= maxMemoryBytes
+```
+
+Key operational properties:
+
+- **Largest-TX-first eviction:** Whenever appending a streamed frame pushes total in-memory buffer bytes above `maxMemoryBytes`, the largest in-memory streamed transaction is written to a private temporary file (`0600`) inside a per-session directory (`0700`) and freed from memory.
+- **Single-FD bound:** At most one spill file descriptor is kept open at any instant (writers flush and close on every `STREAM STOP` and lazily reopen on the next `STREAM START`).
+- **Fail-closed safety:** Any spill I/O error or `maxDiskBytes` breach (`ErrStreamSpillDiskLimitExceeded`) aborts and restarts the stream without advancing `confirmed_flush_lsn`, preventing data loss.
+- **Zero FS touch when disabled:** With `slot.spill.enabled: false` (default), no files or directories are created, preserving compatibility with `readOnlyRootFilesystem: true` containers.
+- **Keep `statusUpdateInterval` enabled:** Disabling `statusUpdateInterval` (`0`) is discouraged when replaying multi-gigabyte spilled transactions, because consumer backpressure on `messageCH` delays the sink from reading keepalive requests and can trigger `wal_sender_timeout` disconnects.
+- **Ephemeral volume sizing:** In Kubernetes, mount an `emptyDir` volume for `slot.spill.spillDir` (with `sizeLimit` matching or exceeding `slot.spill.maxDiskBytes`) rather than spilling onto the root filesystem.
+
+

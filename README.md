@@ -410,6 +410,10 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 | `slot.slotActivityCheckerInterval`      |   int    |    no    |  1000   | Set the slot activity check interval time in milliseconds                                             | Specify as an integer value in milliseconds (e.g., `1000` for 1 second).                                                                           |
 | `slot.protoVersion`                     |   int    | no       | 2       | `pgoutput` protocol version used in `START_REPLICATION`                                               | `1`: no streaming of in-progress transactions. Works on PostgreSQL 10+. `2`: PostgreSQL 14+, streaming of in-progress transactions. `messages` is requested on PostgreSQL 14+ unless `slot.logicalMessages` is `off`. |
 | `slot.logicalMessages`                  |  string  | no       | auto    | Logical decoding messages (`pg_logical_emit_message`), PostgreSQL 14+                                 | **auto:** request the option when the server supports it. **on:** require it; startup fails on PostgreSQL 10-13. **off:** never request it, so no message is ever delivered. See [Logical Decoding Messages](#logical-decoding-messages). |
+| `slot.spill.enabled`                    |   bool   | no       | false   | Enable bounded-memory disk spilling for streamed in-progress transactions (`slot.protoVersion: 2`)    | When `false`, streamed transactions stay in memory using compact raw WAL frames with zero filesystem access. Requires `slot.protoVersion: 2`. |
+| `slot.spill.maxMemoryBytes`             |  int64   | no       | 64 MiB  | Global in-memory byte budget across all open streamed transactions when `slot.spill.enabled: true`     | Defaults to `67108864` (64 MiB) when enabled. Once exceeded, the largest in-memory streamed transaction spills to disk. |
+| `slot.spill.spillDir`                   |  string  | no       | `os.TempDir()` | Directory where per-session spill directories (`0700`) and `.wal` files (`0600`) are created     | Requires `slot.spill.enabled: true`. Recommended to point at a dedicated ephemeral volume (`emptyDir`) in containers. |
+| `slot.spill.maxDiskBytes`               |  int64   | no       | 0       | Optional cap in bytes across all active spill files on disk (`0` = unlimited)                         | Requires `slot.spill.enabled: true`. When non-zero, must be `>= slot.spill.maxMemoryBytes`. Exceeding the cap fails closed and restarts the stream without advancing `confirmed_flush_lsn`. |
 | `slot.failover`                         |   bool   |    no    |  false  | Create the slot with `FAILOVER true` (PostgreSQL 17+) so standbys running `sync_replication_slots` keep a synchronized copy; an existing slot is altered with `ALTER_REPLICATION_SLOT … (FAILOVER true)`. | Rejected with a clear error on older servers. Needs `synchronized_standby_slots` on the primary, see [Failover slots](#failover-slots-postgresql-17). |
 | `statusUpdateInterval`                  | duration |    no    |  10s    | How often the standby acknowledges the primary with a standby status update while WAL is flowing back-to-back. | Must stay well below the server's `wal_sender_timeout` (60s by default); not checked at startup. The 10s default matches `wal_receiver_status_interval`, the cadence Postgres expects from standbys. Set to `0` to disable the periodic update and reply only when PostgreSQL requests it. |
 | `snapshot.enabled`                      |   bool   |    no    |  false  | Enable initial snapshot feature                                                                       | When enabled, captures existing data before starting CDC.                                                                                          |
@@ -458,10 +462,11 @@ You can run [Replica Identity Nothing](./example/replica-identity-nothing) for a
 
 Streaming behavior for `proto_version: 2`:
 
-- Streamed DML events are buffered per transaction XID.
+- Streamed DML events are buffered per transaction XID as raw WAL bytes and decoded lazily on `STREAM COMMIT`.
 - Events are emitted only on `STREAM COMMIT`.
-- `STREAM ABORT` discards all buffered events for that transaction.
-- This prevents rolled-back streamed transactions from leaking to consumers.
+- `STREAM ABORT` discards all buffered events for that transaction (whole transaction or sub-transaction savepoint rollback).
+- When `slot.spill.enabled` is `true`, transactions exceeding `slot.spill.maxMemoryBytes` spill to disk using a single open file descriptor at a time. See [docs/PROTO_VERSION_SUPPORT.md](./docs/PROTO_VERSION_SUPPORT.md) for details.
+- This prevents rolled-back streamed transactions from leaking to consumers and bounds memory usage.
 
 ### Logical Decoding Messages
 
@@ -754,6 +759,12 @@ the `/metrics` endpoint.
 | go_pq_cdc_visibility_fail_open_total                | Number of transactions dispatched after a visibility guard timeout (`failMode: open`).                 | slot_name, host| Counter    |
 | go_pq_cdc_visibility_replica_lag_bytes              | WAL bytes a listed standby still has to replay before the held transaction is applied (0 once applied). | slot_name, host, replica | Gauge |
 | go_pq_cdc_visibility_replica_checks_total           | Transactions certified per standby: `cached` (a poll under 1 s old already passed the commit) or `polled`. | slot_name, host, replica, result | Counter |
+| go_pq_cdc_streaming_active_transactions             | Current number of open streamed transactions buffered in memory or on disk.                           | slot_name, host| Gauge      |
+| go_pq_cdc_streaming_buffer_bytes                    | Current in-memory bytes held across open streamed transactions.                                       | slot_name, host| Gauge      |
+| go_pq_cdc_streaming_spilled_bytes                   | Current on-disk bytes held across spilled streamed transactions.                                      | slot_name, host| Gauge      |
+| go_pq_cdc_streaming_spill_bytes_total               | Total bytes written to streaming transaction spill files.                                             | slot_name, host| Counter    |
+| go_pq_cdc_streaming_spill_transactions_total        | Total number of streamed transactions spilled to disk.                                                | slot_name, host| Counter    |
+| go_pq_cdc_streaming_aborted_transactions_total      | Total number of top-level streamed transactions discarded on `STREAM ABORT`.                          | slot_name, host| Counter    |
 | runtime metrics                                     | [Prometheus Collector](https://golang.bg/src/runtime/metrics/description.go)                          | N/A            | N/A        |
 
 ### Grafana Dashboard

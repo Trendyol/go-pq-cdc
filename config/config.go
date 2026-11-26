@@ -327,6 +327,10 @@ func (c *Config) SetDefault() {
 		c.Slot.ProtoVersion = 2
 	}
 
+	if c.Slot.Spill.Enabled && c.Slot.Spill.MaxMemoryBytes == 0 {
+		c.Slot.Spill.MaxMemoryBytes = slot.DefaultStreamSpillMaxMemoryBytes
+	}
+
 	// Postgres kills a standby that has not replied within wal_sender_timeout
 	// (60s by default). An explicit zero disables the periodic update, so only
 	// an unset value takes the default.

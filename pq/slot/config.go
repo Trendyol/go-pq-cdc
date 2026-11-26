@@ -23,7 +23,20 @@ const (
 	// logicalMessagesAutoLiteral is the spelling config files use for the default,
 	// which LogicalMessagesAuto represents as the empty string.
 	logicalMessagesAutoLiteral LogicalMessagesMode = "auto"
+
+	// DefaultStreamSpillMaxMemoryBytes is the default global in-memory byte budget
+	// for buffered streamed transactions when slot.spill.enabled is true (64 MiB).
+	DefaultStreamSpillMaxMemoryBytes int64 = 64 * 1024 * 1024
 )
+
+// StreamSpillConfig bounds memory held by streamed in-progress transactions
+// (slot.protoVersion >= 2) by spilling the largest transactions to disk.
+type StreamSpillConfig struct {
+	SpillDir       string `json:"spillDir,omitempty" yaml:"spillDir,omitempty"`
+	MaxMemoryBytes int64  `json:"maxMemoryBytes,omitempty" yaml:"maxMemoryBytes,omitempty"`
+	MaxDiskBytes   int64  `json:"maxDiskBytes,omitempty" yaml:"maxDiskBytes,omitempty"`
+	Enabled        bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+}
 
 type Config struct {
 	Name string `json:"name" yaml:"name"`
@@ -31,6 +44,7 @@ type Config struct {
 	// requests them when the server supports them, on requires them, off never
 	// requests them.
 	LogicalMessages             LogicalMessagesMode `json:"logicalMessages,omitempty" yaml:"logicalMessages,omitempty"`
+	Spill                       StreamSpillConfig   `json:"spill,omitempty" yaml:"spill,omitempty"`
 	SlotActivityCheckerInterval time.Duration       `json:"slotActivityCheckerInterval" yaml:"slotActivityCheckerInterval"`
 	// ProtoVersion selects the pgoutput logical replication protocol version.
 	//   1 – compatible with PostgreSQL 10+; no streaming transaction support.
@@ -62,6 +76,31 @@ func (c Config) Validate() error {
 	case LogicalMessagesAuto, logicalMessagesAutoLiteral, LogicalMessagesOn, LogicalMessagesOff:
 	default:
 		err = errors.Join(err, errors.New("slot logicalMessages must be one of: auto, on, off"))
+	}
+
+	if !c.Spill.Enabled {
+		if c.Spill.MaxMemoryBytes != 0 {
+			err = errors.Join(err, errors.New("slot.spill.maxMemoryBytes requires slot.spill.enabled: true"))
+		}
+		if c.Spill.MaxDiskBytes != 0 {
+			err = errors.Join(err, errors.New("slot.spill.maxDiskBytes requires slot.spill.enabled: true"))
+		}
+		if strings.TrimSpace(c.Spill.SpillDir) != "" {
+			err = errors.Join(err, errors.New("slot.spill.spillDir requires slot.spill.enabled: true"))
+		}
+	} else {
+		if c.ProtoVersion == 1 {
+			err = errors.Join(err, errors.New("slot.spill requires slot.protoVersion >= 2"))
+		}
+		if c.Spill.MaxMemoryBytes <= 0 {
+			err = errors.Join(err, errors.New("slot.spill.maxMemoryBytes must be greater than 0"))
+		}
+		if c.Spill.MaxDiskBytes < 0 {
+			err = errors.Join(err, errors.New("slot.spill.maxDiskBytes must not be negative"))
+		}
+		if c.Spill.MaxDiskBytes > 0 && c.Spill.MaxMemoryBytes > 0 && c.Spill.MaxDiskBytes < c.Spill.MaxMemoryBytes {
+			err = errors.Join(err, errors.New("slot.spill.maxDiskBytes must be greater than or equal to slot.spill.maxMemoryBytes when non-zero"))
+		}
 	}
 
 	return err

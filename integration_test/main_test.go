@@ -42,6 +42,10 @@ var (
 var reachContainerIPs = os.Getenv("INTEGRATION_CONTAINER_IPS") != ""
 
 func TestMain(m *testing.M) {
+	if os.Getenv("CDC_INTEGRATION_SUBPROCESS") != "" {
+		os.Exit(m.Run())
+	}
+
 	var err error
 	Config, err = config.ReadConfigYAML("./test_connector.yaml")
 	if err != nil {

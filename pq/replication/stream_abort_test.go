@@ -1,38 +1,82 @@
 package replication
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// streamAbortHarness drives dispatchMessage with decoded proto v2 streaming
-// messages and collects what reaches the consumer channel.
+const testAbortRelOID uint32 = 1001
+
+// streamAbortHarness drives handleXLogData with wire-encoded proto v2 streaming
+// frames and collects what reaches the consumer channel.
 type streamAbortHarness struct {
+	t         *testing.T
 	s         *stream
 	buf       *messageBuffer
 	streamBuf *streamTxBuffer
 	out       chan *Message
 }
 
-func newStreamAbortHarness() *streamAbortHarness {
+func newStreamAbortHarness(t *testing.T, spillCfg slot.StreamSpillConfig) *streamAbortHarness {
+	t.Helper()
 	out := make(chan *Message, 100)
+	sb, err := newStreamTxBuffer(spillCfg, "abort_test_slot", nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sb.close())
+	})
 	return &streamAbortHarness{
-		s:         &stream{},
+		t: t,
+		s: &stream{
+			mu: &sync.RWMutex{},
+			relation: map[uint32]*format.Relation{
+				testAbortRelOID: {
+					OID:       testAbortRelOID,
+					Namespace: "public",
+					Name:      "books",
+					Columns: []tuple.RelationColumn{
+						{Name: "name", DataType: pgtype.TextOID},
+					},
+				},
+			},
+		},
 		buf:       &messageBuffer{outCh: out},
-		streamBuf: &streamTxBuffer{},
+		streamBuf: sb,
 		out:       out,
 	}
 }
 
-func (h *streamAbortHarness) dispatch(msg any, lsn uint64) {
-	h.s.dispatchMessage(msg, XLogData{WALStart: pq.LSN(lsn)}, h.buf, h.streamBuf)
+func runAbortModes(t *testing.T, fn func(t *testing.T, h *streamAbortHarness)) {
+	t.Helper()
+	t.Run("in_memory", func(t *testing.T) {
+		fn(t, newStreamAbortHarness(t, slot.StreamSpillConfig{}))
+	})
+	t.Run("spilled", func(t *testing.T) {
+		fn(t, newStreamAbortHarness(t, slot.StreamSpillConfig{
+			Enabled:        true,
+			MaxMemoryBytes: 1,
+			SpillDir:       t.TempDir(),
+		}))
+	})
 }
 
-func (h *streamAbortHarness) insert(xid uint32, name string, lsn uint64) {
-	h.dispatch(&format.Insert{XID: xid, TableName: name}, lsn)
+func (h *streamAbortHarness) feedWire(walData []byte, lsn uint64) {
+	h.t.Helper()
+	raw := encodeXLogData(pq.LSN(lsn), pq.LSN(lsn), time.Unix(1_700_000_000, 0).UTC(), walData)
+	require.NoError(h.t, h.s.handleXLogData(raw, h.buf, h.streamBuf))
+}
+
+func (h *streamAbortHarness) insert(xid uint32, rowName string, lsn uint64) {
+	h.feedWire(encodeStreamedInsert(xid, testAbortRelOID, wireTextCol(rowName)), lsn)
 }
 
 func (h *streamAbortHarness) delivered() []string {
@@ -40,7 +84,7 @@ func (h *streamAbortHarness) delivered() []string {
 	for {
 		select {
 		case m := <-h.out:
-			names = append(names, m.message.(*format.Insert).TableName)
+			names = append(names, m.message.(*format.Insert).Decoded["name"].(string))
 		default:
 			return names
 		}
@@ -48,108 +92,113 @@ func (h *streamAbortHarness) delivered() []string {
 }
 
 func TestStreamAbortSubTransactionKeepsEarlierChanges(t *testing.T) {
-	// BEGIN(100); INSERT a; SAVEPOINT(101); INSERT b; INSERT c; ROLLBACK TO SAVEPOINT; INSERT d; COMMIT
-	h := newStreamAbortHarness()
-	h.dispatch(&format.StreamStart{Xid: 100}, 1)
-	h.insert(100, "a", 10)
-	h.insert(101, "b", 11)
-	h.insert(101, "c", 12)
-	h.dispatch(&format.StreamStop{}, 13)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 101}, 14)
-	h.dispatch(&format.StreamStart{Xid: 100}, 15)
-	h.insert(100, "d", 16)
-	h.dispatch(&format.StreamStop{}, 17)
-	h.dispatch(&format.StreamCommit{Xid: 100, TransactionEndLSN: 99}, 18)
+	runAbortModes(t, func(t *testing.T, h *streamAbortHarness) {
+		// BEGIN(100); INSERT a; SAVEPOINT(101); INSERT b; INSERT c; ROLLBACK TO SAVEPOINT; INSERT d; COMMIT
+		h.feedWire(encodeStreamStart(100, 1), 1)
+		h.insert(100, "a", 10)
+		h.insert(101, "b", 11)
+		h.insert(101, "c", 12)
+		h.feedWire(encodeStreamStop(), 13)
+		h.feedWire(encodeStreamAbort(100, 101), 14)
+		h.feedWire(encodeStreamStart(100, 0), 15)
+		h.insert(100, "d", 16)
+		h.feedWire(encodeStreamStop(), 17)
+		h.feedWire(encodeStreamCommit(100, 90, 99), 18)
 
-	assert.Equal(t, []string{"a", "d"}, h.delivered())
+		assert.Equal(t, []string{"a", "d"}, h.delivered())
+	})
 }
 
 func TestStreamAbortNestedSubTransactions(t *testing.T) {
-	// INSERT a(100); SAVEPOINT s1(101); INSERT b; SAVEPOINT s2(102); INSERT c;
-	// ROLLBACK TO s2 → abort 102; INSERT e(101); RELEASE s1; ROLLBACK TO s0 … then
-	// a second nested case: abort of the outer sub-xid drops the inner one too.
-	h := newStreamAbortHarness()
-	h.dispatch(&format.StreamStart{Xid: 100}, 1)
-	h.insert(100, "a", 10)
-	h.insert(101, "b", 11)
-	h.insert(102, "c", 12)
-	h.dispatch(&format.StreamStop{}, 13)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 102}, 14)
-	h.dispatch(&format.StreamStart{Xid: 100}, 15)
-	h.insert(101, "e", 16)
-	h.insert(103, "f", 17)
-	h.dispatch(&format.StreamStop{}, 18)
-	// PostgreSQL sends the innermost abort first, then the outer one.
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 103}, 19)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 101}, 20)
-	h.dispatch(&format.StreamStart{Xid: 100}, 21)
-	h.insert(100, "g", 22)
-	h.dispatch(&format.StreamStop{}, 23)
-	h.dispatch(&format.StreamCommit{Xid: 100, TransactionEndLSN: 99}, 24)
+	runAbortModes(t, func(t *testing.T, h *streamAbortHarness) {
+		h.feedWire(encodeStreamStart(100, 1), 1)
+		h.insert(100, "a", 10)
+		h.insert(101, "b", 11)
+		h.insert(102, "c", 12)
+		h.feedWire(encodeStreamStop(), 13)
+		h.feedWire(encodeStreamAbort(100, 102), 14)
+		h.feedWire(encodeStreamStart(100, 0), 15)
+		h.insert(101, "e", 16)
+		h.insert(103, "f", 17)
+		h.feedWire(encodeStreamStop(), 18)
+		// PostgreSQL sends the innermost abort first, then the outer one.
+		h.feedWire(encodeStreamAbort(100, 103), 19)
+		h.feedWire(encodeStreamAbort(100, 101), 20)
+		h.feedWire(encodeStreamStart(100, 0), 21)
+		h.insert(100, "g", 22)
+		h.feedWire(encodeStreamStop(), 23)
+		h.feedWire(encodeStreamCommit(100, 90, 99), 24)
 
-	assert.Equal(t, []string{"a", "g"}, h.delivered())
+		assert.Equal(t, []string{"a", "g"}, h.delivered())
+	})
 }
 
 func TestStreamAbortSubTransactionInterleavedTransactions(t *testing.T) {
-	// TX-A chunk (with sub-xid), TX-B chunk, TX-A sub-abort: B untouched, A keeps its top-level rows.
-	h := newStreamAbortHarness()
-	h.dispatch(&format.StreamStart{Xid: 100}, 1)
-	h.insert(100, "a1", 10)
-	h.insert(101, "a-sub", 11)
-	h.dispatch(&format.StreamStop{}, 12)
-	h.dispatch(&format.StreamStart{Xid: 200}, 13)
-	h.insert(200, "b1", 14)
-	h.insert(201, "b-sub", 15)
-	h.dispatch(&format.StreamStop{}, 16)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 101}, 17)
-	h.dispatch(&format.StreamCommit{Xid: 200, TransactionEndLSN: 50}, 18)
-	h.dispatch(&format.StreamStart{Xid: 100}, 19)
-	h.insert(100, "a2", 20)
-	h.dispatch(&format.StreamStop{}, 21)
-	h.dispatch(&format.StreamCommit{Xid: 100, TransactionEndLSN: 99}, 22)
+	runAbortModes(t, func(t *testing.T, h *streamAbortHarness) {
+		// TX-A chunk (with sub-xid), TX-B chunk, TX-A sub-abort: B untouched, A keeps its top-level rows.
+		h.feedWire(encodeStreamStart(100, 1), 1)
+		h.insert(100, "a1", 10)
+		h.insert(101, "a-sub", 11)
+		h.feedWire(encodeStreamStop(), 12)
+		h.feedWire(encodeStreamStart(200, 1), 13)
+		h.insert(200, "b1", 14)
+		h.insert(201, "b-sub", 15)
+		h.feedWire(encodeStreamStop(), 16)
+		h.feedWire(encodeStreamAbort(100, 101), 17)
+		h.feedWire(encodeStreamCommit(200, 45, 50), 18)
+		h.feedWire(encodeStreamStart(100, 0), 19)
+		h.insert(100, "a2", 20)
+		h.feedWire(encodeStreamStop(), 21)
+		h.feedWire(encodeStreamCommit(100, 90, 99), 22)
 
-	assert.Equal(t, []string{"b1", "b-sub", "a1", "a2"}, h.delivered())
-	assert.Empty(t, h.streamBuf.txns)
-	assert.Empty(t, h.streamBuf.subXacts)
+		assert.Equal(t, []string{"b1", "b-sub", "a1", "a2"}, h.delivered())
+		assert.Empty(t, h.streamBuf.txns)
+		assert.Zero(t, h.streamBuf.totalMemBytes)
+		assert.Zero(t, h.streamBuf.totalDiskBytes)
+	})
 }
 
 func TestStreamAbortTopLevelDiscardsEverything(t *testing.T) {
-	h := newStreamAbortHarness()
-	h.dispatch(&format.StreamStart{Xid: 100}, 1)
-	h.insert(100, "a", 10)
-	h.insert(101, "b", 11)
-	h.dispatch(&format.StreamStop{}, 12)
-	// PostgreSQL aborts the sub-transactions first, then the top-level one.
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 101}, 13)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 100}, 14)
+	runAbortModes(t, func(t *testing.T, h *streamAbortHarness) {
+		h.feedWire(encodeStreamStart(100, 1), 1)
+		h.insert(100, "a", 10)
+		h.insert(101, "b", 11)
+		h.feedWire(encodeStreamStop(), 12)
+		// PostgreSQL aborts the sub-transactions first, then the top-level one.
+		h.feedWire(encodeStreamAbort(100, 101), 13)
+		h.feedWire(encodeStreamAbort(100, 100), 14)
 
-	assert.Empty(t, h.delivered())
-	assert.Empty(t, h.streamBuf.txns)
-	assert.Empty(t, h.streamBuf.subXacts)
+		assert.Empty(t, h.delivered())
+		assert.Empty(t, h.streamBuf.txns)
+		assert.Zero(t, h.streamBuf.totalMemBytes)
+		assert.Zero(t, h.streamBuf.totalDiskBytes)
+	})
 }
 
 func TestStreamAbortUnknownSubTransactionIsNoop(t *testing.T) {
-	h := newStreamAbortHarness()
-	h.dispatch(&format.StreamStart{Xid: 100}, 1)
-	h.insert(100, "a", 10)
-	h.dispatch(&format.StreamStop{}, 11)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 555}, 12)
-	h.dispatch(&format.StreamCommit{Xid: 100, TransactionEndLSN: 99}, 13)
+	runAbortModes(t, func(t *testing.T, h *streamAbortHarness) {
+		h.feedWire(encodeStreamStart(100, 1), 1)
+		h.insert(100, "a", 10)
+		h.feedWire(encodeStreamStop(), 11)
+		h.feedWire(encodeStreamAbort(100, 555), 12)
+		h.feedWire(encodeStreamCommit(100, 90, 99), 13)
 
-	assert.Equal(t, []string{"a"}, h.delivered())
+		assert.Equal(t, []string{"a"}, h.delivered())
+	})
 }
 
 func TestStreamAbortSubTransactionRewritesLastLSN(t *testing.T) {
-	// After truncation the surviving last message must carry the transaction-end LSN.
-	h := newStreamAbortHarness()
-	h.dispatch(&format.StreamStart{Xid: 100}, 1)
-	h.insert(100, "a", 10)
-	h.insert(101, "b", 11)
-	h.dispatch(&format.StreamStop{}, 12)
-	h.dispatch(&format.StreamAbort{Xid: 100, SubXid: 101}, 13)
-	h.dispatch(&format.StreamCommit{Xid: 100, TransactionEndLSN: 99}, 14)
+	runAbortModes(t, func(t *testing.T, h *streamAbortHarness) {
+		// After truncation the surviving last message must carry the transaction-end LSN.
+		h.feedWire(encodeStreamStart(100, 1), 1)
+		h.insert(100, "a", 10)
+		h.insert(101, "b", 11)
+		h.feedWire(encodeStreamStop(), 12)
+		h.feedWire(encodeStreamAbort(100, 101), 13)
+		h.feedWire(encodeStreamCommit(100, 90, 99), 14)
 
-	m := <-h.out
-	assert.Equal(t, "a", m.message.(*format.Insert).TableName)
-	assert.Equal(t, int64(99), m.walStart)
+		m := <-h.out
+		assert.Equal(t, "a", m.message.(*format.Insert).Decoded["name"])
+		assert.Equal(t, int64(99), m.walStart)
+	})
 }

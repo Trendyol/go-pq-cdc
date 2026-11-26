@@ -3,12 +3,16 @@ package replication
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Trendyol/go-pq-cdc/config"
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +56,7 @@ func TestDispatchNonTransactionalMessageSkipsLookAhead(t *testing.T) {
 	buf.commitLSN = 900
 
 	msg := nonTxLogicalMessage(77)
-	s.dispatchMessage(msg, XLogData{WALStart: 100}, buf, &streamTxBuffer{})
+	require.NoError(t, s.dispatchMessage(msg, XLogData{WALStart: 100}, buf, &streamTxBuffer{}))
 
 	require.Len(t, outCh, 1, "a non-transactional message must be delivered immediately")
 	got := <-outCh
@@ -70,7 +74,7 @@ func TestDispatchNonTransactionalMessageLeavesPendingDML(t *testing.T) {
 	s := &stream{}
 	buf, outCh := newDispatchBuffer()
 
-	s.dispatchMessage(&format.Begin{Xid: 5, FinalLSN: 900}, XLogData{WALStart: 10}, buf, &streamTxBuffer{})
+	require.NoError(t, s.dispatchMessage(&format.Begin{Xid: 5, FinalLSN: 900}, XLogData{WALStart: 10}, buf, &streamTxBuffer{}))
 
 	// An open transaction with an undelivered DML in the look-ahead: releasing
 	// it early would hand the consumer a row that may still abort.
@@ -78,7 +82,7 @@ func TestDispatchNonTransactionalMessageLeavesPendingDML(t *testing.T) {
 	buf.buffer(pending)
 	require.Empty(t, outCh)
 
-	s.dispatchMessage(nonTxLogicalMessage(30), XLogData{WALStart: 30}, buf, &streamTxBuffer{})
+	require.NoError(t, s.dispatchMessage(nonTxLogicalMessage(30), XLogData{WALStart: 30}, buf, &streamTxBuffer{}))
 
 	require.Len(t, outCh, 1)
 	assert.Same(t, pending, buf.pending, "an uncommitted DML must not be released early")
@@ -90,13 +94,13 @@ func TestDispatchTransactionalMessageStillWaitsForCommit(t *testing.T) {
 	s := &stream{}
 	buf, outCh := newDispatchBuffer()
 
-	s.dispatchMessage(&format.Begin{Xid: 5, FinalLSN: 900}, XLogData{WALStart: 10}, buf, &streamTxBuffer{})
+	require.NoError(t, s.dispatchMessage(&format.Begin{Xid: 5, FinalLSN: 900}, XLogData{WALStart: 10}, buf, &streamTxBuffer{}))
 
 	msg := txLogicalMessage(20)
-	s.dispatchMessage(msg, XLogData{WALStart: 20}, buf, &streamTxBuffer{})
+	require.NoError(t, s.dispatchMessage(msg, XLogData{WALStart: 20}, buf, &streamTxBuffer{}))
 	assert.Empty(t, outCh, "a transactional message is delivered with its transaction")
 
-	s.dispatchMessage(&format.Commit{TransactionEndLSN: 950}, XLogData{WALStart: 950}, buf, &streamTxBuffer{})
+	require.NoError(t, s.dispatchMessage(&format.Commit{TransactionEndLSN: 950}, XLogData{WALStart: 950}, buf, &streamTxBuffer{}))
 
 	require.Len(t, outCh, 1)
 	got := <-outCh
@@ -109,22 +113,32 @@ func TestDispatchTransactionalMessageStillWaitsForCommit(t *testing.T) {
 }
 
 func TestDispatchNonTransactionalMessageDefersAckDuringStreamedTransaction(t *testing.T) {
-	s := &stream{}
+	s := &stream{
+		mu: &sync.RWMutex{},
+		relation: map[uint32]*format.Relation{
+			1001: {
+				OID:       1001,
+				Namespace: "public",
+				Name:      "books",
+				Columns:   []tuple.RelationColumn{{Name: "name", DataType: pgtype.TextOID}},
+			},
+		},
+	}
 	buf, outCh := newDispatchBuffer()
 	streamBuf := &streamTxBuffer{}
 
 	// A large transaction starts streaming: its rows are held until the
 	// commit, at positions below the record that follows them.
-	s.dispatchMessage(&format.StreamStart{Xid: 5}, XLogData{WALStart: 200}, buf, streamBuf)
-	s.dispatchMessage(&format.Insert{XID: 5, TableName: "books"}, XLogData{WALStart: 220}, buf, streamBuf)
+	require.NoError(t, s.dispatchMessage(&format.StreamStart{Xid: 5}, XLogData{WALStart: 200}, buf, streamBuf))
+	require.NoError(t, s.handleXLogData(encodeXLogData(220, 220, time.Time{}, encodeStreamedInsert(5, 1001, wireTextCol("b1"))), buf, streamBuf))
 	// The chunk closes; the rows stay held, and the next record is free to be a
 	// message. This is the slot where a message lands in practice.
-	s.dispatchMessage(&format.StreamStop{}, XLogData{WALStart: 240}, buf, streamBuf)
+	require.NoError(t, s.dispatchMessage(&format.StreamStop{}, XLogData{WALStart: 240}, buf, streamBuf))
 	require.Empty(t, outCh, "streamed rows are held until STREAM COMMIT")
 	require.False(t, streamBuf.streaming, "the message below arrives between chunks, not inside one")
 
 	msg := nonTxLogicalMessage(260)
-	s.dispatchMessage(msg, XLogData{WALStart: 260}, buf, streamBuf)
+	require.NoError(t, s.dispatchMessage(msg, XLogData{WALStart: 260}, buf, streamBuf))
 
 	require.Len(t, outCh, 1, "the message is still delivered immediately")
 	got := <-outCh
@@ -134,12 +148,12 @@ func TestDispatchNonTransactionalMessageDefersAckDuringStreamedTransaction(t *te
 
 	// The transaction's own end-of-transaction ack covers the message, and a
 	// later message confirms normally again once nothing is held.
-	s.dispatchMessage(&format.StreamCommit{Xid: 5, CommitLSN: 400, TransactionEndLSN: 420}, XLogData{WALStart: 420}, buf, streamBuf)
+	require.NoError(t, s.dispatchMessage(&format.StreamCommit{Xid: 5, CommitLSN: 400, TransactionEndLSN: 420}, XLogData{WALStart: 420}, buf, streamBuf))
 	require.Len(t, outCh, 1)
 	assert.Equal(t, int64(420), (<-outCh).walStart,
 		"the transaction's end-of-transaction ack covers the deferred message")
 
-	s.dispatchMessage(nonTxLogicalMessage(500), XLogData{WALStart: 500}, buf, streamBuf)
+	require.NoError(t, s.dispatchMessage(nonTxLogicalMessage(500), XLogData{WALStart: 500}, buf, streamBuf))
 	require.Len(t, outCh, 1)
 	assert.Equal(t, int64(500), (<-outCh).walStart,
 		"with nothing held the message confirms its own position again")

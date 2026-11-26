@@ -11,7 +11,9 @@ import (
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
 	"github.com/Trendyol/go-pq-cdc/pq/publication"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -157,22 +159,38 @@ func TestGateDisabledDoesNotTouchGuard(t *testing.T) {
 
 func TestDispatchStampsXidAndCommitLSNOnNonStreamingAndStreamingPaths(t *testing.T) {
 	out := make(chan *Message, 10)
-	s := &stream{}
+	s := &stream{
+		mu: &sync.RWMutex{},
+		relation: map[uint32]*format.Relation{
+			1001: {
+				OID:       1001,
+				Namespace: "public",
+				Name:      "books",
+				Columns:   []tuple.RelationColumn{{Name: "name", DataType: pgtype.TextOID}},
+			},
+		},
+	}
 	buf := &messageBuffer{outCh: out}
 	streamBuf := &streamTxBuffer{}
-	dispatch := func(msg any, lsn uint64) { s.dispatchMessage(msg, XLogData{WALStart: pq.LSN(lsn)}, buf, streamBuf) }
+	dispatch := func(msg any, lsn uint64) {
+		require.NoError(t, s.dispatchMessage(msg, XLogData{WALStart: pq.LSN(lsn)}, buf, streamBuf))
+	}
+	feedStreamInsert := func(xid uint32, rowName string, lsn uint64) {
+		raw := encodeXLogData(pq.LSN(lsn), pq.LSN(lsn), time.Time{}, encodeStreamedInsert(xid, 1001, wireTextCol(rowName)))
+		require.NoError(t, s.handleXLogData(raw, buf, streamBuf))
+	}
 
 	// Non-streaming: BEGIN(100, final 40) a b COMMIT → both carry xid 100 and commit 40 (from Begin.FinalLSN);
 	// the last one is rebuilt by flushWithLSN.
 	dispatch(&format.Begin{Xid: 100, FinalLSN: 40}, 1)
-	dispatch(&format.Insert{TableName: "a"}, 2)
-	dispatch(&format.Insert{TableName: "b"}, 3)
+	dispatch(&format.Insert{Decoded: map[string]any{"name": "a"}}, 2)
+	dispatch(&format.Insert{Decoded: map[string]any{"name": "b"}}, 3)
 	dispatch(&format.Commit{CommitLSN: 40, TransactionEndLSN: 50}, 4)
 	// Streaming: STREAM START(200) c(sub 201) d STREAM STOP STREAM COMMIT(commit 90, end 99) → both carry the
 	// top-level 200 and commit 90, which is only known at STREAM COMMIT.
 	dispatch(&format.StreamStart{Xid: 200}, 5)
-	dispatch(&format.Insert{XID: 201, TableName: "c"}, 6)
-	dispatch(&format.Insert{XID: 200, TableName: "d"}, 7)
+	feedStreamInsert(201, "c", 6)
+	feedStreamInsert(200, "d", 7)
 	dispatch(&format.StreamStop{}, 8)
 	dispatch(&format.StreamCommit{Xid: 200, CommitLSN: 90, TransactionEndLSN: 99}, 9)
 	close(out)
@@ -185,7 +203,7 @@ func TestDispatchStampsXidAndCommitLSNOnNonStreamingAndStreamingPaths(t *testing
 	}
 	var got []stamped
 	for m := range out {
-		got = append(got, stamped{m.message.(*format.Insert).TableName, m.xid, m.walStart, m.commitLSN})
+		got = append(got, stamped{m.message.(*format.Insert).Decoded["name"].(string), m.xid, m.walStart, m.commitLSN})
 	}
 	assert.Equal(t, []stamped{{"a", 100, 2, 40}, {"b", 100, 50, 40}, {"c", 200, 6, 90}, {"d", 200, 99, 90}}, got)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	goerrors "errors"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/Trendyol/go-pq-cdc/logger"
@@ -219,5 +220,121 @@ func TestDecodeSlotInfoResult_EmptyConfirmedFlushLSN(t *testing.T) {
 	}
 	if info.Type != Physical {
 		t.Fatalf("expected Physical type, got: %v", info.Type)
+	}
+}
+
+func TestConfigValidateSpill(t *testing.T) {
+	validBase := func() Config {
+		return Config{
+			Name:                        "cdc_slot",
+			SlotActivityCheckerInterval: 1000,
+			ProtoVersion:                2,
+		}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr string
+	}{
+		{
+			name:   "disabled zero spill config",
+			mutate: func(_ *Config) {},
+		},
+		{
+			name: "enabled valid defaults",
+			mutate: func(c *Config) {
+				c.Spill = StreamSpillConfig{
+					Enabled:        true,
+					MaxMemoryBytes: DefaultStreamSpillMaxMemoryBytes,
+				}
+			},
+		},
+		{
+			name: "enabled with protoVersion unset (0)",
+			mutate: func(c *Config) {
+				c.ProtoVersion = 0
+				c.Spill = StreamSpillConfig{
+					Enabled:        true,
+					MaxMemoryBytes: 1024,
+					MaxDiskBytes:   4096,
+					SpillDir:       "/tmp/cdc-spill",
+				}
+			},
+		},
+		{
+			name: "disabled rejects non-zero maxMemoryBytes",
+			mutate: func(c *Config) {
+				c.Spill.MaxMemoryBytes = 1024
+			},
+			wantErr: "slot.spill.maxMemoryBytes requires slot.spill.enabled: true",
+		},
+		{
+			name: "disabled rejects non-zero maxDiskBytes",
+			mutate: func(c *Config) {
+				c.Spill.MaxDiskBytes = 1024
+			},
+			wantErr: "slot.spill.maxDiskBytes requires slot.spill.enabled: true",
+		},
+		{
+			name: "disabled rejects non-empty spillDir",
+			mutate: func(c *Config) {
+				c.Spill.SpillDir = "/tmp/spill"
+			},
+			wantErr: "slot.spill.spillDir requires slot.spill.enabled: true",
+		},
+		{
+			name: "enabled rejects protoVersion 1",
+			mutate: func(c *Config) {
+				c.ProtoVersion = 1
+				c.Spill = StreamSpillConfig{Enabled: true, MaxMemoryBytes: 1024}
+			},
+			wantErr: "slot.spill requires slot.protoVersion >= 2",
+		},
+		{
+			name: "enabled rejects zero maxMemoryBytes",
+			mutate: func(c *Config) {
+				c.Spill = StreamSpillConfig{Enabled: true, MaxMemoryBytes: 0}
+			},
+			wantErr: "slot.spill.maxMemoryBytes must be greater than 0",
+		},
+		{
+			name: "enabled rejects negative maxMemoryBytes",
+			mutate: func(c *Config) {
+				c.Spill = StreamSpillConfig{Enabled: true, MaxMemoryBytes: -1}
+			},
+			wantErr: "slot.spill.maxMemoryBytes must be greater than 0",
+		},
+		{
+			name: "enabled rejects negative maxDiskBytes",
+			mutate: func(c *Config) {
+				c.Spill = StreamSpillConfig{Enabled: true, MaxMemoryBytes: 1024, MaxDiskBytes: -10}
+			},
+			wantErr: "slot.spill.maxDiskBytes must not be negative",
+		},
+		{
+			name: "enabled rejects non-zero maxDiskBytes smaller than maxMemoryBytes",
+			mutate: func(c *Config) {
+				c.Spill = StreamSpillConfig{Enabled: true, MaxMemoryBytes: 4096, MaxDiskBytes: 1024}
+			},
+			wantErr: "slot.spill.maxDiskBytes must be greater than or equal to slot.spill.maxMemoryBytes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validBase()
+			tt.mutate(&cfg)
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got: %v", tt.wantErr, err)
+			}
+		})
 	}
 }

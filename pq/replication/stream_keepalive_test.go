@@ -12,6 +12,9 @@ import (
 	"github.com/Trendyol/go-pq-cdc/logger"
 	"github.com/Trendyol/go-pq-cdc/pq"
 	"github.com/Trendyol/go-pq-cdc/pq/message/format"
+	"github.com/Trendyol/go-pq-cdc/pq/message/tuple"
+	"github.com/Trendyol/go-pq-cdc/pq/slot"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,11 +32,24 @@ func newKeepaliveHarness(t *testing.T, listener ListenerFunc) *keepaliveHarness 
 	t.Helper()
 	logger.InitLogger(logger.NewSlog(slog.LevelError))
 	s := NewStream("", config.Config{}, metric.NewMetric("test_slot"), listener).(*stream)
+	s.relation[1001] = &format.Relation{
+		OID:       1001,
+		Namespace: "public",
+		Name:      "books",
+		Columns:   []tuple.RelationColumn{{Name: "name", DataType: pgtype.TextOID}},
+	}
 	return &keepaliveHarness{t: t, s: s, buf: &messageBuffer{outCh: s.messageCH}, streamBuf: &streamTxBuffer{}}
 }
 
 func (h *keepaliveHarness) dispatch(msg any, lsn pq.LSN) {
-	h.s.dispatchMessage(msg, XLogData{WALStart: lsn}, h.buf, h.streamBuf)
+	h.t.Helper()
+	require.NoError(h.t, h.s.dispatchMessage(msg, XLogData{WALStart: lsn}, h.buf, h.streamBuf))
+}
+
+func (h *keepaliveHarness) feedStreamInsert(xid uint32, lsn pq.LSN) {
+	h.t.Helper()
+	raw := encodeXLogData(lsn, lsn, time.Time{}, encodeStreamedInsert(xid, 1001, wireTextCol("row")))
+	require.NoError(h.t, h.s.handleXLogData(raw, h.buf, h.streamBuf))
 }
 
 // keepalive feeds a primary keepalive carrying walEnd and returns the confirmed position after it.
@@ -106,32 +122,45 @@ func TestKeepaliveWaitsForOpenTransaction(t *testing.T) {
 }
 
 // A streamed transaction is open from its STREAM START to its STREAM COMMIT or
-// ABORT, rows or not, and its rows exist only in this process.
+// ABORT, rows or not, and its rows exist only in this process (in-memory or spilled).
 func TestKeepaliveWaitsForOpenStreamedTransaction(t *testing.T) {
-	h := newKeepaliveHarness(t, nil)
+	run := func(t *testing.T, spillCfg slot.StreamSpillConfig) {
+		h := newKeepaliveHarness(t, nil)
+		sb, err := newStreamTxBuffer(spillCfg, "keepalive_test", h.s.metric)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, sb.close()) })
+		h.streamBuf = sb
 
-	h.dispatch(&format.StreamStart{Xid: 7}, 10)
-	assert.Zero(t, h.keepalive(100), "inside a chunk")
-	h.dispatch(&format.StreamStop{}, 15)
-	assert.Zero(t, h.keepalive(100), "between chunks, none with rows yet")
+		h.dispatch(&format.StreamStart{Xid: 7}, 10)
+		assert.Zero(t, h.keepalive(100), "inside a chunk")
+		h.dispatch(&format.StreamStop{}, 15)
+		assert.Zero(t, h.keepalive(100), "between chunks, none with rows yet")
 
-	h.dispatch(&format.StreamStart{Xid: 7}, 18)
-	h.dispatch(&format.Insert{XID: 8, TableName: "books"}, 20) // sub-transaction 8 of 7
-	h.dispatch(&format.StreamStop{}, 30)
-	assert.Zero(t, h.keepalive(100), "between chunks, rows held")
+		h.dispatch(&format.StreamStart{Xid: 7}, 18)
+		h.feedStreamInsert(8, 20) // sub-transaction 8 of 7
+		h.dispatch(&format.StreamStop{}, 30)
+		assert.Zero(t, h.keepalive(100), "between chunks, rows held")
 
-	h.dispatch(&format.StreamAbort{Xid: 7, SubXid: 8}, 40)
-	assert.Zero(t, h.keepalive(100), "a sub-transaction abort leaves the transaction open")
+		h.dispatch(&format.StreamAbort{Xid: 7, SubXid: 8}, 40)
+		assert.Zero(t, h.keepalive(100), "a sub-transaction abort leaves the transaction open")
 
-	h.dispatch(&format.StreamAbort{Xid: 7, SubXid: 7}, 50)
-	assert.Equal(t, pq.LSN(100), h.keepalive(100))
+		h.dispatch(&format.StreamAbort{Xid: 7, SubXid: 7}, 50)
+		assert.Equal(t, pq.LSN(100), h.keepalive(100))
 
-	// STREAM COMMIT hands the rows to messageCH: in flight until acked.
-	h.dispatch(&format.StreamStart{Xid: 9}, 110)
-	h.dispatch(&format.Insert{XID: 9, TableName: "books"}, 120)
-	h.dispatch(&format.StreamStop{}, 130)
-	h.dispatch(&format.StreamCommit{Xid: 9, CommitLSN: 140, TransactionEndLSN: 150}, 140)
-	assert.Equal(t, pq.LSN(100), h.keepalive(200), "committed streamed rows are queued, not acked")
+		// STREAM COMMIT hands the rows to messageCH: in flight until acked.
+		h.dispatch(&format.StreamStart{Xid: 9}, 110)
+		h.feedStreamInsert(9, 120)
+		h.dispatch(&format.StreamStop{}, 130)
+		h.dispatch(&format.StreamCommit{Xid: 9, CommitLSN: 140, TransactionEndLSN: 150}, 140)
+		assert.Equal(t, pq.LSN(100), h.keepalive(200), "committed streamed rows are queued, not acked")
+	}
+
+	t.Run("in_memory", func(t *testing.T) {
+		run(t, slot.StreamSpillConfig{})
+	})
+	t.Run("spilled", func(t *testing.T) {
+		run(t, slot.StreamSpillConfig{Enabled: true, MaxMemoryBytes: 1, SpillDir: t.TempDir()})
+	})
 }
 
 // A message is in flight from the channel send to its first Ack, and a repeated

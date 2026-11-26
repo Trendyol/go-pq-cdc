@@ -749,3 +749,75 @@ func TestReadConfigYAMLStatusUpdateInterval(t *testing.T) {
 	require.NotNil(t, cfg.StatusUpdateInterval)
 	require.Zero(t, *cfg.StatusUpdateInterval)
 }
+
+func TestStreamSpillConfigDefaultsAndRead(t *testing.T) {
+	t.Run("disabled leaves zero spill config", func(t *testing.T) {
+		cfg := Config{}
+		cfg.SetDefault()
+		assert.Equal(t, slot.StreamSpillConfig{}, cfg.Slot.Spill)
+	})
+
+	t.Run("enabled defaults maxMemoryBytes to 64 MiB and keeps explicit values", func(t *testing.T) {
+		cfg := Config{Slot: slot.Config{Spill: slot.StreamSpillConfig{Enabled: true}}}
+		cfg.SetDefault()
+		assert.Equal(t, slot.DefaultStreamSpillMaxMemoryBytes, cfg.Slot.Spill.MaxMemoryBytes)
+		assert.Empty(t, cfg.Slot.Spill.SpillDir)
+		assert.Zero(t, cfg.Slot.Spill.MaxDiskBytes)
+
+		custom := Config{Slot: slot.Config{Spill: slot.StreamSpillConfig{
+			Enabled:        true,
+			MaxMemoryBytes: 8192,
+			MaxDiskBytes:   65536,
+			SpillDir:       "/var/tmp/cdc",
+		}}}
+		custom.SetDefault()
+		assert.Equal(t, int64(8192), custom.Slot.Spill.MaxMemoryBytes)
+		assert.Equal(t, int64(65536), custom.Slot.Spill.MaxDiskBytes)
+		assert.Equal(t, "/var/tmp/cdc", custom.Slot.Spill.SpillDir)
+	})
+
+	t.Run("reads YAML and JSON spill config", func(t *testing.T) {
+		dir := t.TempDir()
+		yamlPath := filepath.Join(dir, "cfg.yaml")
+		require.NoError(t, os.WriteFile(yamlPath, []byte(`
+slot:
+  name: my_slot
+  protoVersion: 2
+  spill:
+    enabled: true
+    maxMemoryBytes: 1048576
+    maxDiskBytes: 10485760
+    spillDir: /tmp/spill
+`), 0o600))
+		yCfg, err := ReadConfigYAML(yamlPath)
+		require.NoError(t, err)
+		assert.Equal(t, slot.StreamSpillConfig{
+			Enabled:        true,
+			MaxMemoryBytes: 1048576,
+			MaxDiskBytes:   10485760,
+			SpillDir:       "/tmp/spill",
+		}, yCfg.Slot.Spill)
+
+		jsonPath := filepath.Join(dir, "cfg.json")
+		require.NoError(t, os.WriteFile(jsonPath, []byte(`{
+  "slot": {
+    "name": "my_slot",
+    "protoVersion": 2,
+    "spill": {
+      "enabled": true,
+      "maxMemoryBytes": 2097152,
+      "maxDiskBytes": 20971520,
+      "spillDir": "/tmp/spill-json"
+    }
+  }
+}`), 0o600))
+		jCfg, err := ReadConfigJSON(jsonPath)
+		require.NoError(t, err)
+		assert.Equal(t, slot.StreamSpillConfig{
+			Enabled:        true,
+			MaxMemoryBytes: 2097152,
+			MaxDiskBytes:   20971520,
+			SpillDir:       "/tmp/spill-json",
+		}, jCfg.Slot.Spill)
+	})
+}

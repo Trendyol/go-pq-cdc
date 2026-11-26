@@ -25,6 +25,17 @@ ensuring low resource consumption and high performance.
 📚 **[Read Full Documentation](docs/SNAPSHOT_FEATURE.md)** for detailed architecture, configuration, and best practices.
 📚 **[Protocol Version & Streaming Transactions](docs/PROTO_VERSION_SUPPORT.md)** for `proto_version` behavior and migration guidance.
 
+## Destination Routing
+
+**Route each change to the right Kafka topic or Elasticsearch index.** Official sink connectors apply a static table mapping, then let your **handler** override the destination per row (for example by column value).
+
+✨ **Key Highlights:**
+- **Handler-driven**: Set `Topic` on Kafka messages or `IndexName` on Elasticsearch actions in Go.
+- **Safe fallback**: Empty override uses `tableTopicMapping` / `tableIndexMapping`.
+- **Official sinks**: Supported in [go-pq-cdc-kafka](https://github.com/Trendyol/go-pq-cdc-kafka) and [go-pq-cdc-elasticsearch](https://github.com/Trendyol/go-pq-cdc-elasticsearch).
+
+📚 **[Read Full Documentation](docs/DESTINATION_ROUTING.md)** for resolution order, examples, and limits.
+
 ### Contents
 
 - [go-pq-cdc   ](#go-pq-cdc---)
@@ -48,6 +59,7 @@ ensuring low resource consumption and high performance.
 		- [Grafana Dashboard](#grafana-dashboard)
 		- [Compatibility](#compatibility)
 		- [Breaking Changes](#breaking-changes)
+	- [Destination Routing](#destination-routing)
 
 ### Why?
 

@@ -64,8 +64,7 @@ func TestSnapshotOnlyBasic(t *testing.T) {
 
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 			mu.Lock()
 			switch msg.EventType {
@@ -88,7 +87,7 @@ func TestSnapshotOnlyBasic(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, tableName)
+		cleanupSnapshotOnlyTest(ctx, t, tableName)
 	})
 
 	// Start in goroutine and wait for completion
@@ -264,8 +263,8 @@ func TestSnapshotOnlyMultipleTables(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, table1)
-		cleanupSnapshotOnlyTest(t, ctx, table2)
+		cleanupSnapshotOnlyTest(ctx, t, table1)
+		cleanupSnapshotOnlyTest(ctx, t, table2)
 	})
 
 	// Start and wait for completion
@@ -380,7 +379,7 @@ func TestSnapshotOnlyWithChunking(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, tableName)
+		cleanupSnapshotOnlyTest(ctx, t, tableName)
 	})
 
 	// Start and wait
@@ -481,7 +480,7 @@ func TestSnapshotOnlyMetrics(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, tableName)
+		cleanupSnapshotOnlyTest(ctx, t, tableName)
 	})
 
 	completeCh := make(chan struct{})
@@ -560,7 +559,7 @@ func TestSnapshotOnlyResume(t *testing.T) {
 
 	t.Cleanup(func() {
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, tableName)
+		cleanupSnapshotOnlyTest(ctx, t, tableName)
 	})
 
 	// === First Run: Start snapshot but cancel early ===
@@ -726,7 +725,7 @@ func TestSnapshotOnlyResume(t *testing.T) {
 		assert.GreaterOrEqual(t, rowsFromRun1, 5, "Run 1 should have received at least 1 chunk (5 rows)")
 
 		// Run 2 should receive some rows (resume happened)
-		assert.Greater(t, rowsFromRun2, 0, "Run 2 should receive some rows")
+		assert.Positive(t, rowsFromRun2, "Run 2 should receive some rows")
 
 		// Combined rows should equal total (allowing for chunk boundary effects)
 		// Note: Some rows might be in a chunk that was interrupted and replayed
@@ -784,7 +783,7 @@ func TestSnapshotOnlyIdempotent(t *testing.T) {
 
 	t.Cleanup(func() {
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTest(t, ctx, tableName)
+		cleanupSnapshotOnlyTest(ctx, t, tableName)
 	})
 
 	// === First Run: Complete snapshot ===
@@ -907,7 +906,7 @@ func TestSnapshotOnlyIdempotent(t *testing.T) {
 
 	t.Run("Verify No Snapshot in Run 2", func(t *testing.T) {
 		assert.Equal(t, 0, rowsFromRun2, "Should receive 0 rows in run 2 (snapshot skipped)")
-		assert.Equal(t, 0, len(messageCh2), "Should receive 0 messages in run 2")
+		assert.Empty(t, messageCh2, "Should receive 0 messages in run 2")
 		t.Log("✅ Run 2: No snapshot executed (idempotent behavior confirmed)")
 	})
 
@@ -970,8 +969,7 @@ func TestSnapshotOnlyCustomID(t *testing.T) {
 
 	messageCh := make(chan any, 100)
 	handlerFunc := func(ctx *replication.ListenerContext) {
-		switch msg := ctx.Message.(type) {
-		case *format.Snapshot:
+		if msg, ok := ctx.Message.(*format.Snapshot); ok {
 			messageCh <- msg
 			mu.Lock()
 			switch msg.EventType {
@@ -992,7 +990,7 @@ func TestSnapshotOnlyCustomID(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotOnlyTestWithID(t, ctx, tableName, customID)
+		cleanupSnapshotOnlyTestWithID(ctx, t, tableName, customID)
 	})
 
 	// Start in goroutine and wait for completion
@@ -1087,7 +1085,7 @@ func TestSnapshotOnlyCustomID(t *testing.T) {
 }
 
 // Helper function for snapshot_only tests cleanup with custom ID
-func cleanupSnapshotOnlyTestWithID(t *testing.T, ctx context.Context, tableName, id string) {
+func cleanupSnapshotOnlyTestWithID(ctx context.Context, t *testing.T, tableName, id string) {
 	conn, err := newPostgresConn()
 	if err != nil {
 		t.Logf("Warning: Failed to create cleanup connection: %v", err)
@@ -1109,7 +1107,7 @@ func cleanupSnapshotOnlyTestWithID(t *testing.T, ctx context.Context, tableName,
 }
 
 // Helper function for snapshot_only tests cleanup
-func cleanupSnapshotOnlyTest(t *testing.T, ctx context.Context, tableName string) {
+func cleanupSnapshotOnlyTest(ctx context.Context, t *testing.T, tableName string) {
 	conn, err := newPostgresConn()
 	if err != nil {
 		t.Logf("Warning: Failed to create cleanup connection: %v", err)

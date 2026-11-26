@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"net/url"
@@ -27,7 +26,7 @@ func startupQueryProxy(t *testing.T, dsn, query string) (string, <-chan struct{}
 	u, err := url.Parse(dsn)
 	require.NoError(t, err)
 	backendAddress := u.Host
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	u.Host = listener.Addr().String()
 	params := u.Query()
@@ -49,7 +48,7 @@ func startupQueryProxy(t *testing.T, dsn, query string) (string, <-chan struct{}
 			go func() {
 				defer owners.Done()
 				defer client.Close()
-				backend, err := net.DialTimeout("tcp", backendAddress, time.Second)
+				backend, err := (&net.Dialer{Timeout: time.Second}).DialContext(t.Context(), "tcp", backendAddress)
 				if err != nil {
 					return
 				}
@@ -200,5 +199,5 @@ func TestOnlineReaderStartupLifecycle(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("lifetime cancellation did not stop reader")
 	}
-	t.Log(fmt.Sprintf("startup expired without canceling successful source owner; delivered end=%s and honored lifetime cancellation", envelope.EndLSN))
+	t.Logf("startup expired without canceling successful source owner; delivered end=%s and honored lifetime cancellation", envelope.EndLSN)
 }

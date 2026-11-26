@@ -2,9 +2,10 @@ package online
 
 import (
 	"context"
-	"github.com/Trendyol/go-pq-cdc/pq"
 	"sync/atomic"
 	"time"
+
+	"github.com/Trendyol/go-pq-cdc/pq"
 )
 
 type ObservationPhase string

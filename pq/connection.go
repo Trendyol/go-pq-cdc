@@ -2,9 +2,11 @@ package pq
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
 
-	"github.com/Trendyol/go-pq-cdc/internal/retry"
-	"github.com/go-playground/errors"
+	retrygo "github.com/avast/retry-go/v4"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -38,13 +40,16 @@ func NewConnectionTemplate(dsn string) Connection {
 }
 
 func (c *connection) Connect(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c.PgConn != nil && !c.IsClosed() {
 		return nil
 	}
 
 	conn, err := connect(ctx, c.dsn)
 	if err != nil {
-		return errors.Wrap(err, "postgres connection")
+		return fmt.Errorf("postgres connection: %w", err)
 	}
 	c.PgConn = conn
 	return nil
@@ -54,23 +59,38 @@ func (c *connection) IsClosed() bool {
 	return c.PgConn == nil || c.PgConn.IsClosed()
 }
 
+func (c *connection) Close(ctx context.Context) error {
+	if c.PgConn == nil {
+		return nil
+	}
+	return c.PgConn.Close(ctx)
+}
+
 func connect(ctx context.Context, dsn string) (*pgconn.PgConn, error) {
-	retryConfig := retry.OnErrorConfig[*pgconn.PgConn](5, func(err error) bool { return err == nil })
-	conn, err := retryConfig.Do(func() (*pgconn.PgConn, error) {
+	conn, err := retrygo.DoWithData(func() (*pgconn.PgConn, error) {
 		conn, err := pgconn.Connect(ctx, dsn)
 		if err != nil {
 			return nil, err
 		}
 
 		if err = conn.Ping(ctx); err != nil {
+			cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
+			closeErr := conn.Close(cleanup)
+			cancel()
+			if closeErr != nil {
+				return nil, errors.Join(err, fmt.Errorf("close connection after failed ping: %w", closeErr))
+			}
 			return nil, err
 		}
 
 		return conn, nil
-	})
+	}, retrygo.Attempts(5), retrygo.LastErrorOnly(true), retrygo.Delay(time.Second), retrygo.DelayType(retrygo.FixedDelay), retrygo.Context(ctx))
 
 	if err != nil {
-		return nil, errors.Wrap(err, "postgres connection")
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("postgres connection: %w", err)
 	}
 
 	return conn, nil

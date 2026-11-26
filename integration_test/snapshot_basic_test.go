@@ -84,7 +84,7 @@ func TestSnapshotBasicSingleChunk(t *testing.T) {
 	t.Cleanup(func() {
 		connector.Close()
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
+		cleanupSnapshotTest(ctx, t, tableName, cdcCfg.Slot.Name, cdcCfg.Publication.Name)
 	})
 
 	go connector.Start(ctx)
@@ -101,8 +101,7 @@ func TestSnapshotBasicSingleChunk(t *testing.T) {
 	for !snapshotCompleted {
 		select {
 		case msg := <-messageCh:
-			switch m := msg.(type) {
-			case *format.Snapshot:
+			if m, ok := msg.(*format.Snapshot); ok {
 				switch m.EventType {
 				case format.SnapshotEventTypeBegin:
 					snapshotBeginReceived = true

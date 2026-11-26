@@ -41,10 +41,10 @@ func TestSlotFailover(t *testing.T) {
 		_ = pgExec(ctx, postgresConn, fmt.Sprintf("SELECT pg_drop_replication_slot('%s') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '%s')", name, name))
 	}
 	failoverFlag := func(name string) string {
-		return pgScalar(t, ctx, postgresConn, fmt.Sprintf("SELECT failover FROM pg_replication_slots WHERE slot_name = '%s'", name))
+		return pgScalar(ctx, t, postgresConn, fmt.Sprintf("SELECT failover FROM pg_replication_slots WHERE slot_name = '%s'", name))
 	}
 
-	version, err := strconv.Atoi(pgScalar(t, ctx, postgresConn, "SHOW server_version_num"))
+	version, err := strconv.Atoi(pgScalar(ctx, t, postgresConn, "SHOW server_version_num"))
 	require.NoError(t, err)
 
 	if version < 170000 {
@@ -74,7 +74,7 @@ func TestSlotFailover(t *testing.T) {
 	require.Equal(t, "t", failoverFlag(freshSlot))
 }
 
-func pgScalar(t *testing.T, ctx context.Context, conn pq.Connection, sql string) string {
+func pgScalar(ctx context.Context, t *testing.T, conn pq.Connection, sql string) string {
 	t.Helper()
 	results, err := conn.Exec(ctx, sql).ReadAll()
 	require.NoError(t, err)

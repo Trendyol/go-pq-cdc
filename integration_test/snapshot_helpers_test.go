@@ -47,7 +47,7 @@ func execQuery(ctx context.Context, conn pq.Connection, query string) ([]*pgconn
 	return results, nil
 }
 
-func cleanupSnapshotTest(t *testing.T, ctx context.Context, tableName string, slotName string, publicationName string) {
+func cleanupSnapshotTest(ctx context.Context, t *testing.T, tableName string, slotName string, publicationName string) {
 	// Open a fresh connection for cleanup
 	conn, err := newPostgresConn()
 	if err != nil {
@@ -81,8 +81,8 @@ func fetchSnapshotInProgressMetric() (int, error) {
 		return 0, err
 	}
 	var val int
-	fmt.Sscanf(m, "%d", &val)
-	return val, nil
+	_, err = fmt.Sscanf(m, "%d", &val)
+	return val, err
 }
 
 func fetchSnapshotTotalRowsMetric() (int, error) {
@@ -91,8 +91,8 @@ func fetchSnapshotTotalRowsMetric() (int, error) {
 		return 0, err
 	}
 	var val int
-	fmt.Sscanf(m, "%d", &val)
-	return val, nil
+	_, err = fmt.Sscanf(m, "%d", &val)
+	return val, err
 }
 
 func fetchSnapshotTotalChunksMetric() (int, error) {
@@ -101,8 +101,8 @@ func fetchSnapshotTotalChunksMetric() (int, error) {
 		return 0, err
 	}
 	var val int
-	fmt.Sscanf(m, "%d", &val)
-	return val, nil
+	_, err = fmt.Sscanf(m, "%d", &val)
+	return val, err
 }
 
 func fetchSnapshotCompletedChunksMetric() (int, error) {
@@ -111,8 +111,8 @@ func fetchSnapshotCompletedChunksMetric() (int, error) {
 		return 0, err
 	}
 	var val int
-	fmt.Sscanf(m, "%d", &val)
-	return val, nil
+	_, err = fmt.Sscanf(m, "%d", &val)
+	return val, err
 }
 
 func fetchSnapshotTotalTablesMetric() (int, error) {
@@ -121,8 +121,8 @@ func fetchSnapshotTotalTablesMetric() (int, error) {
 		return 0, err
 	}
 	var val int
-	fmt.Sscanf(m, "%d", &val)
-	return val, nil
+	_, err = fmt.Sscanf(m, "%d", &val)
+	return val, err
 }
 
 func countWalsendersForSlot(ctx context.Context, conn pq.Connection, slotName string) (int, error) {

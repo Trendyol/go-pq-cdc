@@ -25,13 +25,9 @@ func TestReplicaIdentityDefault(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		messageCh := make(chan any, 500)
 		handlerFunc := func(ctx *replication.ListenerContext) {
@@ -43,9 +39,7 @@ func TestReplicaIdentityDefault(t *testing.T) {
 		}
 
 		connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			connector.Close()
@@ -56,16 +50,14 @@ func TestReplicaIdentityDefault(t *testing.T) {
 		go connector.Start(ctx)
 
 		waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {
-			t.FailNow()
-		}
+		require.NoError(t, connector.WaitUntilReady(waitCtx))
 		cancel()
 
 		t.Run("should return old value is nil when update message received", func(t *testing.T) {
 			books := CreateBooks(10)
 			for _, b := range books {
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("INSERT INTO books(id, name) VALUES(%d, '%s')", b.ID, b.Name))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for range 10 {
@@ -77,7 +69,7 @@ func TestReplicaIdentityDefault(t *testing.T) {
 				b.ID = i + 1
 				booksNew[i] = b
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("UPDATE books SET name = '%s' WHERE id = %d", b.Name, b.ID))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for i := range 5 {
@@ -98,13 +90,9 @@ func TestReplicaIdentityFull(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		messageCh := make(chan any, 500)
 		handlerFunc := func(ctx *replication.ListenerContext) {
@@ -116,9 +104,7 @@ func TestReplicaIdentityFull(t *testing.T) {
 		}
 
 		connector, err := cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			connector.Close()
@@ -129,16 +115,14 @@ func TestReplicaIdentityFull(t *testing.T) {
 		go connector.Start(ctx)
 
 		waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if !assert.NoError(t, connector.WaitUntilReady(waitCtx)) {
-			t.FailNow()
-		}
+		require.NoError(t, connector.WaitUntilReady(waitCtx))
 		cancel()
 
 		t.Run("should return new value and old value when update message received", func(t *testing.T) {
 			books := CreateBooks(10)
 			for _, b := range books {
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("INSERT INTO books(id, name) VALUES(%d, '%s')", b.ID, b.Name))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for range 10 {
@@ -150,7 +134,7 @@ func TestReplicaIdentityFull(t *testing.T) {
 				b.ID = i + 1
 				booksNew[i] = b
 				err = pgExec(ctx, postgresConn, fmt.Sprintf("UPDATE books SET name = '%s' WHERE id = %d", b.Name, b.ID))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			for i := range 5 {
@@ -172,29 +156,23 @@ func TestReplicaIdentityNothing(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		handlerFunc := func(ctx *replication.ListenerContext) {
 			_ = ctx.Ack()
 		}
 
 		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			assert.NoError(t, RestoreDB(ctx))
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
 
-		replicaIdentity, replicaIdentityIndex := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		replicaIdentity, replicaIdentityIndex := getBooksReplicaIdentity(ctx, t, postgresConn)
 		assert.Equal(t, publication.ReplicaIdentityNothing, replicaIdentity)
 		assert.Empty(t, replicaIdentityIndex)
 	})
@@ -210,34 +188,26 @@ func TestReplicaIdentityUsingIndex(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		err = pgExec(ctx, postgresConn, "CREATE UNIQUE INDEX books_name_unique_idx ON public.books(name);")
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		handlerFunc := func(ctx *replication.ListenerContext) {
 			_ = ctx.Ack()
 		}
 
 		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			assert.NoError(t, RestoreDB(ctx))
 			assert.NoError(t, postgresConn.Close(ctx))
 		})
 
-		replicaIdentity, replicaIdentityIndex := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		replicaIdentity, replicaIdentityIndex := getBooksReplicaIdentity(ctx, t, postgresConn)
 		assert.Equal(t, publication.ReplicaIdentityUsingIndex, replicaIdentity)
 		assert.Equal(t, "books_name_unique_idx", replicaIdentityIndex)
 	})
@@ -253,13 +223,9 @@ func TestReplicaIdentityUsingIndexUpdateUsesKeyTuple(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		err = pgExec(ctx, postgresConn, "CREATE UNIQUE INDEX books_name_unique_idx ON public.books(name);")
 		require.NoError(t, err)
@@ -288,14 +254,10 @@ func TestReplicaIdentityUsingIndexUpdateUsesKeyTuple(t *testing.T) {
 		cancel()
 
 		err = pgExec(ctx, postgresConn, "INSERT INTO books(id, name) VALUES(1, 'book-old');")
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		err = pgExec(ctx, postgresConn, "UPDATE books SET name = 'book-new' WHERE id = 1;")
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		select {
 		case msg := <-updates:
@@ -324,13 +286,9 @@ func TestReplicaIdentityUsingIndexMissingIndexReturnsError(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		t.Cleanup(func() {
 			assert.NoError(t, RestoreDB(ctx))
@@ -359,24 +317,18 @@ func TestReplicaIdentityMismatchLoggedWhenCreateIfNotExistsFalse(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		// Publication must pre-exist because the connector won't create it.
 		err = pgExec(ctx, postgresConn, fmt.Sprintf(
 			"CREATE PUBLICATION %s FOR TABLE books WITH (publish = 'insert, update, delete');",
 			cdcCfg.Publication.Name))
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		// books starts at DEFAULT (mismatch: config wants FULL).
-		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		identity, _ := getBooksReplicaIdentity(ctx, t, postgresConn)
 		require.Equal(t, publication.ReplicaIdentityDefault, identity)
 
 		handlerFunc := func(ctx *replication.ListenerContext) {
@@ -385,9 +337,7 @@ func TestReplicaIdentityMismatchLoggedWhenCreateIfNotExistsFalse(t *testing.T) {
 
 		// Connector should start; mismatch is logged, not fatal.
 		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			assert.NoError(t, RestoreDB(ctx))
@@ -396,7 +346,7 @@ func TestReplicaIdentityMismatchLoggedWhenCreateIfNotExistsFalse(t *testing.T) {
 		})
 
 		// Identity left untouched (no ALTER TABLE).
-		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		identity, _ = getBooksReplicaIdentity(ctx, t, postgresConn)
 		assert.Equal(t, publication.ReplicaIdentityDefault, identity)
 	})
 }
@@ -411,27 +361,19 @@ func TestReplicaIdentityCheckSucceedsWhenCreateIfNotExistsFalse(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		// Publication must pre-exist.
 		err = pgExec(ctx, postgresConn, fmt.Sprintf(
 			"CREATE PUBLICATION %s FOR TABLE books WITH (publish = 'insert, update, delete');",
 			cdcCfg.Publication.Name))
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		// Pre-configure books to FULL to match the config.
 		err = pgExec(ctx, postgresConn, "ALTER TABLE books REPLICA IDENTITY FULL;")
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		handlerFunc := func(ctx *replication.ListenerContext) {
 			_ = ctx.Ack()
@@ -439,9 +381,7 @@ func TestReplicaIdentityCheckSucceedsWhenCreateIfNotExistsFalse(t *testing.T) {
 
 		// Connector should start successfully (validation passes).
 		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			assert.NoError(t, RestoreDB(ctx))
@@ -450,7 +390,7 @@ func TestReplicaIdentityCheckSucceedsWhenCreateIfNotExistsFalse(t *testing.T) {
 		})
 
 		// Confirm books stayed at FULL (no ALTER issued by connector).
-		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		identity, _ := getBooksReplicaIdentity(ctx, t, postgresConn)
 		assert.Equal(t, publication.ReplicaIdentityFull, identity)
 	})
 }
@@ -465,16 +405,12 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsTrue(t *testing.T) {
 
 	forEachProtoVersion(t, cdcCfg, func(t *testing.T, cdcCfg config.Config) {
 		postgresConn, err := newPostgresConn()
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
-		if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-			t.FailNow()
-		}
+		require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 		// connector creates the publication itself.
-		identity, _ := getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		identity, _ := getBooksReplicaIdentity(ctx, t, postgresConn)
 		require.Equal(t, publication.ReplicaIdentityDefault, identity)
 
 		handlerFunc := func(ctx *replication.ListenerContext) {
@@ -482,9 +418,7 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsTrue(t *testing.T) {
 		}
 
 		_, err = cdc.NewConnector(ctx, cdcCfg, handlerFunc)
-		if !assert.NoError(t, err) {
-			t.FailNow()
-		}
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
 			assert.NoError(t, RestoreDB(ctx))
@@ -493,12 +427,14 @@ func TestReplicaIdentityAppliedWhenCreateIfNotExistsTrue(t *testing.T) {
 		})
 
 		// altered to FULL.
-		identity, _ = getReplicaIdentity(ctx, t, postgresConn, "public", "books")
+		identity, _ = getBooksReplicaIdentity(ctx, t, postgresConn)
 		assert.Equal(t, publication.ReplicaIdentityFull, identity)
 	})
 }
 
-func getReplicaIdentity(ctx context.Context, t *testing.T, conn pq.Connection, schema, table string) (string, string) {
+func getBooksReplicaIdentity(ctx context.Context, t *testing.T, conn pq.Connection) (string, string) {
+	const schema = "public"
+	const table = "books"
 	t.Helper()
 
 	query := fmt.Sprintf(`
@@ -512,14 +448,11 @@ func getReplicaIdentity(ctx context.Context, t *testing.T, conn pq.Connection, s
 
 	resultReader := conn.Exec(ctx, query)
 	results, err := resultReader.ReadAll()
-	if !assert.NoError(t, err) {
+	if err != nil {
 		_ = resultReader.Close()
-		t.FailNow()
 	}
-
-	if !assert.NoError(t, resultReader.Close()) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
+	require.NoError(t, resultReader.Close())
 
 	if len(results) == 0 || len(results[0].Rows) == 0 {
 		t.Fatalf("replica identity row not found for %s.%s", schema, table)

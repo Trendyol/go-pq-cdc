@@ -13,6 +13,7 @@ import (
 	"github.com/Trendyol/go-pq-cdc/pq/replication"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestStreamingTransactionRollback verifies that when a large streaming
@@ -35,32 +36,23 @@ func TestStreamingTransactionRollback(t *testing.T) {
 	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 	msgCh := make(chan any, 10)
 	handler := func(lCtx *replication.ListenerContext) {
-		switch lCtx.Message.(type) {
-		case *format.Insert:
+		if _, ok := lCtx.Message.(*format.Insert); ok {
 			msgCh <- lCtx.Message
 		}
 		_ = lCtx.Ack()
 	}
 
 	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -71,22 +63,20 @@ func TestStreamingTransactionRollback(t *testing.T) {
 
 	go connector.Start(ctx)
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
 	cancel()
 
 	// --- Insert many rows then ROLLBACK -----------------------------------
 	tx, err := pool.Begin(ctx)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	for i := 0; i < rowCount; i++ {
 		_, err = tx.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+60000, fmt.Sprintf("rollback-book-%d", i))
-		if !assert.NoError(t, err) {
+		if err != nil {
 			_ = tx.Rollback(ctx)
-			t.FailNow()
+			require.NoError(t, err)
 		}
 	}
-	assert.NoError(t, tx.Rollback(ctx))
+	require.NoError(t, tx.Rollback(ctx))
 
 	// --- No messages should arrive ----------------------------------------
 	select {
@@ -122,12 +112,8 @@ func TestStreamingRollbackThenCommit(t *testing.T) {
 	cdcCfg.Slot.ProtoVersion = 2
 
 	postgresConn, err := newPostgresConn()
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg)) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
+	require.NoError(t, SetupTestDB(ctx, postgresConn, cdcCfg))
 
 	var received atomic.Int64
 	msgCh := make(chan *format.Insert, rowCount+10)
@@ -140,15 +126,11 @@ func TestStreamingRollbackThenCommit(t *testing.T) {
 	}
 
 	connector, err := cdc.NewConnector(ctx, cdcCfg, handler)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	cfg := config.Config{Host: Config.Host, Port: Config.Port, Username: "postgres", Password: "postgres", Database: Config.Database}
 	pool, err := pgxpool.New(ctx, cfg.DSNWithoutSSL())
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		connector.Close()
@@ -159,30 +141,26 @@ func TestStreamingRollbackThenCommit(t *testing.T) {
 
 	go connector.Start(ctx)
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	assert.NoError(t, connector.WaitUntilReady(waitCtx))
+	require.NoError(t, connector.WaitUntilReady(waitCtx))
 	cancel()
 
 	// --- TX-A: large transaction → ROLLBACK -------------------------------
 	txA, err := pool.Begin(ctx)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	for i := 0; i < rowCount; i++ {
 		_, err = txA.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+70000, fmt.Sprintf("rollback-%d", i))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
-	assert.NoError(t, txA.Rollback(ctx))
+	require.NoError(t, txA.Rollback(ctx))
 
 	// --- TX-B: large transaction → COMMIT ---------------------------------
 	txB, err := pool.Begin(ctx)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	for i := 0; i < rowCount; i++ {
 		_, err = txB.Exec(ctx, "INSERT INTO books (id, name) VALUES ($1, $2)", i+80000, fmt.Sprintf("commit-%d", i))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
-	assert.NoError(t, txB.Commit(ctx))
+	require.NoError(t, txB.Commit(ctx))
 
 	// --- Only TX-B's messages should arrive -------------------------------
 	deadline := time.After(15 * time.Second)

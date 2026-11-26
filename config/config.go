@@ -153,6 +153,9 @@ func (c *Config) SetDefault() {
 	if c.Slot.ProtoVersion == 0 {
 		c.Slot.ProtoVersion = 2
 	}
+	if c.Slot.InfoTimeout == 0 {
+		c.Slot.InfoTimeout = slot.DefaultInfoTimeout
+	}
 
 	if c.Logger.Logger == nil {
 		c.Logger.Logger = logger.NewSlog(c.Logger.LogLevel)

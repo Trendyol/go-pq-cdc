@@ -32,7 +32,7 @@ func TestForceResnapshotCleansMetadataAndReprocesses(t *testing.T) {
 
 	t.Cleanup(func() {
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, slotName, pubName)
+		cleanupSnapshotTest(ctx, t, tableName, slotName, pubName)
 	})
 
 	// Create table and insert initial data
@@ -351,7 +351,7 @@ func TestForceResnapshotDoesNotAffectOtherSlots(t *testing.T) {
 
 	t.Cleanup(func() {
 		postgresConn.Close(ctx)
-		cleanupSnapshotTest(t, ctx, tableName, slotName1, pubName1)
+		cleanupSnapshotTest(ctx, t, tableName, slotName1, pubName1)
 		// Also clean slot2
 		conn, _ := newPostgresConn()
 		if conn != nil {
